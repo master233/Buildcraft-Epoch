@@ -17,6 +17,7 @@ extends Node2D
 const BUILDING_SCALE := 0.75
 const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
+const SAVE_PATH := "user://savegame.json"
 
 const PANEL_RECT   := Rect2(470, 250, 340, 220)
 const UPGRADE_RECT := Rect2(500, 412, 130, 44)
@@ -89,6 +90,7 @@ func _setup() -> void:
 	bg.z_index = -10
 	add_child(bg)
 	_place_buildings()
+	_load_game()
 	_refresh_hud()
 
 func _input(event: InputEvent) -> void:
@@ -200,6 +202,7 @@ func _on_upgrade_pressed() -> void:
 	upgrade_building(_panel_key)
 	_refresh_hud()
 	_refresh_panel()
+	_save_game()
 
 func upgrade_building(key: String) -> void:
 	if not _building_nodes.has(key):
@@ -219,9 +222,35 @@ func _tick_production() -> void:
 		var amount: int = PRODUCE_RATES[lv - 1]
 		if BUILDINGS[key]["produces"] == "wood":
 			_wood += amount
+			_spawn_float_text(key, amount, "wood")
 		else:
 			_ore += amount
+			_spawn_float_text(key, amount, "ore")
 	_refresh_hud()
+	_save_game()
+
+func _spawn_float_text(key: String, amount: int, resource_type: String) -> void:
+	var pos: Vector2 = BUILDINGS[key]["pos"]
+	var container := Node2D.new()
+	container.position = pos
+	add_child(container)
+	var lbl := Label.new()
+	lbl.text = "+%d" % amount
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(80, 30)
+	lbl.position = Vector2(-40.0, -15.0)
+	var ls := LabelSettings.new()
+	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size = 24
+	ls.font_color = Color(1.0, 0.88, 0.3) if resource_type == "wood" else Color(0.55, 0.85, 1.0)
+	ls.outline_size = 3
+	ls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
+	lbl.label_settings = ls
+	container.add_child(lbl)
+	var tween := create_tween()
+	tween.tween_property(container, "position:y", pos.y - 35.0, 1.0)
+	tween.parallel().tween_property(container, "modulate:a", 0.0, 0.35).set_delay(0.65)
+	tween.tween_callback(container.queue_free)
 
 func _refresh_hud() -> void:
 	if _wood_lbl:
@@ -232,3 +261,39 @@ func _refresh_hud() -> void:
 func _refresh_label(key: String) -> void:
 	var state = _building_nodes[key]
 	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
+
+func _save_game() -> void:
+	var data := {"wood": _wood, "ore": _ore, "levels": {}}
+	for key in _building_nodes:
+		data["levels"][key] = _building_nodes[key]["level"]
+	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if file == null:
+		return
+	file.store_string(JSON.stringify(data))
+	file.close()
+
+func _load_game() -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var text := file.get_as_text()
+	file.close()
+	var parsed = JSON.parse_string(text)
+	if not parsed is Dictionary:
+		return
+	var data: Dictionary = parsed
+	if data.has("wood"):
+		_wood = int(data["wood"])
+	if data.has("ore"):
+		_ore = int(data["ore"])
+	if data.has("levels") and data["levels"] is Dictionary:
+		var levels: Dictionary = data["levels"]
+		for key in levels:
+			if not _building_nodes.has(key):
+				continue
+			var lv: int = clampi(int(levels[key]), 1, 3)
+			_building_nodes[key]["level"] = lv
+			_building_nodes[key]["sprite"].texture = load(BUILDINGS[key]["paths"][lv - 1])
+			_refresh_label(key)
