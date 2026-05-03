@@ -5,6 +5,7 @@
 /bin/*
 !/bin/server.ps1
 !/bin/start.bat
+!/bin/*.txt
 
 .claude/
 .mcp.json
