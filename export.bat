@@ -32,12 +32,14 @@ echo.
 echo [1/2] Creating output directory...
 if not exist "%OUT%" mkdir "%OUT%"
 
+set PROJ=%~dp0
+if "%PROJ:~-1%"=="\" set PROJ=%PROJ:~0,-1%
+
 echo [2/2] Exporting project...
-%GODOT% --headless --path "%~dp0" --export-release "Web" "%OUT%\index.html"
+%GODOT% --headless --path "%PROJ%" --export-release "Web" "%OUT%\index.html"
 if errorlevel 1 (
     echo.
     echo ERROR: Export failed.
-    pause
     exit /b 1
 )
 
@@ -45,4 +47,3 @@ echo.
 echo Done! Output: %OUT%
 echo Double-click bin\start.bat to play.
 echo.
-pause
