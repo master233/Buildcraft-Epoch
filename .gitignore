@@ -1,2 +1,10 @@
+# Godot 4+ specific ignores
+.godot/
+/android/
+
+/bin/*
+!/bin/server.ps1
+!/bin/start.bat
+
 .claude/
 .mcp.json
