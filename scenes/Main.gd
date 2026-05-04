@@ -26,36 +26,42 @@ const CLOSE_RECT   := Rect2(650, 412, 130, 44)
 const BUILDINGS := {
 	"home": {
 		"paths": ["res://asserts/image/building/home1.png", "res://asserts/image/building/home2.png", "res://asserts/image/building/home3.png"],
+		"anim_sheet": "res://asserts/image/building/home_anim_sheet.png",
 		"pos": Vector2(640, 375), "display": "主基地", "y_adj": 25,
 		"upgrade_cost": [{"wood": 100, "ore": 80}, {"wood": 250, "ore": 200}],
 		"produces": ""
 	},
 	"tower": {
 		"paths": ["res://asserts/image/building/tower1.png", "res://asserts/image/building/tower2.png", "res://asserts/image/building/tower3.png"],
+		"anim_sheet": "res://asserts/image/building/tower_anim_sheet.png",
 		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
 		"upgrade_cost": [{"wood": 80, "ore": 50}, {"wood": 200, "ore": 130}],
 		"produces": ""
 	},
 	"lumberyard": {
 		"paths": ["res://asserts/image/building/lumberyard1.png", "res://asserts/image/building/lumberyard2.png", "res://asserts/image/building/lumberyard3.png"],
+		"anim_sheet": "res://asserts/image/building/lumberyard_anim_sheet.png",
 		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
 		"upgrade_cost": [{"wood": 50, "ore": 20}, {"wood": 120, "ore": 60}],
 		"produces": "wood"
 	},
 	"mine": {
 		"paths": ["res://asserts/image/building/Mine1.png", "res://asserts/image/building/Mine2.png", "res://asserts/image/building/Mine3.png"],
+		"anim_sheet": "res://asserts/image/building/mine_anim_sheet.png",
 		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
 		"upgrade_cost": [{"wood": 30, "ore": 50}, {"wood": 80, "ore": 130}],
 		"produces": "ore"
 	},
 	"tavern": {
 		"paths": ["res://asserts/image/building/Tavern1.png", "res://asserts/image/building/Tavern2.png", "res://asserts/image/building/Tavern3.png"],
+		"anim_sheet": "res://asserts/image/building/tavern_anim_sheet.png",
 		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
 		"upgrade_cost": [{"wood": 60, "ore": 40}, {"wood": 150, "ore": 100}],
 		"produces": ""
 	},
 	"research": {
 		"paths": ["res://asserts/image/building/research1.png", "res://asserts/image/building/research2.png", "res://asserts/image/building/research3.png"],
+		"anim_sheet": "res://asserts/image/building/research_anim_sheet.png",
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
 		"upgrade_cost": [{"wood": 40, "ore": 60}, {"wood": 100, "ore": 150}],
 		"produces": ""
@@ -170,6 +176,7 @@ func _place_buildings() -> void:
 
 		_building_nodes[key] = {"level": 1, "sprite": sprite, "label": label}
 		_refresh_label(key)
+		_start_building_anim(key, sprite, container)
 
 func _set_panel_visible(v: bool) -> void:
 	var a := 1.0 if v else 0.0
@@ -334,6 +341,58 @@ func _load_game() -> void:
 			_building_nodes[key]["level"] = lv
 			_building_nodes[key]["sprite"].texture = load(BUILDINGS[key]["paths"][lv - 1])
 			_refresh_label(key)
+
+func _start_building_anim(key: String, sprite: Sprite2D, container: Node2D) -> void:
+	var base_y := container.position.y
+	var base_scale := sprite.scale
+	match key:
+		"home":
+			var t := create_tween().set_loops()
+			t.tween_property(sprite, "modulate", Color(1.18, 1.06, 0.75, 1.0), 1.5)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0, 1.0), 1.5)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		"tower":
+			var t := create_tween().set_loops()
+			t.tween_property(container, "position:y", base_y - 5.0, 1.2)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t.parallel().tween_property(sprite, "scale", Vector2(base_scale.x * 0.97, base_scale.y * 1.02), 1.2)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t.tween_property(container, "position:y", base_y, 1.2)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t.parallel().tween_property(sprite, "scale", base_scale, 1.2)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		"lumberyard":
+			var t := create_tween().set_loops()
+			t.tween_property(container, "position:y", base_y - 1.5, 0.12)\
+				.set_trans(Tween.TRANS_SINE)
+			t.tween_property(container, "position:y", base_y + 1.5, 0.12)\
+				.set_trans(Tween.TRANS_SINE)
+			t.tween_property(container, "position:y", base_y, 0.12)\
+				.set_trans(Tween.TRANS_SINE)
+			t.tween_interval(randf_range(0.6, 1.4))
+		"mine":
+			var t := create_tween().set_loops()
+			t.tween_property(sprite, "modulate", Color(0.82, 0.94, 1.35, 1.0), 0.8)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.8)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		"tavern":
+			var t := create_tween().set_loops()
+			t.tween_property(container, "position:y", base_y - 4.0, 1.8)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t.tween_property(container, "position:y", base_y, 1.8)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+		"research":
+			var t := create_tween().set_loops()
+			t.tween_property(sprite, "modulate", Color(0.88, 0.94, 1.28, 1.0), 1.3)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t.parallel().tween_property(sprite, "scale", base_scale * 1.018, 1.3)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0, 1.0), 1.3)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t.parallel().tween_property(sprite, "scale", base_scale, 1.3)\
+				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
 func _build_animal_frames() -> void:
 	_bird_frames = SpriteFrames.new()
