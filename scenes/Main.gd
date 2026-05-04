@@ -14,7 +14,7 @@ extends Node2D
 @onready var _close_bg: ColorRect = $UI/CloseBg
 @onready var _close_lbl: Label = $UI/CloseLbl
 
-const BUILDING_SCALE := 0.75
+const BUILDING_SCALE := 0.8
 const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
@@ -26,37 +26,37 @@ const CLOSE_RECT   := Rect2(650, 412, 130, 44)
 const BUILDINGS := {
 	"home": {
 		"paths": ["res://asserts/image/building/home1.png", "res://asserts/image/building/home2.png", "res://asserts/image/building/home3.png"],
-		"pos": Vector2(640, 360), "display": "主基地", "y_adj": 25,
+		"pos": Vector2(640, 375), "display": "主基地", "y_adj": 25,
 		"upgrade_cost": [{"wood": 100, "ore": 80}, {"wood": 250, "ore": 200}],
 		"produces": ""
 	},
 	"tower": {
 		"paths": ["res://asserts/image/building/tower1.png", "res://asserts/image/building/tower2.png", "res://asserts/image/building/tower3.png"],
-		"pos": Vector2(640, 180), "display": "远征塔", "y_adj": 0,
+		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
 		"upgrade_cost": [{"wood": 80, "ore": 50}, {"wood": 200, "ore": 130}],
 		"produces": ""
 	},
 	"lumberyard": {
 		"paths": ["res://asserts/image/building/lumberyard1.png", "res://asserts/image/building/lumberyard2.png", "res://asserts/image/building/lumberyard3.png"],
-		"pos": Vector2(370, 260), "display": "伐木场", "y_adj": 25,
+		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
 		"upgrade_cost": [{"wood": 50, "ore": 20}, {"wood": 120, "ore": 60}],
 		"produces": "wood"
 	},
 	"mine": {
 		"paths": ["res://asserts/image/building/Mine1.png", "res://asserts/image/building/Mine2.png", "res://asserts/image/building/Mine3.png"],
-		"pos": Vector2(910, 260), "display": "矿石场", "y_adj": 0,
+		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
 		"upgrade_cost": [{"wood": 30, "ore": 50}, {"wood": 80, "ore": 130}],
 		"produces": "ore"
 	},
 	"tavern": {
 		"paths": ["res://asserts/image/building/Tavern1.png", "res://asserts/image/building/Tavern2.png", "res://asserts/image/building/Tavern3.png"],
-		"pos": Vector2(420, 480), "display": "酒馆", "y_adj": 0,
+		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
 		"upgrade_cost": [{"wood": 60, "ore": 40}, {"wood": 150, "ore": 100}],
 		"produces": ""
 	},
 	"research": {
 		"paths": ["res://asserts/image/building/research1.png", "res://asserts/image/building/research2.png", "res://asserts/image/building/research3.png"],
-		"pos": Vector2(850, 480), "display": "研究院", "y_adj": 0,
+		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
 		"upgrade_cost": [{"wood": 40, "ore": 60}, {"wood": 100, "ore": 150}],
 		"produces": ""
 	},
@@ -72,6 +72,7 @@ var _panel_nodes: Array = []
 var _upgrade_disabled: bool = false
 var _bird_frames: SpriteFrames = null
 var _squirrel_frames: SpriteFrames = null
+var _bird_next_pattern: Array[int] = [0, 1, 2]
 
 func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
@@ -90,25 +91,12 @@ func _setup() -> void:
 	bg.texture = load("res://asserts/image/backgroud/bg_test_1.jpg")
 	var tex := bg.texture
 	var bg_base: float = max(vp.x / float(tex.get_width()), vp.y / float(tex.get_height()))
-	bg.scale = Vector2(bg_base * 1.06, bg_base * 1.06)
+	bg.scale = Vector2(bg_base, bg_base)
 	bg.position = half_vp
 	bg.z_index = -10
 	add_child(bg)
 
-	# Ken Burns：背景缓慢漂移 + 轻微缩放，22s 一个来回
-	var kb := create_tween().set_loops()
-	kb.tween_property(bg, "position", half_vp + Vector2(-20, -8), 22.0)\
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	kb.parallel().tween_property(bg, "scale",
-		Vector2(bg_base * 1.03, bg_base * 1.03), 22.0)\
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	kb.tween_property(bg, "position", half_vp + Vector2(15, 6), 22.0)\
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	kb.parallel().tween_property(bg, "scale",
-		Vector2(bg_base * 1.06, bg_base * 1.06), 22.0)\
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-
-	# 大气粒子：金色尘埃/花粉缓慢上漂
+# 大气粒子：金色尘埃/花粉缓慢上漂
 	var dust := CPUParticles2D.new()
 	dust.position = half_vp
 	dust.emitting = true
@@ -136,8 +124,11 @@ func _setup() -> void:
 	_load_game()
 	_refresh_hud()
 	_build_animal_frames()
-	_spawn_bird()
-	_spawn_squirrel()
+	_spawn_bird(0)
+	get_tree().create_timer(6.0).timeout.connect(_spawn_bird.bind(1))
+	get_tree().create_timer(13.0).timeout.connect(_spawn_bird.bind(2))
+	_spawn_squirrel(0.12, 0.73)
+	get_tree().create_timer(8.0).timeout.connect(_spawn_squirrel.bind(0.88, 0.77))
 
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
@@ -373,62 +364,192 @@ func _build_animal_frames() -> void:
 		at.filter_clip = true
 		_squirrel_frames.add_frame("run", at)
 
-func _spawn_bird() -> void:
+func _spawn_bird(chain_id: int = 0) -> void:
 	var vp := get_viewport_rect().size
 	var bird := AnimatedSprite2D.new()
 	bird.sprite_frames = _bird_frames
-	bird.scale = Vector2(0.09, 0.09)
-	bird.z_index = -1
+	bird.z_index = 2
 	bird.play("fly")
 	add_child(bird)
 
 	var go_right: bool = randf() > 0.5
 	var start_x: float = -120.0 if go_right else vp.x + 120.0
-	var end_x: float = vp.x + 120.0 if go_right else -120.0
-	var y: float = randf_range(80.0, 190.0)
-	bird.position = Vector2(start_x, y)
+	var end_x: float   = vp.x + 120.0 if go_right else -120.0
 	bird.flip_h = not go_right
 
-	var duration: float = randf_range(10.0, 16.0)
-	var t := create_tween()
-	t.tween_property(bird, "position:x", end_x, duration)\
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-	t.tween_callback(bird.queue_free)
+	var pattern: int = _bird_next_pattern[chain_id]
+	_bird_next_pattern[chain_id] = (pattern + 1 + randi() % 3) % 4
+
+	# 三条链各自占一段高度区间，避免总在同一高度
+	var y_min: float = 55.0 + chain_id * 35.0
+	var y_max: float = 110.0 + chain_id * 35.0
+	var y: float
+	var duration: float
+
+	match pattern:
+		0:  # 平稳滑翔
+			y = randf_range(y_min, y_max)
+			duration = randf_range(28.0, 36.0)
+			bird.scale = Vector2(0.0675, 0.0675)
+			bird.speed_scale = 0.7
+			bird.position = Vector2(start_x, y)
+			var drift_y := y + randf_range(-15.0, 15.0)
+			var t0 := create_tween()
+			t0.tween_method(func(p: float):
+				if not is_instance_valid(bird): return
+				bird.position.x = lerp(start_x, end_x, p)
+				bird.position.y = lerp(y, drift_y, p)
+			, 0.0, 1.0, duration).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+			t0.tween_callback(bird.queue_free)
+
+		1:  # 正弦波振荡
+			y = randf_range(y_min, y_max)
+			duration = randf_range(20.0, 28.0)
+			bird.scale = Vector2(0.0675, 0.0675)
+			bird.speed_scale = 1.0
+			bird.position = Vector2(start_x, y)
+			var freq := randf_range(2.0, 3.5)
+			var amp  := randf_range(10.0, 20.0)
+			var t1 := create_tween()
+			t1.tween_method(func(p: float):
+				if not is_instance_valid(bird): return
+				bird.position.x = lerp(start_x, end_x, p)
+				bird.position.y = y + sin(p * TAU * freq) * amp
+			, 0.0, 1.0, duration).set_trans(Tween.TRANS_LINEAR)
+			t1.tween_callback(bird.queue_free)
+
+		2:  # 抛物线弧
+			y = randf_range(y_max - 10.0, y_max + 30.0)
+			duration = randf_range(24.0, 32.0)
+			bird.scale = Vector2(0.0675, 0.0675)
+			bird.speed_scale = 1.0
+			bird.position = Vector2(start_x, y)
+			var peak_y := y - randf_range(40.0, 70.0)
+			var t2 := create_tween()
+			t2.tween_method(func(p: float):
+				if not is_instance_valid(bird): return
+				bird.position.x = lerp(start_x, end_x, p)
+				bird.position.y = (1-p)*(1-p)*y + 2*(1-p)*p*peak_y + p*p*y
+			, 0.0, 1.0, duration).set_trans(Tween.TRANS_LINEAR)
+			t2.tween_callback(bird.queue_free)
+
+		3:  # 急速冲过
+			y = randf_range(y_min, y_max)
+			duration = randf_range(10.0, 14.0)
+			bird.scale = Vector2(0.05625, 0.05625)
+			bird.speed_scale = 1.6
+			bird.position = Vector2(start_x, y)
+			var t3 := create_tween()
+			t3.tween_property(bird, "position:x", end_x, duration)\
+				.set_trans(Tween.TRANS_LINEAR)
+			t3.tween_callback(bird.queue_free)
 
 	var next := get_tree().create_timer(duration + randf_range(5.0, 14.0))
-	next.timeout.connect(_spawn_bird)
+	next.timeout.connect(_spawn_bird.bind(chain_id))
 
-func _spawn_squirrel() -> void:
+func _spawn_squirrel(start_x_frac: float = 0.12, ground_y_frac: float = 0.75) -> void:
 	var vp := get_viewport_rect().size
 	var sq := AnimatedSprite2D.new()
 	sq.sprite_frames = _squirrel_frames
-	sq.scale = Vector2(0.08, 0.08)
 	sq.z_index = 1
+
+	var gait := randi() % 4
+	sq.set_meta("gait", gait)
+	match gait:
+		0:
+			sq.scale = Vector2(0.06, 0.06)
+			sq.speed_scale = 1.0
+		1:
+			sq.scale = Vector2(0.06375, 0.06375)
+			sq.speed_scale = 1.4
+		2:
+			sq.scale = Vector2(0.05625, 0.05625)
+			sq.speed_scale = 0.7
+		3:
+			sq.scale = Vector2(0.06, 0.06)
+			sq.speed_scale = 0.9
+
+	var ground_y := vp.y * ground_y_frac
+	var left_x   := vp.x * 0.12
+	var right_x  := vp.x * 0.88
+	sq.position = Vector2(vp.x * start_x_frac, ground_y)
 	sq.play("run")
 	add_child(sq)
+	_squirrel_wander(sq, left_x, right_x, ground_y)
 
-	var ground_y: float = vp.y * 0.75
-	var left_x: float = vp.x * 0.12
-	var right_x: float = vp.x * 0.88
-	sq.position = Vector2(left_x, ground_y)
-	sq.flip_h = false
-	_squirrel_patrol(sq, left_x, right_x, ground_y, true)
-
-func _squirrel_patrol(sq: AnimatedSprite2D, left_x: float, right_x: float, ground_y: float, going_right: bool) -> void:
+func _squirrel_wander(sq: AnimatedSprite2D, left_x: float, right_x: float, ground_y: float) -> void:
 	if not is_instance_valid(sq):
 		return
+
+	var gait: int = sq.get_meta("gait", 0)
+	var speed: float
+	var bounce_amp: float
+	var hop_count: int
+	var pause_min: float
+	var pause_max: float
+	match gait:
+		0:
+			speed = 45.0
+			bounce_amp = 6.0
+			hop_count = 3
+			pause_min = 0.8
+			pause_max = 2.5
+		1:
+			speed = 70.0
+			bounce_amp = 10.0
+			hop_count = 5
+			pause_min = 0.3
+			pause_max = 1.2
+		2:
+			speed = 25.0
+			bounce_amp = 4.0
+			hop_count = 2
+			pause_min = 1.5
+			pause_max = 4.0
+		3:
+			speed = 32.5
+			bounce_amp = 20.0
+			hop_count = 2
+			pause_min = 0.5
+			pause_max = 1.8
+		_:
+			speed = 45.0
+			bounce_amp = 6.0
+			hop_count = 3
+			pause_min = 0.8
+			pause_max = 2.5
+
+	var target_x: float = randf_range(left_x, right_x)
+	var start_x: float = sq.position.x
+	var dist: float = abs(target_x - start_x)
+
+	if dist < 30.0:
+		target_x = right_x if sq.position.x < (left_x + right_x) * 0.5 else left_x
+		dist = abs(target_x - start_x)
+
+	var max_dist: float = speed * 5.0
+	if dist > max_dist:
+		target_x = start_x + max_dist * sign(target_x - start_x)
+		dist = max_dist
+
+	var going_right: bool = target_x > start_x
 	sq.flip_h = not going_right
-	var target_x: float = right_x if going_right else left_x
-	var dist: float = abs(target_x - sq.position.x)
-	var duration: float = dist / 90.0
+	var duration: float = dist / speed
+	sq.play("run")
 
 	var t := create_tween()
-	t.tween_property(sq, "position:x", target_x, duration)
+	t.tween_method(func(p: float) -> void:
+		if not is_instance_valid(sq):
+			return
+		sq.position.x = lerp(start_x, target_x, p)
+		sq.position.y = ground_y - abs(sin(p * PI * hop_count)) * bounce_amp
+	, 0.0, 1.0, duration).set_trans(Tween.TRANS_LINEAR)
 	t.tween_callback(func() -> void:
 		if not is_instance_valid(sq):
 			return
-		var pause := get_tree().create_timer(randf_range(0.8, 2.5))
+		sq.stop()
+		var pause := get_tree().create_timer(randf_range(pause_min, pause_max))
 		pause.timeout.connect(func() -> void:
-			_squirrel_patrol(sq, left_x, right_x, ground_y, not going_right)
+			_squirrel_wander(sq, left_x, right_x, ground_y)
 		)
 	)
