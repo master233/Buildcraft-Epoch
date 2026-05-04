@@ -25,7 +25,7 @@ func _build_ui() -> void:
 	ui.add_child(overlay)
 
 	# Logo：入场从缩小+透明开始
-	var logo_px := vp.y * 0.63
+	var logo_px := vp.y * 0.63 * 1.5
 	var base_scale := logo_px / 4096.0
 	var logo := Sprite2D.new()
 	logo.texture = load("res://asserts/image/ui/logo.png")
@@ -74,7 +74,7 @@ func _build_ui() -> void:
 	btn.modulate.a = 0.0
 	ui.add_child(btn)
 	btn.size = Vector2(btn_w, btn_h)
-	btn.position = Vector2((vp.x - btn_w) * 0.5, start_y + logo_px + 25.0)
+	btn.position = Vector2((vp.x - btn_w) * 0.5, vp.y - btn_h - 40.0)
 	btn.pressed.connect(_on_start_pressed)
 	btn.mouse_entered.connect(_on_btn_hover)
 	btn.mouse_exited.connect(_on_btn_exit)

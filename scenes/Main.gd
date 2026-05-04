@@ -70,6 +70,8 @@ var _panel_key: String = ""
 var _panel_visible: bool = false
 var _panel_nodes: Array = []
 var _upgrade_disabled: bool = false
+var _bird_frames: SpriteFrames = null
+var _squirrel_frames: SpriteFrames = null
 
 func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
@@ -81,17 +83,61 @@ func _ready() -> void:
 
 func _setup() -> void:
 	var vp := get_viewport_rect().size
+	var half_vp := vp / 2.0
+
+	# 背景：稍微放大留出漂移空间
 	var bg := Sprite2D.new()
 	bg.texture = load("res://asserts/image/backgroud/bg_test_1.jpg")
 	var tex := bg.texture
-	var bg_scale: float = max(vp.x / float(tex.get_width()), vp.y / float(tex.get_height()))
-	bg.scale = Vector2(bg_scale, bg_scale)
-	bg.position = vp / 2.0
+	var bg_base: float = max(vp.x / float(tex.get_width()), vp.y / float(tex.get_height()))
+	bg.scale = Vector2(bg_base * 1.06, bg_base * 1.06)
+	bg.position = half_vp
 	bg.z_index = -10
 	add_child(bg)
+
+	# Ken Burns：背景缓慢漂移 + 轻微缩放，22s 一个来回
+	var kb := create_tween().set_loops()
+	kb.tween_property(bg, "position", half_vp + Vector2(-20, -8), 22.0)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	kb.parallel().tween_property(bg, "scale",
+		Vector2(bg_base * 1.03, bg_base * 1.03), 22.0)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	kb.tween_property(bg, "position", half_vp + Vector2(15, 6), 22.0)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	kb.parallel().tween_property(bg, "scale",
+		Vector2(bg_base * 1.06, bg_base * 1.06), 22.0)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+	# 大气粒子：金色尘埃/花粉缓慢上漂
+	var dust := CPUParticles2D.new()
+	dust.position = half_vp
+	dust.emitting = true
+	dust.amount = 40
+	dust.lifetime = 6.0
+	dust.one_shot = false
+	dust.randomness = 1.0
+	dust.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	dust.emission_rect_extents = Vector2(vp.x * 0.52, vp.y * 0.52)
+	dust.direction = Vector2(0.2, -1)
+	dust.spread = 25.0
+	dust.gravity = Vector2(0, -6)
+	dust.initial_velocity_min = 4.0
+	dust.initial_velocity_max = 20.0
+	dust.scale_amount_min = 1.5
+	dust.scale_amount_max = 4.5
+	var dust_grad := Gradient.new()
+	dust_grad.set_color(0, Color(1.0, 0.88, 0.5, 0.5))
+	dust_grad.set_color(1, Color(1.0, 0.95, 0.7, 0.0))
+	dust.color_ramp = dust_grad
+	dust.z_index = -2
+	add_child(dust)
+
 	_place_buildings()
 	_load_game()
 	_refresh_hud()
+	_build_animal_frames()
+	_spawn_bird()
+	_spawn_squirrel()
 
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
@@ -297,3 +343,92 @@ func _load_game() -> void:
 			_building_nodes[key]["level"] = lv
 			_building_nodes[key]["sprite"].texture = load(BUILDINGS[key]["paths"][lv - 1])
 			_refresh_label(key)
+
+func _build_animal_frames() -> void:
+	_bird_frames = SpriteFrames.new()
+	_bird_frames.add_animation("fly")
+	_bird_frames.set_animation_speed("fly", 10.0)
+	_bird_frames.set_animation_loop("fly", true)
+	var bird_tex: Texture2D = load("res://asserts/image/animal/bird_sheet.png")
+	var bw: int = bird_tex.get_width() / 6
+	var bh: int = bird_tex.get_height()
+	for i in 6:
+		var at := AtlasTexture.new()
+		at.atlas = bird_tex
+		at.region = Rect2(i * bw, 0, bw, bh)
+		at.filter_clip = true
+		_bird_frames.add_frame("fly", at)
+
+	_squirrel_frames = SpriteFrames.new()
+	_squirrel_frames.add_animation("run")
+	_squirrel_frames.set_animation_speed("run", 10.0)
+	_squirrel_frames.set_animation_loop("run", true)
+	var sq_tex: Texture2D = load("res://asserts/image/animal/squirrel_sheet.png")
+	var sw: int = sq_tex.get_width() / 6
+	var sh: int = sq_tex.get_height()
+	for i in 6:
+		var at := AtlasTexture.new()
+		at.atlas = sq_tex
+		at.region = Rect2(i * sw, 0, sw, sh)
+		at.filter_clip = true
+		_squirrel_frames.add_frame("run", at)
+
+func _spawn_bird() -> void:
+	var vp := get_viewport_rect().size
+	var bird := AnimatedSprite2D.new()
+	bird.sprite_frames = _bird_frames
+	bird.scale = Vector2(0.09, 0.09)
+	bird.z_index = -1
+	bird.play("fly")
+	add_child(bird)
+
+	var go_right: bool = randf() > 0.5
+	var start_x: float = -120.0 if go_right else vp.x + 120.0
+	var end_x: float = vp.x + 120.0 if go_right else -120.0
+	var y: float = randf_range(80.0, 190.0)
+	bird.position = Vector2(start_x, y)
+	bird.flip_h = not go_right
+
+	var duration: float = randf_range(10.0, 16.0)
+	var t := create_tween()
+	t.tween_property(bird, "position:x", end_x, duration)\
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	t.tween_callback(bird.queue_free)
+
+	var next := get_tree().create_timer(duration + randf_range(5.0, 14.0))
+	next.timeout.connect(_spawn_bird)
+
+func _spawn_squirrel() -> void:
+	var vp := get_viewport_rect().size
+	var sq := AnimatedSprite2D.new()
+	sq.sprite_frames = _squirrel_frames
+	sq.scale = Vector2(0.08, 0.08)
+	sq.z_index = 1
+	sq.play("run")
+	add_child(sq)
+
+	var ground_y: float = vp.y * 0.75
+	var left_x: float = vp.x * 0.12
+	var right_x: float = vp.x * 0.88
+	sq.position = Vector2(left_x, ground_y)
+	sq.flip_h = false
+	_squirrel_patrol(sq, left_x, right_x, ground_y, true)
+
+func _squirrel_patrol(sq: AnimatedSprite2D, left_x: float, right_x: float, ground_y: float, going_right: bool) -> void:
+	if not is_instance_valid(sq):
+		return
+	sq.flip_h = not going_right
+	var target_x: float = right_x if going_right else left_x
+	var dist: float = abs(target_x - sq.position.x)
+	var duration: float = dist / 90.0
+
+	var t := create_tween()
+	t.tween_property(sq, "position:x", target_x, duration)
+	t.tween_callback(func() -> void:
+		if not is_instance_valid(sq):
+			return
+		var pause := get_tree().create_timer(randf_range(0.8, 2.5))
+		pause.timeout.connect(func() -> void:
+			_squirrel_patrol(sq, left_x, right_x, ground_y, not going_right)
+		)
+	)

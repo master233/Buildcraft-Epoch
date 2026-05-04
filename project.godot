@@ -11,20 +11,19 @@ config_version=5
 [application]
 
 config/name="BuildcraftEpoch"
+run/main_scene="res://scenes/TitleScreen.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 config/icon="res://icon.svg"
-run/main_scene="res://scenes/TitleScreen.tscn"
-
-[physics]
-
-3d/physics_engine="Jolt Physics"
 
 [display]
 
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/stretch/mode="canvas_items"
-window/stretch/aspect="keep"
+
+[physics]
+
+3d/physics_engine="Jolt Physics"
 
 [rendering]
 
