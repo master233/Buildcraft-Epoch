@@ -26,3 +26,9 @@
 
 ## 当前阶段
 设计阶段，尚未开始编码。
+
+## AIART 使用规范（必须遵守）
+- `taskType` 必须是 `multiEdit`，禁止使用 `general` / `chat`
+- `positivePrompt` 必须包含 `transparent background, PNG`
+- `negativePrompt` 必须包含 `white background, solid background, background scenery`
+- 禁止生成后再调 `removeBackground`，一步到位生成带透明通道的图片

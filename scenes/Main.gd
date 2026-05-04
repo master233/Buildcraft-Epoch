@@ -15,6 +15,7 @@ extends Node2D
 @onready var _close_lbl: Label = $UI/CloseLbl
 
 const BUILDING_SCALE := 0.8
+const SQUIRREL_OBSTACLES := [[130.0, 410.0], [870.0, 1210.0]]
 const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
@@ -25,43 +26,43 @@ const CLOSE_RECT   := Rect2(650, 412, 130, 44)
 
 const BUILDINGS := {
 	"home": {
-		"paths": ["res://asserts/image/building/home1.png", "res://asserts/image/building/home2.png", "res://asserts/image/building/home3.png"],
-		"anim_sheet": "res://asserts/image/building/home_anim_sheet.png",
+		"paths": ["res://asserts/image/building/building_template/home1.png", "res://asserts/image/building/building_template/home2.png", "res://asserts/image/building/building_template/home3.png"],
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/home_anim_sheet.png",
 		"pos": Vector2(640, 375), "display": "主基地", "y_adj": 25,
 		"upgrade_cost": [{"wood": 100, "ore": 80}, {"wood": 250, "ore": 200}],
 		"produces": ""
 	},
 	"tower": {
-		"paths": ["res://asserts/image/building/tower1.png", "res://asserts/image/building/tower2.png", "res://asserts/image/building/tower3.png"],
-		"anim_sheet": "res://asserts/image/building/tower_anim_sheet.png",
+		"paths": ["res://asserts/image/building/building_template/tower1.png", "res://asserts/image/building/building_template/tower2.png", "res://asserts/image/building/building_template/tower3.png"],
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tower_anim_sheet.png",
 		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
 		"upgrade_cost": [{"wood": 80, "ore": 50}, {"wood": 200, "ore": 130}],
 		"produces": ""
 	},
 	"lumberyard": {
-		"paths": ["res://asserts/image/building/lumberyard1.png", "res://asserts/image/building/lumberyard2.png", "res://asserts/image/building/lumberyard3.png"],
-		"anim_sheet": "res://asserts/image/building/lumberyard_anim_sheet.png",
+		"paths": ["res://asserts/image/building/building_template/lumberyard1.png", "res://asserts/image/building/building_template/lumberyard2.png", "res://asserts/image/building/building_template/lumberyard3.png"],
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/lumberyard_anim_sheet.png",
 		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
 		"upgrade_cost": [{"wood": 50, "ore": 20}, {"wood": 120, "ore": 60}],
 		"produces": "wood"
 	},
 	"mine": {
-		"paths": ["res://asserts/image/building/Mine1.png", "res://asserts/image/building/Mine2.png", "res://asserts/image/building/Mine3.png"],
-		"anim_sheet": "res://asserts/image/building/mine_anim_sheet.png",
+		"paths": ["res://asserts/image/building/building_template/Mine1.png", "res://asserts/image/building/building_template/Mine2.png", "res://asserts/image/building/building_template/Mine3.png"],
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/mine_anim_sheet.png",
 		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
 		"upgrade_cost": [{"wood": 30, "ore": 50}, {"wood": 80, "ore": 130}],
 		"produces": "ore"
 	},
 	"tavern": {
-		"paths": ["res://asserts/image/building/Tavern1.png", "res://asserts/image/building/Tavern2.png", "res://asserts/image/building/Tavern3.png"],
-		"anim_sheet": "res://asserts/image/building/tavern_anim_sheet.png",
+		"paths": ["res://asserts/image/building/building_template/Tavern1.png", "res://asserts/image/building/building_template/Tavern2.png", "res://asserts/image/building/building_template/Tavern3.png"],
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tavern_anim_sheet.png",
 		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
 		"upgrade_cost": [{"wood": 60, "ore": 40}, {"wood": 150, "ore": 100}],
 		"produces": ""
 	},
 	"research": {
-		"paths": ["res://asserts/image/building/research1.png", "res://asserts/image/building/research2.png", "res://asserts/image/building/research3.png"],
-		"anim_sheet": "res://asserts/image/building/research_anim_sheet.png",
+		"paths": ["res://asserts/image/building/building_template/research1.png", "res://asserts/image/building/building_template/research2.png", "res://asserts/image/building/building_template/research3.png"],
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/research_anim_sheet.png",
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
 		"upgrade_cost": [{"wood": 40, "ore": 60}, {"wood": 100, "ore": 150}],
 		"produces": ""
@@ -133,8 +134,9 @@ func _setup() -> void:
 	_spawn_bird(0)
 	get_tree().create_timer(6.0).timeout.connect(_spawn_bird.bind(1))
 	get_tree().create_timer(13.0).timeout.connect(_spawn_bird.bind(2))
-	_spawn_squirrel(0.12, 0.73)
-	get_tree().create_timer(8.0).timeout.connect(_spawn_squirrel.bind(0.88, 0.77))
+	_spawn_squirrel(500.0, 0.73)
+	_spawn_squirrel(760.0, 0.77)
+	_spawn_squirrel(820.0, 0.20)
 
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
@@ -154,6 +156,7 @@ func _place_buildings() -> void:
 		var container := Node2D.new()
 		container.name = key.capitalize()
 		container.position = cfg["pos"]
+		container.z_index = int(cfg["pos"].y)
 		add_child(container)
 
 		var sprite := Sprite2D.new()
@@ -176,7 +179,6 @@ func _place_buildings() -> void:
 
 		_building_nodes[key] = {"level": 1, "sprite": sprite, "label": label}
 		_refresh_label(key)
-		_start_building_anim(key, sprite, container)
 
 func _set_panel_visible(v: bool) -> void:
 	var a := 1.0 if v else 0.0
@@ -342,58 +344,6 @@ func _load_game() -> void:
 			_building_nodes[key]["sprite"].texture = load(BUILDINGS[key]["paths"][lv - 1])
 			_refresh_label(key)
 
-func _start_building_anim(key: String, sprite: Sprite2D, container: Node2D) -> void:
-	var base_y := container.position.y
-	var base_scale := sprite.scale
-	match key:
-		"home":
-			var t := create_tween().set_loops()
-			t.tween_property(sprite, "modulate", Color(1.18, 1.06, 0.75, 1.0), 1.5)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			t.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0, 1.0), 1.5)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		"tower":
-			var t := create_tween().set_loops()
-			t.tween_property(container, "position:y", base_y - 5.0, 1.2)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			t.parallel().tween_property(sprite, "scale", Vector2(base_scale.x * 0.97, base_scale.y * 1.02), 1.2)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			t.tween_property(container, "position:y", base_y, 1.2)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			t.parallel().tween_property(sprite, "scale", base_scale, 1.2)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		"lumberyard":
-			var t := create_tween().set_loops()
-			t.tween_property(container, "position:y", base_y - 1.5, 0.12)\
-				.set_trans(Tween.TRANS_SINE)
-			t.tween_property(container, "position:y", base_y + 1.5, 0.12)\
-				.set_trans(Tween.TRANS_SINE)
-			t.tween_property(container, "position:y", base_y, 0.12)\
-				.set_trans(Tween.TRANS_SINE)
-			t.tween_interval(randf_range(0.6, 1.4))
-		"mine":
-			var t := create_tween().set_loops()
-			t.tween_property(sprite, "modulate", Color(0.82, 0.94, 1.35, 1.0), 0.8)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			t.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0, 1.0), 0.8)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		"tavern":
-			var t := create_tween().set_loops()
-			t.tween_property(container, "position:y", base_y - 4.0, 1.8)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			t.tween_property(container, "position:y", base_y, 1.8)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-		"research":
-			var t := create_tween().set_loops()
-			t.tween_property(sprite, "modulate", Color(0.88, 0.94, 1.28, 1.0), 1.3)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			t.parallel().tween_property(sprite, "scale", base_scale * 1.018, 1.3)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			t.tween_property(sprite, "modulate", Color(1.0, 1.0, 1.0, 1.0), 1.3)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-			t.parallel().tween_property(sprite, "scale", base_scale, 1.3)\
-				.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-
 func _build_animal_frames() -> void:
 	_bird_frames = SpriteFrames.new()
 	_bird_frames.add_animation("fly")
@@ -506,11 +456,12 @@ func _spawn_bird(chain_id: int = 0) -> void:
 	var next := get_tree().create_timer(duration + randf_range(5.0, 14.0))
 	next.timeout.connect(_spawn_bird.bind(chain_id))
 
-func _spawn_squirrel(start_x_frac: float = 0.12, ground_y_frac: float = 0.75) -> void:
+func _spawn_squirrel(start_x: float, ground_y_frac: float) -> void:
 	var vp := get_viewport_rect().size
 	var sq := AnimatedSprite2D.new()
 	sq.sprite_frames = _squirrel_frames
-	sq.z_index = 1
+	var ground_y := vp.y * ground_y_frac
+	sq.z_index = int(ground_y)
 
 	var gait := randi() % 4
 	sq.set_meta("gait", gait)
@@ -519,8 +470,8 @@ func _spawn_squirrel(start_x_frac: float = 0.12, ground_y_frac: float = 0.75) ->
 			sq.scale = Vector2(0.06, 0.06)
 			sq.speed_scale = 1.0
 		1:
-			sq.scale = Vector2(0.06375, 0.06375)
-			sq.speed_scale = 1.4
+			sq.scale = Vector2(0.06, 0.06)
+			sq.speed_scale = 0.95
 		2:
 			sq.scale = Vector2(0.05625, 0.05625)
 			sq.speed_scale = 0.7
@@ -528,18 +479,27 @@ func _spawn_squirrel(start_x_frac: float = 0.12, ground_y_frac: float = 0.75) ->
 			sq.scale = Vector2(0.06, 0.06)
 			sq.speed_scale = 0.9
 
-	var ground_y := vp.y * ground_y_frac
-	var left_x   := vp.x * 0.12
-	var right_x  := vp.x * 0.88
-	sq.position = Vector2(vp.x * start_x_frac, ground_y)
+	sq.position = Vector2(start_x, ground_y)
 	sq.play("run")
 	add_child(sq)
-	_squirrel_wander(sq, left_x, right_x, ground_y)
+	_squirrel_wander(sq, ground_y)
 
-func _squirrel_wander(sq: AnimatedSprite2D, left_x: float, right_x: float, ground_y: float) -> void:
+func _squirrel_clamp_target(from_x: float, to_x: float) -> float:
+	var going_right := to_x > from_x
+	for obs in SQUIRREL_OBSTACLES:
+		var ol: float = obs[0]
+		var or_: float = obs[1]
+		if going_right and from_x < ol and to_x > ol:
+			return ol - 6.0
+		if not going_right and from_x > or_ and to_x < or_:
+			return or_ + 6.0
+	return to_x
+
+func _squirrel_wander(sq: AnimatedSprite2D, ground_y: float) -> void:
 	if not is_instance_valid(sq):
 		return
 
+	var vp := get_viewport_rect().size
 	var gait: int = sq.get_meta("gait", 0)
 	var speed: float
 	var bounce_amp: float
@@ -554,11 +514,11 @@ func _squirrel_wander(sq: AnimatedSprite2D, left_x: float, right_x: float, groun
 			pause_min = 0.8
 			pause_max = 2.5
 		1:
-			speed = 70.0
-			bounce_amp = 10.0
-			hop_count = 5
-			pause_min = 0.3
-			pause_max = 1.2
+			speed = 38.0
+			bounce_amp = 8.0
+			hop_count = 3
+			pause_min = 0.6
+			pause_max = 2.0
 		2:
 			speed = 25.0
 			bounce_amp = 4.0
@@ -578,22 +538,34 @@ func _squirrel_wander(sq: AnimatedSprite2D, left_x: float, right_x: float, groun
 			pause_min = 0.8
 			pause_max = 2.5
 
-	var target_x: float = randf_range(left_x, right_x)
-	var start_x: float = sq.position.x
-	var dist: float = abs(target_x - start_x)
+	var min_y := vp.y * 0.30
+	var max_y := vp.y * 0.92
+	var start_x := sq.position.x
+	var raw_tx := randf_range(0.0, vp.x)
+	var target_x := _squirrel_clamp_target(start_x, raw_tx)
+	var target_y := clampf(ground_y + randf_range(-80.0, 80.0), min_y, max_y)
+	var dist := Vector2(target_x - start_x, target_y - ground_y).length()
 
 	if dist < 30.0:
-		target_x = right_x if sq.position.x < (left_x + right_x) * 0.5 else left_x
-		dist = abs(target_x - start_x)
+		raw_tx = vp.x * 0.9 if start_x < vp.x * 0.5 else vp.x * 0.1
+		target_x = _squirrel_clamp_target(start_x, raw_tx)
+		target_y = clampf(ground_y + randf_range(-80.0, 80.0), min_y, max_y)
+		dist = Vector2(target_x - start_x, target_y - ground_y).length()
 
-	var max_dist: float = speed * 5.0
+	var max_dist := speed * 5.0
 	if dist > max_dist:
-		target_x = start_x + max_dist * sign(target_x - start_x)
+		var dir := Vector2(target_x - start_x, target_y - ground_y).normalized()
+		target_x = start_x + dir.x * max_dist
+		target_y = ground_y + dir.y * max_dist
 		dist = max_dist
 
-	var going_right: bool = target_x > start_x
-	sq.flip_h = not going_right
-	var duration: float = dist / speed
+	if dist < 1.0:
+		get_tree().create_timer(randf_range(pause_min, pause_max)).timeout.connect(func() -> void:
+			_squirrel_wander(sq, ground_y)
+		)
+		return
+
+	sq.flip_h = target_x <= start_x
 	sq.play("run")
 
 	var t := create_tween()
@@ -601,14 +573,15 @@ func _squirrel_wander(sq: AnimatedSprite2D, left_x: float, right_x: float, groun
 		if not is_instance_valid(sq):
 			return
 		sq.position.x = lerp(start_x, target_x, p)
-		sq.position.y = ground_y - abs(sin(p * PI * hop_count)) * bounce_amp
-	, 0.0, 1.0, duration).set_trans(Tween.TRANS_LINEAR)
+		var base_y := lerp(ground_y, target_y, p)
+		sq.position.y = base_y - abs(sin(p * PI * hop_count)) * bounce_amp
+		sq.z_index = int(sq.position.y)
+	, 0.0, 1.0, dist / speed).set_trans(Tween.TRANS_LINEAR)
 	t.tween_callback(func() -> void:
 		if not is_instance_valid(sq):
 			return
 		sq.stop()
-		var pause := get_tree().create_timer(randf_range(pause_min, pause_max))
-		pause.timeout.connect(func() -> void:
-			_squirrel_wander(sq, left_x, right_x, ground_y)
+		get_tree().create_timer(randf_range(pause_min, pause_max)).timeout.connect(func() -> void:
+			_squirrel_wander(sq, target_y)
 		)
 	)
