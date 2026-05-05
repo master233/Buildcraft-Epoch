@@ -27,42 +27,42 @@ const CLOSE_RECT   := Rect2(650, 412, 130, 44)
 const BUILDINGS := {
 	"home": {
 		"paths": ["res://asserts/image/building/building_template/home1.png", "res://asserts/image/building/building_template/home2.png", "res://asserts/image/building/building_template/home3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/home_anim_sheet.png",
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/home1_anim_sheet.png", "n_frames": 8, "animated": true,
 		"pos": Vector2(640, 375), "display": "主基地", "y_adj": 25,
 		"upgrade_cost": [{"wood": 100, "ore": 80}, {"wood": 250, "ore": 200}],
 		"produces": ""
 	},
 	"tower": {
 		"paths": ["res://asserts/image/building/building_template/tower1.png", "res://asserts/image/building/building_template/tower2.png", "res://asserts/image/building/building_template/tower3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tower_anim_sheet.png",
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tower_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
 		"upgrade_cost": [{"wood": 80, "ore": 50}, {"wood": 200, "ore": 130}],
 		"produces": ""
 	},
 	"lumberyard": {
 		"paths": ["res://asserts/image/building/building_template/lumberyard1.png", "res://asserts/image/building/building_template/lumberyard2.png", "res://asserts/image/building/building_template/lumberyard3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/lumberyard_anim_sheet.png",
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/lumberyard_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
 		"upgrade_cost": [{"wood": 50, "ore": 20}, {"wood": 120, "ore": 60}],
 		"produces": "wood"
 	},
 	"mine": {
 		"paths": ["res://asserts/image/building/building_template/Mine1.png", "res://asserts/image/building/building_template/Mine2.png", "res://asserts/image/building/building_template/Mine3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/mine_anim_sheet.png",
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/mine_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
 		"upgrade_cost": [{"wood": 30, "ore": 50}, {"wood": 80, "ore": 130}],
 		"produces": "ore"
 	},
 	"tavern": {
 		"paths": ["res://asserts/image/building/building_template/Tavern1.png", "res://asserts/image/building/building_template/Tavern2.png", "res://asserts/image/building/building_template/Tavern3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tavern_anim_sheet.png",
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tavern_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
 		"upgrade_cost": [{"wood": 60, "ore": 40}, {"wood": 150, "ore": 100}],
 		"produces": ""
 	},
 	"research": {
 		"paths": ["res://asserts/image/building/building_template/research1.png", "res://asserts/image/building/building_template/research2.png", "res://asserts/image/building/building_template/research3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/research_anim_sheet.png",
+		"anim_sheet": "res://asserts/image/building/building_anim_sheet/research_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
 		"upgrade_cost": [{"wood": 40, "ore": 60}, {"wood": 100, "ore": 150}],
 		"produces": ""
@@ -159,10 +159,40 @@ func _place_buildings() -> void:
 		container.z_index = int(cfg["pos"].y)
 		add_child(container)
 
-		var sprite := Sprite2D.new()
-		sprite.texture = load(cfg["paths"][0])
-		sprite.scale = Vector2(BUILDING_SCALE, BUILDING_SCALE)
-		container.add_child(sprite)
+		var display_node: Node2D
+		var label_y_offset: float
+		if cfg["animated"]:
+			var sheet_tex: Texture2D = load(cfg["anim_sheet"])
+			var n_frames: int = cfg["n_frames"]
+			var frame_w := sheet_tex.get_width() / n_frames
+			var frame_h := sheet_tex.get_height()
+			var orig_tex: Texture2D = load(cfg["paths"][0])
+			var scale_by_w := (orig_tex.get_width()  * BUILDING_SCALE) / float(frame_w)
+			var scale_by_h := (orig_tex.get_height() * BUILDING_SCALE) / float(frame_h)
+			var anim_scale  := minf(scale_by_w, scale_by_h)
+			var sf := SpriteFrames.new()
+			sf.add_animation("idle")
+			sf.set_animation_speed("idle", 8.0)
+			sf.set_animation_loop("idle", true)
+			for i in n_frames:
+				var at := AtlasTexture.new()
+				at.atlas = sheet_tex
+				at.region = Rect2(i * frame_w, 0, frame_w, frame_h)
+				at.filter_clip = true
+				sf.add_frame("idle", at)
+			var anim_sprite := AnimatedSprite2D.new()
+			anim_sprite.sprite_frames = sf
+			anim_sprite.scale = Vector2(anim_scale, anim_scale)
+			anim_sprite.play("idle")
+			display_node = anim_sprite
+			label_y_offset = -(frame_h * anim_scale * 0.35) - 8.0 + cfg["y_adj"]
+		else:
+			var sprite := Sprite2D.new()
+			sprite.texture = load(cfg["paths"][0])
+			sprite.scale = Vector2(BUILDING_SCALE, BUILDING_SCALE)
+			display_node = sprite
+			label_y_offset = -(sprite.texture.get_height() * BUILDING_SCALE * 0.35) - 8.0 + cfg["y_adj"]
+		container.add_child(display_node)
 
 		var label := Label.new()
 		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -175,9 +205,9 @@ func _place_buildings() -> void:
 		label.label_settings = ls
 		container.add_child(label)
 		label.size = Vector2(180, 28)
-		label.position = Vector2(-90.0, -(sprite.texture.get_height() * BUILDING_SCALE * 0.35) - 8.0 + cfg["y_adj"])
+		label.position = Vector2(-90.0, label_y_offset)
 
-		_building_nodes[key] = {"level": 1, "sprite": sprite, "label": label}
+		_building_nodes[key] = {"level": 1, "sprite": display_node, "label": label}
 		_refresh_label(key)
 
 func _set_panel_visible(v: bool) -> void:
@@ -257,7 +287,8 @@ func upgrade_building(key: String) -> void:
 	if state["level"] >= 3:
 		return
 	state["level"] += 1
-	state["sprite"].texture = load(BUILDINGS[key]["paths"][state["level"] - 1])
+	if not BUILDINGS[key]["animated"]:
+		(state["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][state["level"] - 1])
 	_refresh_label(key)
 
 func _tick_production() -> void:
@@ -341,7 +372,8 @@ func _load_game() -> void:
 				continue
 			var lv: int = clampi(int(levels[key]), 1, 3)
 			_building_nodes[key]["level"] = lv
-			_building_nodes[key]["sprite"].texture = load(BUILDINGS[key]["paths"][lv - 1])
+			if not BUILDINGS[key]["animated"]:
+				(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][lv - 1])
 			_refresh_label(key)
 
 func _build_animal_frames() -> void:
@@ -573,7 +605,7 @@ func _squirrel_wander(sq: AnimatedSprite2D, ground_y: float) -> void:
 		if not is_instance_valid(sq):
 			return
 		sq.position.x = lerp(start_x, target_x, p)
-		var base_y := lerp(ground_y, target_y, p)
+		var base_y: float = lerp(ground_y, target_y, p)
 		sq.position.y = base_y - abs(sin(p * PI * hop_count)) * bounce_amp
 		sq.z_index = int(sq.position.y)
 	, 0.0, 1.0, dist / speed).set_trans(Tween.TRANS_LINEAR)

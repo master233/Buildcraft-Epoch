@@ -29,6 +29,12 @@
 
 ## AIART 使用规范（必须遵守）
 - `taskType` 必须是 `multiEdit`，禁止使用 `general` / `chat`
-- `positivePrompt` 必须包含 `transparent background, PNG`
+- `positivePrompt` 必须包含以下关键词（每次生成美术资源都必须加，缺一不可）：
+  - `transparent background, PNG` — 透明背景
+  - `centered character` — 角色/建筑居中，防止帧间位移
+  - `same scale` — 每帧比例一致，防止大小变化
+  - `fixed camera` — 固定镜头视角
+  - `no camera movement, no zoom` — 禁止推拉镜头
+  - `consistent framing` — 构图一致
 - `negativePrompt` 必须包含 `white background, solid background, background scenery`
 - 禁止生成后再调 `removeBackground`，一步到位生成带透明通道的图片
