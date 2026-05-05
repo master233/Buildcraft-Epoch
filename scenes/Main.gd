@@ -20,57 +20,62 @@ const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
 
-const PANEL_RECT   := Rect2(470, 250, 340, 220)
-const UPGRADE_RECT := Rect2(500, 412, 130, 44)
-const CLOSE_RECT   := Rect2(650, 412, 130, 44)
+var _panel_rect    := Rect2(470, 250, 340, 220)
+var _upgrade_rect  := Rect2(500, 412, 130, 44)
+var _close_rect    := Rect2(650, 412, 130, 44)
+var _reset_rect    := Rect2(0, 0, 160, 36)
 
 const BUILDINGS := {
 	"home": {
 		"paths": ["res://asserts/image/building/building_template/home1.png", "res://asserts/image/building/building_template/home2.png", "res://asserts/image/building/building_template/home3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/home1_anim_sheet.png", "n_frames": 8, "animated": true,
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/home1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(640, 375), "display": "主基地", "y_adj": 25,
-		"upgrade_cost": [{"wood": 100, "ore": 80}, {"wood": 250, "ore": 200}],
+		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": ""
 	},
 	"tower": {
 		"paths": ["res://asserts/image/building/building_template/tower1.png", "res://asserts/image/building/building_template/tower2.png", "res://asserts/image/building/building_template/tower3.png"],
 		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tower_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
-		"upgrade_cost": [{"wood": 80, "ore": 50}, {"wood": 200, "ore": 130}],
+		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": ""
 	},
 	"lumberyard": {
 		"paths": ["res://asserts/image/building/building_template/lumberyard1.png", "res://asserts/image/building/building_template/lumberyard2.png", "res://asserts/image/building/building_template/lumberyard3.png"],
 		"anim_sheet": "res://asserts/image/building/building_anim_sheet/lumberyard_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
-		"upgrade_cost": [{"wood": 50, "ore": 20}, {"wood": 120, "ore": 60}],
+		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "wood"
 	},
 	"mine": {
 		"paths": ["res://asserts/image/building/building_template/Mine1.png", "res://asserts/image/building/building_template/Mine2.png", "res://asserts/image/building/building_template/Mine3.png"],
 		"anim_sheet": "res://asserts/image/building/building_anim_sheet/mine_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
-		"upgrade_cost": [{"wood": 30, "ore": 50}, {"wood": 80, "ore": 130}],
+		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "ore"
 	},
 	"tavern": {
 		"paths": ["res://asserts/image/building/building_template/Tavern1.png", "res://asserts/image/building/building_template/Tavern2.png", "res://asserts/image/building/building_template/Tavern3.png"],
 		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tavern_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
-		"upgrade_cost": [{"wood": 60, "ore": 40}, {"wood": 150, "ore": 100}],
+		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": ""
 	},
 	"research": {
 		"paths": ["res://asserts/image/building/building_template/research1.png", "res://asserts/image/building/building_template/research2.png", "res://asserts/image/building/building_template/research3.png"],
 		"anim_sheet": "res://asserts/image/building/building_anim_sheet/research_anim_sheet.png", "n_frames": 8, "animated": false,
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
-		"upgrade_cost": [{"wood": 40, "ore": 60}, {"wood": 100, "ore": 150}],
+		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": ""
 	},
 }
 
 var _wood: int = 200
 var _ore: int = 100
+var _reset_bg: ColorRect = null
+var _reset_lbl: Label = null
+var _panel_movable: Array = []
+var _panel_offsets: Array[Vector2] = []
 var _building_nodes: Dictionary = {}
 var _produce_timer: float = 0.0
 var _panel_key: String = ""
@@ -92,6 +97,11 @@ func _ready() -> void:
 func _setup() -> void:
 	var vp := get_viewport_rect().size
 	var half_vp := vp / 2.0
+	_panel_movable = [_panel_bg, _panel_border, _panel_name_lbl,
+					  _panel_sep, _panel_info_lbl, _upgrade_bg, _upgrade_lbl, _close_bg, _close_lbl]
+	var base := _panel_rect.position
+	for node in _panel_movable:
+		_panel_offsets.append((node as Control).position - base)
 
 	# 背景：稍微放大留出漂移空间
 	var bg := Sprite2D.new()
@@ -137,6 +147,47 @@ func _setup() -> void:
 	_spawn_squirrel(500.0, 0.73)
 	_spawn_squirrel(760.0, 0.77)
 	_spawn_squirrel(820.0, 0.20)
+	_spawn_reset_button()
+
+func _spawn_reset_button() -> void:
+	var ui := $UI
+	var vp := get_viewport_rect().size
+	_reset_rect = Rect2(vp.x - 170, 10, 160, 36)
+	_reset_bg = ColorRect.new()
+	_reset_bg.color = Color(0.55, 0.12, 0.10)
+	_reset_bg.size = _reset_rect.size
+	_reset_bg.position = _reset_rect.position
+	ui.add_child(_reset_bg)
+	_reset_lbl = Label.new()
+	_reset_lbl.text = "重置游戏数据"
+	_reset_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_reset_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_reset_lbl.size = _reset_rect.size
+	_reset_lbl.position = _reset_rect.position
+	var ls := LabelSettings.new()
+	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size = 17
+	ls.font_color = Color.WHITE
+	ls.outline_size = 2
+	ls.outline_color = Color(0.0, 0.0, 0.0, 0.8)
+	_reset_lbl.label_settings = ls
+	ui.add_child(_reset_lbl)
+
+func _reset_game() -> void:
+	if FileAccess.file_exists(SAVE_PATH):
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+	_wood = 200
+	_ore = 100
+	for key in _building_nodes:
+		_building_nodes[key]["level"] = 1
+		if BUILDINGS[key]["animated"]:
+			_apply_anim_sheet(key, 1)
+		else:
+			(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][0])
+		_refresh_label(key)
+	_refresh_hud()
+	_set_panel_visible(false)
+	_panel_key = ""
 
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
@@ -162,7 +213,7 @@ func _place_buildings() -> void:
 		var display_node: Node2D
 		var label_y_offset: float
 		if cfg["animated"]:
-			var sheet_tex: Texture2D = load(cfg["anim_sheet"])
+			var sheet_tex: Texture2D = load(cfg["anim_sheets"][0])
 			var n_frames: int = cfg["n_frames"]
 			var frame_w := sheet_tex.get_width() / n_frames
 			var frame_h := sheet_tex.get_height()
@@ -217,15 +268,18 @@ func _set_panel_visible(v: bool) -> void:
 	_panel_visible = v
 
 func _handle_click(pos: Vector2) -> void:
+	if _reset_rect.has_point(pos):
+		_reset_game()
+		return
 	if _panel_visible:
-		if UPGRADE_RECT.has_point(pos) and not _upgrade_disabled:
+		if _upgrade_rect.has_point(pos) and not _upgrade_disabled:
 			_on_upgrade_pressed()
 			return
-		if CLOSE_RECT.has_point(pos):
+		if _close_rect.has_point(pos):
 			_set_panel_visible(false)
 			_panel_key = ""
 			return
-		if PANEL_RECT.has_point(pos):
+		if _panel_rect.has_point(pos):
 			return
 		_set_panel_visible(false)
 		_panel_key = ""
@@ -234,8 +288,27 @@ func _handle_click(pos: Vector2) -> void:
 		if pos.distance_to(BUILDINGS[key]["pos"]) < 80.0:
 			_panel_key = key
 			_refresh_panel()
+			_reposition_panel(key)
 			_set_panel_visible(true)
 			return
+
+func _reposition_panel(key: String) -> void:
+	var vp   := get_viewport_rect().size
+	var bpos: Vector2 = BUILDINGS[key]["pos"]
+	var pw   := _panel_rect.size.x
+	var ph   := _panel_rect.size.y
+	var gap  := 80.0
+	var px   := bpos.x + gap
+	if px + pw > vp.x - 10.0:
+		px = bpos.x - gap - pw
+	px = clampf(px, 10.0, vp.x - pw - 10.0)
+	var py := clampf(bpos.y - ph * 0.5, 10.0, vp.y - ph - 10.0)
+	var tl := Vector2(px, py)
+	_panel_rect    = Rect2(tl, Vector2(pw, ph))
+	_upgrade_rect  = Rect2(tl + Vector2(30, 162), Vector2(130, 44))
+	_close_rect    = Rect2(tl + Vector2(180, 162), Vector2(130, 44))
+	for i in _panel_movable.size():
+		(_panel_movable[i] as Control).position = tl + _panel_offsets[i]
 
 func _refresh_panel() -> void:
 	if _panel_key == "":
@@ -287,9 +360,36 @@ func upgrade_building(key: String) -> void:
 	if state["level"] >= 3:
 		return
 	state["level"] += 1
-	if not BUILDINGS[key]["animated"]:
-		(state["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][state["level"] - 1])
+	var lv: int = state["level"]
+	if BUILDINGS[key]["animated"]:
+		_apply_anim_sheet(key, lv)
+	else:
+		(state["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][lv - 1])
 	_refresh_label(key)
+
+func _apply_anim_sheet(key: String, lv: int) -> void:
+	var cfg = BUILDINGS[key]
+	var sheet_tex: Texture2D = load(cfg["anim_sheets"][lv - 1])
+	var n_frames: int = cfg["n_frames"]
+	var frame_w := sheet_tex.get_width() / n_frames
+	var frame_h := sheet_tex.get_height()
+	var sf := SpriteFrames.new()
+	sf.add_animation("idle")
+	sf.set_animation_speed("idle", 8.0)
+	sf.set_animation_loop("idle", true)
+	for i in n_frames:
+		var at := AtlasTexture.new()
+		at.atlas = sheet_tex
+		at.region = Rect2(i * frame_w, 0, frame_w, frame_h)
+		at.filter_clip = true
+		sf.add_frame("idle", at)
+	var anim_sprite := _building_nodes[key]["sprite"] as AnimatedSprite2D
+	var orig_tex: Texture2D = load(cfg["paths"][0])
+	var scale_by_w := (orig_tex.get_width()  * BUILDING_SCALE) / float(frame_w)
+	var scale_by_h := (orig_tex.get_height() * BUILDING_SCALE) / float(frame_h)
+	anim_sprite.sprite_frames = sf
+	anim_sprite.scale = Vector2(minf(scale_by_w, scale_by_h), minf(scale_by_w, scale_by_h))
+	anim_sprite.play("idle")
 
 func _tick_production() -> void:
 	for key in ["lumberyard", "mine"]:
@@ -372,7 +472,9 @@ func _load_game() -> void:
 				continue
 			var lv: int = clampi(int(levels[key]), 1, 3)
 			_building_nodes[key]["level"] = lv
-			if not BUILDINGS[key]["animated"]:
+			if BUILDINGS[key]["animated"]:
+				_apply_anim_sheet(key, lv)
+			else:
 				(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][lv - 1])
 			_refresh_label(key)
 

@@ -12,11 +12,11 @@ from rembg import remove, new_session
 BUILDING_VIDEO_DIR = Path(r"D:\Buildcraft-Epoch\asserts\image\building\building_video")
 SHEET_DIR = Path(r"D:\Buildcraft-Epoch\asserts\image\building\building_anim_sheet")
 
-VIDEO = BUILDING_VIDEO_DIR / "home1_video.mp4"
+VIDEO = BUILDING_VIDEO_DIR / "home3_video.mp4"
 OUT_DIR = BUILDING_VIDEO_DIR / "tmp"
-SHEET_OUT = SHEET_DIR / "home1_anim_sheet.png"
+SHEET_OUT = SHEET_DIR / "home3_anim_sheet.png"
 FRAMES = 8
-DURATION = 3  # seconds
+DURATION = 2  # seconds
 
 OUT_DIR.mkdir(exist_ok=True)
 

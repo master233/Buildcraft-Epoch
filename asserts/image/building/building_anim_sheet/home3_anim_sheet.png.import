@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://7uruf36ikb0m"
-path="res://.godot/imported/home_anim_sheet.png-0ca157b2ca54af52a0a15b5ecddaf4cc.ctex"
+uid="uid://b8ogq20h54vit"
+path="res://.godot/imported/home3_anim_sheet.png-7f7881683626df1c878c35e1049d6ecd.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://asserts/image/building/building_anim_sheet/home_anim_sheet.png"
-dest_files=["res://.godot/imported/home_anim_sheet.png-0ca157b2ca54af52a0a15b5ecddaf4cc.ctex"]
+source_file="res://asserts/image/building/building_anim_sheet/home3_anim_sheet.png"
+dest_files=["res://.godot/imported/home3_anim_sheet.png-7f7881683626df1c878c35e1049d6ecd.ctex"]
 
 [params]
 
