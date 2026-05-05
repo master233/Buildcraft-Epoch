@@ -15,18 +15,29 @@ def recenter_sheet(path: Path) -> None:
     n_frames = 8
     fw = total_w // n_frames
 
+    # 先用高阈值 alpha(>128) 计算每帧底部重心，再取中位数作为统一偏移
+    # 避免半透明边缘像素导致的帧间偏差
+    bottom_start = int(h * 0.75)
+    frame_cx = fw // 2
+    cxs = []
+    for i in range(n_frames):
+        frame = arr[:, i * fw:(i + 1) * fw, :]
+        alpha_solid = (frame[:, :, 3] > 128).astype(np.float64)
+        bottom = alpha_solid[bottom_start:, :]
+        col_w = bottom.sum(axis=0)
+        if col_w.sum() < 1.0:
+            col_w = alpha_solid.sum(axis=0)
+        if col_w.sum() < 1.0:
+            cxs.append(frame_cx)
+            continue
+        cxs.append((col_w * np.arange(fw)).sum() / col_w.sum())
+    # 所有帧用同一个 shift（中位数），消除半透明噪声引起的帧间差异
+    median_cx = int(round(float(np.median(cxs))))
+    shift = frame_cx - median_cx
+
     recentered = []
     for i in range(n_frames):
         frame = arr[:, i * fw:(i + 1) * fw, :].copy()
-        alpha = frame[:, :, 3]
-        cols = np.where(alpha > 30)
-        if len(cols[1]) == 0:
-            recentered.append(frame)
-            continue
-        x_min, x_max = int(cols[1].min()), int(cols[1].max())
-        content_cx = (x_min + x_max) // 2
-        frame_cx = fw // 2
-        shift = frame_cx - content_cx
         if shift != 0:
             shifted = np.zeros_like(frame)
             if shift > 0:

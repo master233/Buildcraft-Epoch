@@ -12,12 +12,12 @@ import numpy as np
 BUILDING_VIDEO_DIR = Path(r"D:\Buildcraft-Epoch\asserts\image\building\building_video")
 SHEET_DIR = Path(r"D:\Buildcraft-Epoch\asserts\image\building\building_anim_sheet")
 
-VIDEO    = BUILDING_VIDEO_DIR / "lumberyard3_video.mp4"
+VIDEO    = BUILDING_VIDEO_DIR / "tower3_video.mp4"
 OUT_DIR  = BUILDING_VIDEO_DIR / "tmp"
-SHEET_OUT = SHEET_DIR / "lumberyard3_anim_sheet.png"
+SHEET_OUT = SHEET_DIR / "tower3_anim_sheet.png"
 FRAMES   = 8
 START    = 1  # seconds
-DURATION = 2  # seconds
+DURATION = 2.5  # seconds
 
 # 白背景去除参数：min(R,G,B) > THRESHOLD 视为背景
 # EDGE_RANGE 控制边缘抗锯齿过渡宽度（像素灰度范围）

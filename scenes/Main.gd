@@ -35,7 +35,7 @@ const BUILDINGS := {
 	},
 	"tower": {
 		"paths": ["res://asserts/image/building/building_template/tower1.png", "res://asserts/image/building/building_template/tower2.png", "res://asserts/image/building/building_template/tower3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tower_anim_sheet.png", "n_frames": 8, "animated": false,
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tower1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": ""
@@ -49,21 +49,21 @@ const BUILDINGS := {
 	},
 	"mine": {
 		"paths": ["res://asserts/image/building/building_template/Mine1.png", "res://asserts/image/building/building_template/Mine2.png", "res://asserts/image/building/building_template/Mine3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/mine_anim_sheet.png", "n_frames": 8, "animated": false,
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/mine1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "ore"
 	},
 	"tavern": {
 		"paths": ["res://asserts/image/building/building_template/Tavern1.png", "res://asserts/image/building/building_template/Tavern2.png", "res://asserts/image/building/building_template/Tavern3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/tavern_anim_sheet.png", "n_frames": 8, "animated": false,
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tavern1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": ""
 	},
 	"research": {
 		"paths": ["res://asserts/image/building/building_template/research1.png", "res://asserts/image/building/building_template/research2.png", "res://asserts/image/building/building_template/research3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/research_anim_sheet.png", "n_frames": 8, "animated": false,
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/research1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": ""
