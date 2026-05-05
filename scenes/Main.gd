@@ -42,7 +42,7 @@ const BUILDINGS := {
 	},
 	"lumberyard": {
 		"paths": ["res://asserts/image/building/building_template/lumberyard1.png", "res://asserts/image/building/building_template/lumberyard2.png", "res://asserts/image/building/building_template/lumberyard3.png"],
-		"anim_sheet": "res://asserts/image/building/building_anim_sheet/lumberyard_anim_sheet.png", "n_frames": 8, "animated": false,
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/lumberyard1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "wood"
