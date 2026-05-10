@@ -3,8 +3,8 @@ extends Node2D
 # 真实异步预加载，最小显示 1.5s，预加载完成后切到 Main。
 
 const MAIN_SCENE := "res://scenes/Main.tscn"
-const MIN_DISPLAY_SEC := 1.5
-const TIP_TEXT := "感谢老板举办的活动 我们会好好利用这5W的奖金的 ~_~"
+const MIN_DISPLAY_SEC := 2.0
+const TIP_TEXT := "感谢老板举办的活动 我们会好好利用这5W的奖金的 ~_~\n为了让大家看清 我估计延长了loading时间 其实一点都不卡哦~"
 
 const PRELOAD_PATHS: Array[String] = [
 	"res://asserts/fonts/ZCOOLKuaiLe.ttf",
@@ -78,8 +78,8 @@ func _setup() -> void:
 	tip.text = TIP_TEXT
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tip.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	tip.size = Vector2(vp.x - 80.0, 60.0)
-	tip.position = Vector2(40.0, vp.y * 0.62 - 30.0)
+	tip.size = Vector2(vp.x - 80.0, 110.0)
+	tip.position = Vector2(40.0, vp.y * 0.62 - 55.0)
 	var tls := LabelSettings.new()
 	tls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	tls.font_size = 32
