@@ -15,5 +15,7 @@ asserts/fx/fx_video/
 asserts/fx/tmp/
 asserts/image/ui/_tmp/
 asserts/image/ui/panel_candidates/
+asserts/image/role/role_tmp/
+asserts/image/role/role_video/
 
 *.bak

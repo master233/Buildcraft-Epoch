@@ -18,6 +18,28 @@ const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
 
+const EXPEDITION_SLOT_POSITIONS := [
+	Vector2(460, 240),
+	Vector2(550, 240),
+	Vector2(640, 240),
+	Vector2(730, 240),
+	Vector2(820, 240),
+]
+# 按队伍人数把成员映射到 0-indexed 的站位坐标。
+# 中心是 index=2（3 号位），人数不足时从中心向两侧（左侧优先）填充。
+const EXPEDITION_LAYOUT_BY_SIZE := {
+	1: [2],
+	2: [1, 2],
+	3: [1, 2, 3],
+	4: [0, 1, 2, 3],
+	5: [0, 1, 2, 3, 4],
+}
+const ROLE_IDLE_FRAMES := 12
+const ROLE_IDLE_SCALE := 0.085
+const EXPEDITION_TEAM := [
+	{"name": "圣盾骑士", "idle_sheet": "res://asserts/image/role/role1_idle_sheet.png"},
+]
+
 var _panel_rect    := Rect2(440, 200, 400, 380)
 var _upgrade_rect  := Rect2(490, 465, 300, 110)
 var _close_rect    := Rect2(775, 200, 60, 60)
@@ -145,6 +167,7 @@ func _setup() -> void:
 	add_child(dust)
 
 	_place_buildings()
+	_place_expedition_team()
 	_load_game()
 	_refresh_hud()
 	_build_upgrade_fx_frames()
@@ -269,6 +292,56 @@ func _place_buildings() -> void:
 
 		_building_nodes[key] = {"level": 1, "sprite": display_node, "label": label}
 		_refresh_label(key)
+
+func _place_expedition_team() -> void:
+	var team_size: int = EXPEDITION_TEAM.size()
+	if team_size <= 0:
+		return
+	var layout: Array = EXPEDITION_LAYOUT_BY_SIZE.get(team_size, [])
+	for i in team_size:
+		var data = EXPEDITION_TEAM[i]
+		if data == null:
+			continue
+		var slot_index: int = layout[i]
+		var pos: Vector2 = EXPEDITION_SLOT_POSITIONS[slot_index]
+		var slot := Node2D.new()
+		slot.name = "ExpeditionRole%d" % (i + 1)
+		slot.position = pos
+		slot.z_index = int(pos.y)
+		add_child(slot)
+
+		var sheet_tex: Texture2D = load(data["idle_sheet"])
+		var frame_w := sheet_tex.get_width() / ROLE_IDLE_FRAMES
+		var frame_h := sheet_tex.get_height()
+		var sf := SpriteFrames.new()
+		sf.add_animation("idle")
+		sf.set_animation_speed("idle", 12.0)
+		sf.set_animation_loop("idle", true)
+		for f in ROLE_IDLE_FRAMES:
+			var at := AtlasTexture.new()
+			at.atlas = sheet_tex
+			at.region = Rect2(f * frame_w, 0, frame_w, frame_h)
+			at.filter_clip = true
+			sf.add_frame("idle", at)
+		var sprite := AnimatedSprite2D.new()
+		sprite.sprite_frames = sf
+		sprite.scale = Vector2(ROLE_IDLE_SCALE, ROLE_IDLE_SCALE)
+		sprite.play("idle")
+		slot.add_child(sprite)
+
+		var name_lbl := Label.new()
+		name_lbl.text = data["name"]
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.size = Vector2(120, 22)
+		name_lbl.position = Vector2(-60.0, -frame_h * ROLE_IDLE_SCALE * 0.5 - 24.0)
+		var nls := LabelSettings.new()
+		nls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+		nls.font_size = 14
+		nls.font_color = Color(1.0, 0.92, 0.6)
+		nls.outline_size = 3
+		nls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
+		name_lbl.label_settings = nls
+		slot.add_child(name_lbl)
 
 func _set_panel_visible(v: bool) -> void:
 	var a := 1.0 if v else 0.0
