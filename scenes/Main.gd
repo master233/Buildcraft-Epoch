@@ -19,11 +19,11 @@ const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
 
 const EXPEDITION_SLOT_POSITIONS := [
-	Vector2(460, 240),
-	Vector2(550, 240),
-	Vector2(640, 240),
-	Vector2(730, 240),
-	Vector2(820, 240),
+	Vector2(460, 585),
+	Vector2(550, 585),
+	Vector2(640, 585),
+	Vector2(730, 585),
+	Vector2(820, 585),
 ]
 # 按队伍人数把成员映射到 0-indexed 的站位坐标。
 # 中心是 index=2（3 号位），人数不足时从中心向两侧（左侧优先）填充。
@@ -35,7 +35,7 @@ const EXPEDITION_LAYOUT_BY_SIZE := {
 	5: [0, 1, 2, 3, 4],
 }
 const ROLE_IDLE_FRAMES := 12
-const ROLE_IDLE_SCALE := 0.17
+const ROLE_IDLE_SCALE := 0.27
 const EXPEDITION_TEAM := [
 	{"name": "圣盾骑士", "idle_sheet": "res://asserts/image/role/role1_idle_sheet.png"},
 ]
@@ -176,9 +176,8 @@ func _setup() -> void:
 	_spawn_bird(0)
 	get_tree().create_timer(6.0).timeout.connect(_spawn_bird.bind(1))
 	get_tree().create_timer(13.0).timeout.connect(_spawn_bird.bind(2))
-	_spawn_squirrel(500.0, 0.73)
-	_spawn_squirrel(760.0, 0.77)
-	_spawn_squirrel(820.0, 0.20)
+	_spawn_squirrel(500.0, 0.50)
+	_spawn_squirrel(820.0, 0.55)
 	_spawn_reset_button()
 
 func _spawn_reset_button() -> void:
@@ -729,7 +728,7 @@ func _spawn_squirrel(start_x: float, ground_y_frac: float) -> void:
 	var sq := AnimatedSprite2D.new()
 	sq.sprite_frames = _squirrel_frames
 	var ground_y := vp.y * ground_y_frac
-	sq.z_index = int(ground_y)
+	sq.z_index = 50  # 固定在所有建筑（最低 z=150）之下
 
 	var gait := randi() % 4
 	sq.set_meta("gait", gait)
@@ -806,8 +805,8 @@ func _squirrel_wander(sq: AnimatedSprite2D, ground_y: float) -> void:
 			pause_min = 0.8
 			pause_max = 2.5
 
-	var min_y := vp.y * 0.30
-	var max_y := vp.y * 0.92
+	var min_y := vp.y * 0.40
+	var max_y := vp.y * 0.70
 	var start_x := sq.position.x
 	var raw_tx := randf_range(0.0, vp.x)
 	var target_x := _squirrel_clamp_target(start_x, raw_tx)
@@ -843,7 +842,6 @@ func _squirrel_wander(sq: AnimatedSprite2D, ground_y: float) -> void:
 		sq.position.x = lerp(start_x, target_x, p)
 		var base_y: float = lerp(ground_y, target_y, p)
 		sq.position.y = base_y - abs(sin(p * PI * hop_count)) * bounce_amp
-		sq.z_index = int(sq.position.y)
 	, 0.0, 1.0, dist / speed).set_trans(Tween.TRANS_LINEAR)
 	t.tween_callback(func() -> void:
 		if not is_instance_valid(sq):
