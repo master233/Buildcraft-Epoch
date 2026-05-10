@@ -37,8 +37,12 @@ const EXPEDITION_LAYOUT_BY_SIZE := {
 const ROLE_IDLE_FRAMES := 12
 const ROLE_IDLE_SCALE := 0.27
 const EXPEDITION_TEAM := [
-	{"name": "圣盾骑士", "idle_sheet": "res://asserts/image/role/role1_idle_sheet.png"},
+	{"role_id": "role1", "name": "圣盾骑士", "idle_sheet": "res://asserts/image/role/role1_idle_sheet.png"},
 ]
+const ROLE_LINES_PATH := "res://asserts/table/role_lines.txt"
+const SPEECH_TICK_INTERVAL := 5.0
+const SPEECH_CHANCE := 0.30
+const SPEECH_DURATION := 3.0
 
 var _panel_rect    := Rect2(440, 200, 400, 380)
 var _upgrade_rect  := Rect2(490, 465, 300, 110)
@@ -114,6 +118,10 @@ var _squirrel_frames: SpriteFrames = null
 var _bird_next_pattern: Array[int] = [0, 1, 2]
 var _upgrade_fx_frames: SpriteFrames = null
 var _upgrade_fx_scale: float = 1.0
+var _role_lines: Dictionary = {}
+var _team_slots: Array = []  # [{slot: Node2D, role_id: String, head_top_y: float}]
+var _speech_timer: float = 0.0
+var _is_anyone_speaking: bool = false
 
 func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
@@ -167,6 +175,7 @@ func _setup() -> void:
 	add_child(dust)
 
 	_place_buildings()
+	_load_role_lines()
 	_place_expedition_team()
 	_load_game()
 	_refresh_hud()
@@ -232,6 +241,10 @@ func _process(delta: float) -> void:
 	if _produce_timer >= PRODUCE_INTERVAL:
 		_produce_timer = 0.0
 		_tick_production()
+	_speech_timer += delta
+	if _speech_timer >= SPEECH_TICK_INTERVAL:
+		_speech_timer = 0.0
+		_tick_speech()
 
 func _place_buildings() -> void:
 	for key in BUILDINGS:
@@ -313,6 +326,11 @@ func _place_expedition_team() -> void:
 		var sheet_tex: Texture2D = load(data["idle_sheet"])
 		var frame_w := sheet_tex.get_width() / ROLE_IDLE_FRAMES
 		var frame_h := sheet_tex.get_height()
+		_team_slots.append({
+			"slot": slot,
+			"role_id": data.get("role_id", ""),
+			"head_top_y": -frame_h * ROLE_IDLE_SCALE * 0.5,
+		})
 		var sf := SpriteFrames.new()
 		sf.add_animation("idle")
 		sf.set_animation_speed("idle", 12.0)
@@ -342,6 +360,108 @@ func _place_expedition_team() -> void:
 		nls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
 		name_lbl.label_settings = nls
 		slot.add_child(name_lbl)
+
+func _load_role_lines() -> void:
+	if not FileAccess.file_exists(ROLE_LINES_PATH):
+		push_warning("role_lines.txt not found at " + ROLE_LINES_PATH)
+		return
+	var file := FileAccess.open(ROLE_LINES_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var text := file.get_as_text()
+	file.close()
+	var raw_lines := text.split("\n", false)
+	for i in range(1, raw_lines.size()):  # skip header
+		var line: String = (raw_lines[i] as String).strip_edges()
+		if line.is_empty():
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 3:
+			continue
+		var role_id: String = parts[1]
+		var content: String = parts[2]
+		if not _role_lines.has(role_id):
+			_role_lines[role_id] = []
+		(_role_lines[role_id] as Array).append(content)
+
+func _tick_speech() -> void:
+	if _is_anyone_speaking or _team_slots.is_empty():
+		return
+	if randf() > SPEECH_CHANCE:
+		return
+	var eligible: Array[int] = []
+	for i in _team_slots.size():
+		var rid: String = _team_slots[i]["role_id"]
+		if _role_lines.has(rid) and not (_role_lines[rid] as Array).is_empty():
+			eligible.append(i)
+	if eligible.is_empty():
+		return
+	var idx: int = eligible[randi() % eligible.size()]
+	_show_speech_bubble(idx)
+
+func _show_speech_bubble(slot_idx: int) -> void:
+	var entry = _team_slots[slot_idx]
+	var slot: Node2D = entry["slot"]
+	var role_id: String = entry["role_id"]
+	var lines: Array = _role_lines[role_id]
+	var content: String = lines[randi() % lines.size()]
+
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var font_size := 16
+	var max_w := 280.0
+	var pad := Vector2(14, 9)
+	var text_size := font.get_multiline_string_size(content, HORIZONTAL_ALIGNMENT_CENTER, max_w, font_size)
+	var panel_w: float = clampf(text_size.x + pad.x * 2.0, 80.0, max_w + pad.x * 2.0)
+	var panel_h: float = text_size.y + pad.y * 2.0
+
+	var panel := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.97, 0.91, 0.76, 0.96)
+	style.set_corner_radius_all(10)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.42, 0.27, 0.13, 1.0)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.35)
+	style.shadow_size = 6
+	style.shadow_offset = Vector2(0, 3)
+	panel.add_theme_stylebox_override("panel", style)
+	panel.size = Vector2(panel_w, panel_h)
+	var head_top_y: float = entry["head_top_y"]
+	panel.position = Vector2(-panel_w * 0.5, head_top_y - panel_h - 8.0)
+
+	var lbl := Label.new()
+	lbl.text = content
+	lbl.position = pad
+	lbl.size = Vector2(panel_w - pad.x * 2.0, panel_h - pad.y * 2.0)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	var ls := LabelSettings.new()
+	ls.font = font
+	ls.font_size = font_size
+	ls.font_color = Color(0.20, 0.13, 0.06)
+	lbl.label_settings = ls
+	panel.add_child(lbl)
+
+	panel.modulate.a = 0.0
+	panel.z_index = 50
+	slot.add_child(panel)
+
+	_is_anyone_speaking = true
+	var fade_in := 0.18
+	var fade_out := 0.18
+	var hold := SPEECH_DURATION - fade_in - fade_out
+	var tween := create_tween()
+	tween.tween_property(panel, "modulate:a", 1.0, fade_in)
+	tween.tween_interval(maxf(hold, 0.0))
+	tween.tween_property(panel, "modulate:a", 0.0, fade_out)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(panel):
+			panel.queue_free()
+		_is_anyone_speaking = false
+	)
 
 func _set_panel_visible(v: bool) -> void:
 	var a := 1.0 if v else 0.0
