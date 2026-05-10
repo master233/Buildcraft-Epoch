@@ -1,2 +1,2 @@
 role_id	name	idle_sheet	idle_frames	idle_scale	idle_anim_fps
-10001	圣盾骑士	res://asserts/image/role/role1_idle_sheet.png	12	0.27	12
+10001	圣盾骑士	res://asserts/image/role/role1_idle_sheet.png	12	0.27	6
