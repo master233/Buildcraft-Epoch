@@ -35,7 +35,7 @@ const EXPEDITION_LAYOUT_BY_SIZE := {
 	5: [0, 1, 2, 3, 4],
 }
 const ROLE_IDLE_FRAMES := 12
-const ROLE_IDLE_SCALE := 0.085
+const ROLE_IDLE_SCALE := 0.17
 const EXPEDITION_TEAM := [
 	{"name": "圣盾骑士", "idle_sheet": "res://asserts/image/role/role1_idle_sheet.png"},
 ]
@@ -170,8 +170,9 @@ func _setup() -> void:
 	_place_expedition_team()
 	_load_game()
 	_refresh_hud()
-	_build_upgrade_fx_frames()
 	_build_animal_frames()
+	# 升级特效较大（~95MB GPU），延迟 0.5s 加载，避免阻塞场景首帧渲染
+	get_tree().create_timer(0.5).timeout.connect(_build_upgrade_fx_frames)
 	_spawn_bird(0)
 	get_tree().create_timer(6.0).timeout.connect(_spawn_bird.bind(1))
 	get_tree().create_timer(13.0).timeout.connect(_spawn_bird.bind(2))
@@ -595,6 +596,8 @@ func _build_upgrade_fx_frames() -> void:
 	_upgrade_fx_scale = 200.0 / float(fw)
 
 func _play_upgrade_fx(pos: Vector2) -> void:
+	if _upgrade_fx_frames == null:
+		_build_upgrade_fx_frames()
 	if _upgrade_fx_frames == null:
 		return
 	var fx := AnimatedSprite2D.new()

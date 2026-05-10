@@ -10,7 +10,7 @@ import numpy as np
 TMP_DIR = Path(r"D:\Buildcraft-Epoch\asserts\image\role\role_video\tmp")
 SHEET_OUT = Path(r"D:\Buildcraft-Epoch\asserts\image\role\role1_idle_sheet.png")
 FRAMES = 12
-FRAME_SIZE = 1024  # 缩放到此尺寸，避免单纹理超过 Godot 16384 上限
+FRAME_SIZE = 512  # 缩放到此尺寸；显示约 85 px，512 已足够，节省启动期 PNG 解压与 GPU 上传
 
 BG_THRESHOLD = 240
 EDGE_RANGE   = 20
