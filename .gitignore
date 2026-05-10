@@ -13,5 +13,7 @@
 asserts/image/building/building_video/
 asserts/fx/fx_video/
 asserts/fx/tmp/
+asserts/image/ui/_tmp/
+asserts/image/ui/panel_candidates/
 
 *.bak

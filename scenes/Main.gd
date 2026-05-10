@@ -5,15 +5,12 @@ extends Node2D
 @onready var _ore_lbl: Label = $UI/OreLbl
 @onready var _gold_lbl: Label = $UI/GoldLbl
 @onready var _panel_dim: ColorRect = $UI/PanelDim
-@onready var _panel_bg: ColorRect = $UI/PanelBg
-@onready var _panel_border: ColorRect = $UI/PanelBorder
+@onready var _panel_bg: TextureRect = $UI/PanelBg
 @onready var _panel_name_lbl: Label = $UI/PanelNameLbl
-@onready var _panel_sep: ColorRect = $UI/PanelSep
 @onready var _panel_info_lbl: Label = $UI/PanelInfoLbl
-@onready var _upgrade_bg: ColorRect = $UI/UpgradeBg
+@onready var _upgrade_btn: TextureRect = $UI/UpgradeBtn
 @onready var _upgrade_lbl: Label = $UI/UpgradeLbl
-@onready var _close_bg: ColorRect = $UI/CloseBg
-@onready var _close_lbl: Label = $UI/CloseLbl
+@onready var _close_btn: TextureRect = $UI/CloseBtn
 
 const BUILDING_SCALE := 0.8
 const SQUIRREL_OBSTACLES := [[130.0, 410.0], [870.0, 1210.0]]
@@ -21,9 +18,9 @@ const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
 
-var _panel_rect    := Rect2(470, 250, 340, 220)
-var _upgrade_rect  := Rect2(500, 412, 130, 44)
-var _close_rect    := Rect2(650, 412, 130, 44)
+var _panel_rect    := Rect2(440, 200, 400, 380)
+var _upgrade_rect  := Rect2(490, 465, 300, 110)
+var _close_rect    := Rect2(775, 200, 60, 60)
 var _reset_rect    := Rect2(0, 0, 160, 36)
 
 const BUILDINGS := {
@@ -32,42 +29,48 @@ const BUILDINGS := {
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/home1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(640, 375), "display": "主基地", "y_adj": 25,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
-		"produces": ""
+		"produces": "",
+		"desc": "村庄的核心，限制其他建筑可达的最高等级。"
 	},
 	"tower": {
 		"paths": ["res://asserts/image/building/building_template/tower1.png", "res://asserts/image/building/building_template/tower2.png", "res://asserts/image/building/building_template/tower3.png"],
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tower1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
-		"produces": ""
+		"produces": "",
+		"desc": "远眺地平线，规划下一次远征与探索。"
 	},
 	"lumberyard": {
 		"paths": ["res://asserts/image/building/building_template/lumberyard1.png", "res://asserts/image/building/building_template/lumberyard2.png", "res://asserts/image/building/building_template/lumberyard3.png"],
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/lumberyard1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
-		"produces": "wood"
+		"produces": "wood",
+		"desc": "持续产出木材，等级越高产能越强。"
 	},
 	"mine": {
 		"paths": ["res://asserts/image/building/building_template/Mine1.png", "res://asserts/image/building/building_template/Mine2.png", "res://asserts/image/building/building_template/Mine3.png"],
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/mine1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
-		"produces": "ore"
+		"produces": "ore",
+		"desc": "持续开采矿石，等级越高产能越强。"
 	},
 	"tavern": {
 		"paths": ["res://asserts/image/building/building_template/Tavern1.png", "res://asserts/image/building/building_template/Tavern2.png", "res://asserts/image/building/building_template/Tavern3.png"],
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tavern1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
-		"produces": ""
+		"produces": "",
+		"desc": "招募旅途中遇见的英雄与冒险者。"
 	},
 	"research": {
 		"paths": ["res://asserts/image/building/building_template/research1.png", "res://asserts/image/building/building_template/research2.png", "res://asserts/image/building/building_template/research3.png"],
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/research1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research3_anim_sheet.png"], "n_frames": 8, "animated": true,
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
-		"produces": ""
+		"produces": "",
+		"desc": "钻研未知，解锁更强力的科技。"
 	},
 }
 
@@ -94,15 +97,15 @@ func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
 	bgm.volume_db = 0.0
 	bgm.play()
-	_panel_nodes = [_panel_dim, _panel_bg, _panel_border, _panel_name_lbl,
-					_panel_sep, _panel_info_lbl, _upgrade_bg, _upgrade_lbl, _close_bg, _close_lbl]
+	_panel_nodes = [_panel_dim, _panel_bg, _panel_name_lbl,
+					_panel_info_lbl, _upgrade_btn, _upgrade_lbl, _close_btn]
 	call_deferred("_setup")
 
 func _setup() -> void:
 	var vp := get_viewport_rect().size
 	var half_vp := vp / 2.0
-	_panel_movable = [_panel_bg, _panel_border, _panel_name_lbl,
-					  _panel_sep, _panel_info_lbl, _upgrade_bg, _upgrade_lbl, _close_bg, _close_lbl]
+	_panel_movable = [_panel_bg, _panel_name_lbl,
+					  _panel_info_lbl, _upgrade_btn, _upgrade_lbl, _close_btn]
 	var base := _panel_rect.position
 	for node in _panel_movable:
 		_panel_offsets.append((node as Control).position - base)
@@ -311,8 +314,8 @@ func _reposition_panel(key: String) -> void:
 	var py := clampf(bpos.y - ph * 0.5, 10.0, vp.y - ph - 10.0)
 	var tl := Vector2(px, py)
 	_panel_rect    = Rect2(tl, Vector2(pw, ph))
-	_upgrade_rect  = Rect2(tl + Vector2(30, 162), Vector2(130, 44))
-	_close_rect    = Rect2(tl + Vector2(180, 162), Vector2(130, 44))
+	_upgrade_rect  = Rect2(tl + Vector2(50, 265), Vector2(300, 110))
+	_close_rect    = Rect2(tl + Vector2(335, 0), Vector2(60, 60))
 	for i in _panel_movable.size():
 		(_panel_movable[i] as Control).position = tl + _panel_offsets[i]
 
@@ -322,23 +325,25 @@ func _refresh_panel() -> void:
 	var state = _building_nodes[_panel_key]
 	var cfg = BUILDINGS[_panel_key]
 	var lv: int = state["level"]
-	_panel_name_lbl.text = cfg["display"]
+	_panel_name_lbl.text = "%s  Lv.%d" % [cfg["display"], lv]
+	var desc: String = cfg.get("desc", "")
 	if lv >= 3:
-		_panel_info_lbl.text = "等级：%d / 3\n\n已达最高等级" % lv
+		_panel_info_lbl.text = "%s\n\n已达最高等级" % desc
 		_upgrade_disabled = true
-		_upgrade_bg.color = Color(0.3, 0.3, 0.3)
 	else:
 		var cost = cfg["upgrade_cost"][lv - 1]
 		var home_lv: int = _building_nodes["home"]["level"]
 		if _panel_key != "home" and lv >= home_lv:
-			_panel_info_lbl.text = "等级：%d / 3\n\n需先升级主基地至 Lv.%d" % [lv, lv + 1]
+			_panel_info_lbl.text = "%s\n\n需先升级主基地至 Lv.%d" % [desc, lv + 1]
 			_upgrade_disabled = true
-			_upgrade_bg.color = Color(0.3, 0.3, 0.3)
 		else:
 			var ok: bool = _wood >= int(cost["wood"]) and _ore >= int(cost["ore"])
-			_panel_info_lbl.text = "等级：%d / 3\n\n升级消耗：木材 %d   矿石 %d" % [lv, int(cost["wood"]), int(cost["ore"])]
+			_panel_info_lbl.text = "%s\n\n升级消耗：木材 %d  矿石 %d" % [desc, int(cost["wood"]), int(cost["ore"])]
 			_upgrade_disabled = not ok
-			_upgrade_bg.color = Color(0.18, 0.48, 0.12) if ok else Color(0.3, 0.3, 0.3)
+	var a: float = _upgrade_btn.modulate.a
+	var tint: Color = Color(0.55, 0.55, 0.55, a) if _upgrade_disabled else Color(1, 1, 1, a)
+	_upgrade_btn.modulate = tint
+	_upgrade_lbl.modulate = tint
 
 func _on_upgrade_pressed() -> void:
 	if _panel_key == "" or _upgrade_disabled:

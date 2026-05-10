@@ -1,10 +1,13 @@
-[gd_scene load_steps=11 format=3]
+[gd_scene load_steps=14 format=3]
 
 [ext_resource type="Script" path="res://scenes/Main.gd" id="1"]
 [ext_resource type="Font" path="res://asserts/fonts/ZCOOLKuaiLe.ttf" id="2"]
 [ext_resource type="Texture2D" path="res://asserts/image/ui/icon_wood.png" id="3"]
 [ext_resource type="Texture2D" path="res://asserts/image/ui/icon_ore.png" id="4"]
 [ext_resource type="Texture2D" path="res://asserts/image/ui/icon_coin.png" id="5"]
+[ext_resource type="Texture2D" path="res://asserts/image/ui/ui_panel.png" id="6"]
+[ext_resource type="Texture2D" path="res://asserts/image/ui/ui_close.png" id="7"]
+[ext_resource type="Texture2D" path="res://asserts/image/ui/ui_upgrade.png" id="8"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_1"]
 font = ExtResource("2")
@@ -38,18 +41,27 @@ shadow_offset = Vector2(2, 2)
 
 [sub_resource type="LabelSettings" id="LabelSettings_3"]
 font = ExtResource("2")
-font_size = 26
-font_color = Color(1, 0.847059, 0.247059, 1)
+font_size = 28
+font_color = Color(1, 0.92, 0.6, 1)
+outline_size = 5
+outline_color = Color(0.18, 0.08, 0.02, 1)
 
 [sub_resource type="LabelSettings" id="LabelSettings_4"]
 font = ExtResource("2")
-font_size = 17
-font_color = Color(1, 1, 1, 1)
+font_size = 18
+font_color = Color(0.22, 0.13, 0.06, 1)
+outline_size = 3
+outline_color = Color(1, 0.96, 0.85, 0.7)
 
 [sub_resource type="LabelSettings" id="LabelSettings_5"]
 font = ExtResource("2")
-font_size = 18
+font_size = 42
 font_color = Color(1, 1, 1, 1)
+outline_size = 7
+outline_color = Color(0.06, 0.24, 0.05, 1)
+shadow_size = 2
+shadow_color = Color(0, 0, 0, 0.55)
+shadow_offset = Vector2(1, 2)
 
 [node name="Main" type="Node2D"]
 script = ExtResource("1")
@@ -139,85 +151,66 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 color = Color(0, 0, 0, 0.447059)
 
-[node name="PanelBg" type="ColorRect" parent="UI"]
+[node name="PanelBg" type="TextureRect" parent="UI"]
 modulate = Color(1, 1, 1, 0)
-color = Color(0.12, 0.08, 0.04, 0.97)
-offset_left = 470.0
-offset_top = 250.0
-offset_right = 810.0
-offset_bottom = 470.0
-
-[node name="PanelBorder" type="ColorRect" parent="UI"]
-modulate = Color(1, 1, 1, 0)
-color = Color(0.6, 0.419608, 0.098039, 1)
-offset_left = 470.0
-offset_top = 250.0
-offset_right = 810.0
-offset_bottom = 253.0
+offset_left = 440.0
+offset_top = 200.0
+offset_right = 840.0
+offset_bottom = 580.0
+texture = ExtResource("6")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="PanelNameLbl" type="Label" parent="UI"]
 modulate = Color(1, 1, 1, 0)
-offset_left = 470.0
-offset_top = 264.0
-offset_right = 810.0
-offset_bottom = 310.0
+offset_left = 480.0
+offset_top = 250.0
+offset_right = 800.0
+offset_bottom = 300.0
 horizontal_alignment = 1
+vertical_alignment = 1
 label_settings = SubResource("LabelSettings_3")
 text = ""
 
-[node name="PanelSep" type="ColorRect" parent="UI"]
-modulate = Color(1, 1, 1, 0)
-color = Color(0.498039, 0.34902, 0.098039, 0.698039)
-offset_left = 485.0
-offset_top = 312.0
-offset_right = 795.0
-offset_bottom = 314.0
-
 [node name="PanelInfoLbl" type="Label" parent="UI"]
 modulate = Color(1, 1, 1, 0)
-offset_left = 480.0
-offset_top = 322.0
-offset_right = 800.0
-offset_bottom = 412.0
+offset_left = 490.0
+offset_top = 330.0
+offset_right = 790.0
+offset_bottom = 510.0
 horizontal_alignment = 1
+vertical_alignment = 1
 autowrap_mode = 2
 label_settings = SubResource("LabelSettings_4")
 text = ""
 
-[node name="UpgradeBg" type="ColorRect" parent="UI"]
+[node name="UpgradeBtn" type="TextureRect" parent="UI"]
 modulate = Color(1, 1, 1, 0)
-color = Color(0.180392, 0.47451, 0.117647, 1)
-offset_left = 500.0
-offset_top = 412.0
-offset_right = 630.0
-offset_bottom = 456.0
+offset_left = 490.0
+offset_top = 465.0
+offset_right = 790.0
+offset_bottom = 575.0
+texture = ExtResource("8")
+expand_mode = 1
+stretch_mode = 5
 
 [node name="UpgradeLbl" type="Label" parent="UI"]
 modulate = Color(1, 1, 1, 0)
-offset_left = 500.0
-offset_top = 412.0
-offset_right = 630.0
-offset_bottom = 456.0
+offset_left = 490.0
+offset_top = 465.0
+offset_right = 790.0
+offset_bottom = 575.0
 horizontal_alignment = 1
 vertical_alignment = 1
 label_settings = SubResource("LabelSettings_5")
-text = "升  级"
+text = "升 级"
 
-[node name="CloseBg" type="ColorRect" parent="UI"]
+[node name="CloseBtn" type="TextureRect" parent="UI"]
 modulate = Color(1, 1, 1, 0)
-color = Color(0.376471, 0.137255, 0.098039, 1)
-offset_left = 650.0
-offset_top = 412.0
-offset_right = 780.0
-offset_bottom = 456.0
-
-[node name="CloseLbl" type="Label" parent="UI"]
-modulate = Color(1, 1, 1, 0)
-offset_left = 650.0
-offset_top = 412.0
-offset_right = 780.0
-offset_bottom = 456.0
-horizontal_alignment = 1
-vertical_alignment = 1
-label_settings = SubResource("LabelSettings_5")
-text = "关  闭"
+offset_left = 775.0
+offset_top = 200.0
+offset_right = 835.0
+offset_bottom = 260.0
+texture = ExtResource("7")
+expand_mode = 1
+stretch_mode = 5
