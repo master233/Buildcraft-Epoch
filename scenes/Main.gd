@@ -3,6 +3,7 @@ extends Node2D
 @onready var bgm: AudioStreamPlayer = $BGM
 @onready var _wood_lbl: Label = $UI/WoodLbl
 @onready var _ore_lbl: Label = $UI/OreLbl
+@onready var _gold_lbl: Label = $UI/GoldLbl
 @onready var _panel_dim: ColorRect = $UI/PanelDim
 @onready var _panel_bg: ColorRect = $UI/PanelBg
 @onready var _panel_border: ColorRect = $UI/PanelBorder
@@ -72,6 +73,7 @@ const BUILDINGS := {
 
 var _wood: int = 200
 var _ore: int = 100
+var _gold: int = 0
 var _reset_bg: ColorRect = null
 var _reset_lbl: Label = null
 var _panel_movable: Array = []
@@ -85,6 +87,8 @@ var _upgrade_disabled: bool = false
 var _bird_frames: SpriteFrames = null
 var _squirrel_frames: SpriteFrames = null
 var _bird_next_pattern: Array[int] = [0, 1, 2]
+var _upgrade_fx_frames: SpriteFrames = null
+var _upgrade_fx_scale: float = 1.0
 
 func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
@@ -140,6 +144,7 @@ func _setup() -> void:
 	_place_buildings()
 	_load_game()
 	_refresh_hud()
+	_build_upgrade_fx_frames()
 	_build_animal_frames()
 	_spawn_bird(0)
 	get_tree().create_timer(6.0).timeout.connect(_spawn_bird.bind(1))
@@ -178,6 +183,7 @@ func _reset_game() -> void:
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 	_wood = 200
 	_ore = 100
+	_gold = 0
 	for key in _building_nodes:
 		_building_nodes[key]["level"] = 1
 		if BUILDINGS[key]["animated"]:
@@ -366,6 +372,7 @@ func upgrade_building(key: String) -> void:
 	else:
 		(state["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][lv - 1])
 	_refresh_label(key)
+	_play_upgrade_fx(BUILDINGS[key]["pos"])
 
 func _apply_anim_sheet(key: String, lv: int) -> void:
 	var cfg = BUILDINGS[key]
@@ -410,6 +417,7 @@ func _spawn_float_text(key: String, amount: int, resource_type: String) -> void:
 	var pos: Vector2 = BUILDINGS[key]["pos"]
 	var container := Node2D.new()
 	container.position = pos
+	container.z_index = 900
 	add_child(container)
 	var lbl := Label.new()
 	lbl.text = "+%d" % amount
@@ -431,16 +439,18 @@ func _spawn_float_text(key: String, amount: int, resource_type: String) -> void:
 
 func _refresh_hud() -> void:
 	if _wood_lbl:
-		_wood_lbl.text = "木材  %d" % _wood
+		_wood_lbl.text = "%d" % _wood
 	if _ore_lbl:
-		_ore_lbl.text = "矿石  %d" % _ore
+		_ore_lbl.text = "%d" % _ore
+	if _gold_lbl:
+		_gold_lbl.text = "%d" % _gold
 
 func _refresh_label(key: String) -> void:
 	var state = _building_nodes[key]
 	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
 
 func _save_game() -> void:
-	var data := {"wood": _wood, "ore": _ore, "levels": {}}
+	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "levels": {}}
 	for key in _building_nodes:
 		data["levels"][key] = _building_nodes[key]["level"]
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
@@ -465,6 +475,8 @@ func _load_game() -> void:
 		_wood = int(data["wood"])
 	if data.has("ore"):
 		_ore = int(data["ore"])
+	if data.has("gold"):
+		_gold = int(data["gold"])
 	if data.has("levels") and data["levels"] is Dictionary:
 		var levels: Dictionary = data["levels"]
 		for key in levels:
@@ -477,6 +489,47 @@ func _load_game() -> void:
 			else:
 				(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][lv - 1])
 			_refresh_label(key)
+
+func _build_upgrade_fx_frames() -> void:
+	var res_path := "res://asserts/fx/building_anim_sheet/build_lv_up_anim_sheet.png"
+	var tex: Texture2D = load(res_path)
+	if tex == null:
+		var img := Image.load_from_file(ProjectSettings.globalize_path(res_path))
+		if img == null:
+			push_error("Upgrade FX: cannot load " + res_path)
+			return
+		tex = ImageTexture.create_from_image(img)
+	var cols := 6
+	var rows := 2
+	var fw := tex.get_width() / cols
+	var fh := tex.get_height() / rows
+	_upgrade_fx_frames = SpriteFrames.new()
+	_upgrade_fx_frames.add_animation("play")
+	_upgrade_fx_frames.set_animation_speed("play", 10.0)
+	_upgrade_fx_frames.set_animation_loop("play", false)
+	for r in rows:
+		for c in cols:
+			var at := AtlasTexture.new()
+			at.atlas = tex
+			at.region = Rect2(c * fw, r * fh, fw, fh)
+			at.filter_clip = true
+			_upgrade_fx_frames.add_frame("play", at)
+	_upgrade_fx_scale = 200.0 / float(fw)
+
+func _play_upgrade_fx(pos: Vector2) -> void:
+	if _upgrade_fx_frames == null:
+		return
+	var fx := AnimatedSprite2D.new()
+	fx.sprite_frames = _upgrade_fx_frames
+	fx.position = pos
+	fx.z_index = 1000
+	fx.scale = Vector2(_upgrade_fx_scale, _upgrade_fx_scale)
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	fx.material = mat
+	add_child(fx)
+	fx.animation_finished.connect(fx.queue_free)
+	fx.play("play")
 
 func _build_animal_frames() -> void:
 	_bird_frames = SpriteFrames.new()

@@ -11,3 +11,7 @@
 .mcp.json
 
 asserts/image/building/building_video/
+asserts/fx/fx_video/
+asserts/fx/tmp/
+
+*.bak
