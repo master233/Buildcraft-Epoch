@@ -18,27 +18,10 @@ const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
 
-const EXPEDITION_SLOT_POSITIONS := [
-	Vector2(460, 585),
-	Vector2(550, 585),
-	Vector2(640, 585),
-	Vector2(730, 585),
-	Vector2(820, 585),
-]
-# 按队伍人数把成员映射到 0-indexed 的站位坐标。
-# 中心是 index=2（3 号位），人数不足时从中心向两侧（左侧优先）填充。
-const EXPEDITION_LAYOUT_BY_SIZE := {
-	1: [2],
-	2: [1, 2],
-	3: [1, 2, 3],
-	4: [0, 1, 2, 3],
-	5: [0, 1, 2, 3, 4],
-}
-const ROLE_IDLE_FRAMES := 12
-const ROLE_IDLE_SCALE := 0.27
-const EXPEDITION_TEAM := [
-	{"role_id": "role1", "name": "圣盾骑士", "idle_sheet": "res://asserts/image/role/role1_idle_sheet.png"},
-]
+# 当前队伍成员（按 1 号位起的真实序号），值为 roles.txt 中的 role_id。
+const EXPEDITION_TEAM_IDS: Array[String] = ["10001"]
+const ROLES_TABLE_PATH := "res://asserts/table/roles.txt"
+const TEAM_LAYOUT_PATH := "res://asserts/table/team_layout.txt"
 const ROLE_LINES_PATH := "res://asserts/table/role_lines.txt"
 const SPEECH_TICK_INTERVAL := 5.0
 const SPEECH_CHANCE := 0.30
@@ -118,6 +101,9 @@ var _squirrel_frames: SpriteFrames = null
 var _bird_next_pattern: Array[int] = [0, 1, 2]
 var _upgrade_fx_frames: SpriteFrames = null
 var _upgrade_fx_scale: float = 1.0
+var _roles: Dictionary = {}  # role_id → {name, idle_sheet, idle_frames, idle_scale, idle_anim_fps}
+var _slot_positions: Array[Vector2] = []
+var _layout_by_size: Dictionary = {}  # team_size:int → Array[int] of slot indices
 var _role_lines: Dictionary = {}
 var _team_slots: Array = []  # [{slot: Node2D, role_id: String, head_top_y: float}]
 var _speech_timer: float = 0.0
@@ -175,6 +161,8 @@ func _setup() -> void:
 	add_child(dust)
 
 	_place_buildings()
+	_load_roles_table()
+	_load_team_layout()
 	_load_role_lines()
 	_place_expedition_team()
 	_load_game()
@@ -307,16 +295,26 @@ func _place_buildings() -> void:
 		_refresh_label(key)
 
 func _place_expedition_team() -> void:
-	var team_size: int = EXPEDITION_TEAM.size()
-	if team_size <= 0:
+	var team_size: int = EXPEDITION_TEAM_IDS.size()
+	if team_size <= 0 or _slot_positions.is_empty():
 		return
-	var layout: Array = EXPEDITION_LAYOUT_BY_SIZE.get(team_size, [])
+	var layout: Array = _layout_by_size.get(team_size, [])
+	if layout.is_empty():
+		push_warning("team_layout.txt missing layout_size_%d" % team_size)
+		return
 	for i in team_size:
-		var data = EXPEDITION_TEAM[i]
-		if data == null:
+		var role_id: String = EXPEDITION_TEAM_IDS[i]
+		if not _roles.has(role_id):
+			push_warning("roles.txt missing role_id: " + role_id)
 			continue
-		var slot_index: int = layout[i]
-		var pos: Vector2 = EXPEDITION_SLOT_POSITIONS[slot_index]
+		var data: Dictionary = _roles[role_id]
+		var idle_frames: int = int(data.get("idle_frames", 1))
+		var idle_scale: float = float(data.get("idle_scale", 1.0))
+		var idle_anim_fps: float = float(data.get("idle_anim_fps", 8.0))
+		var slot_index: int = int(layout[i])
+		if slot_index < 0 or slot_index >= _slot_positions.size():
+			continue
+		var pos: Vector2 = _slot_positions[slot_index]
 		var slot := Node2D.new()
 		slot.name = "ExpeditionRole%d" % (i + 1)
 		slot.position = pos
@@ -324,18 +322,18 @@ func _place_expedition_team() -> void:
 		add_child(slot)
 
 		var sheet_tex: Texture2D = load(data["idle_sheet"])
-		var frame_w := sheet_tex.get_width() / ROLE_IDLE_FRAMES
+		var frame_w := sheet_tex.get_width() / idle_frames
 		var frame_h := sheet_tex.get_height()
 		_team_slots.append({
 			"slot": slot,
-			"role_id": data.get("role_id", ""),
-			"head_top_y": -frame_h * ROLE_IDLE_SCALE * 0.5,
+			"role_id": role_id,
+			"head_top_y": -frame_h * idle_scale * 0.5,
 		})
 		var sf := SpriteFrames.new()
 		sf.add_animation("idle")
-		sf.set_animation_speed("idle", 12.0)
+		sf.set_animation_speed("idle", idle_anim_fps)
 		sf.set_animation_loop("idle", true)
-		for f in ROLE_IDLE_FRAMES:
+		for f in idle_frames:
 			var at := AtlasTexture.new()
 			at.atlas = sheet_tex
 			at.region = Rect2(f * frame_w, 0, frame_w, frame_h)
@@ -343,15 +341,15 @@ func _place_expedition_team() -> void:
 			sf.add_frame("idle", at)
 		var sprite := AnimatedSprite2D.new()
 		sprite.sprite_frames = sf
-		sprite.scale = Vector2(ROLE_IDLE_SCALE, ROLE_IDLE_SCALE)
+		sprite.scale = Vector2(idle_scale, idle_scale)
 		sprite.play("idle")
 		slot.add_child(sprite)
 
 		var name_lbl := Label.new()
-		name_lbl.text = data["name"]
+		name_lbl.text = String(data.get("name", role_id))
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		name_lbl.size = Vector2(120, 22)
-		name_lbl.position = Vector2(-60.0, -frame_h * ROLE_IDLE_SCALE * 0.5 - 24.0)
+		name_lbl.position = Vector2(-60.0, -frame_h * idle_scale * 0.5 - 24.0)
 		var nls := LabelSettings.new()
 		nls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 		nls.font_size = 14
@@ -361,12 +359,88 @@ func _place_expedition_team() -> void:
 		name_lbl.label_settings = nls
 		slot.add_child(name_lbl)
 
-func _load_role_lines() -> void:
-	if not FileAccess.file_exists(ROLE_LINES_PATH):
-		push_warning("role_lines.txt not found at " + ROLE_LINES_PATH)
+func _read_table_text(path: String) -> String:
+	# 注意：不能用 FileAccess.file_exists() 预检查 —— Godot 4 在 Web 导出里对 pack 内的
+	# 非资源文件（.txt 等）返回 false，导致漏读。直接 open() 用返回值判断。
+	var file := FileAccess.open(path, FileAccess.READ)
+	if file == null:
+		print("[Main] table not found: ", path, " err=", FileAccess.get_open_error())
+		return ""
+	var text := file.get_as_text()
+	file.close()
+	# 去除可能的 UTF-8 BOM。不能用字面量 "﻿" 判断 —— 源码里的 BOM 字面量
+	# 会被 Godot 导出过程吞掉变成空串，导致 begins_with 永远 true、误砍首字符。
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	return text
+
+func _load_roles_table() -> void:
+	var text := _read_table_text(ROLES_TABLE_PATH)
+	if text.is_empty():
 		return
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return
+	var headers := (raw[0] as String).strip_edges().split("\t")
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty():
+			continue
+		var parts := line.split("\t")
+		if parts.size() < headers.size():
+			continue
+		var entry := {}
+		for j in headers.size():
+			entry[headers[j]] = parts[j]
+		var rid: String = String(entry.get("role_id", ""))
+		if rid.is_empty():
+			continue
+		_roles[rid] = {
+			"name": String(entry.get("name", "")),
+			"idle_sheet": String(entry.get("idle_sheet", "")),
+			"idle_frames": int(entry.get("idle_frames", "1")),
+			"idle_scale": float(entry.get("idle_scale", "1.0")),
+			"idle_anim_fps": float(entry.get("idle_anim_fps", "8.0")),
+		}
+
+func _load_team_layout() -> void:
+	var text := _read_table_text(TEAM_LAYOUT_PATH)
+	if text.is_empty():
+		return
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return
+	var slot_dict := {}
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty():
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 2:
+			continue
+		var key: String = (parts[0] as String).strip_edges()
+		var value: String = (parts[1] as String).strip_edges()
+		if key.begins_with("slot_"):
+			var idx := int(key.substr(5))
+			var coords := value.split(",")
+			if coords.size() >= 2:
+				slot_dict[idx] = Vector2(float(coords[0]), float(coords[1]))
+		elif key.begins_with("layout_size_"):
+			var size := int(key.substr(12))
+			var indices: Array[int] = []
+			for s in value.split(","):
+				indices.append(int((s as String).strip_edges()))
+			_layout_by_size[size] = indices
+	var ordered := slot_dict.keys()
+	ordered.sort()
+	_slot_positions.clear()
+	for k in ordered:
+		_slot_positions.append(slot_dict[k])
+
+func _load_role_lines() -> void:
 	var file := FileAccess.open(ROLE_LINES_PATH, FileAccess.READ)
 	if file == null:
+		print("[Main] role_lines.txt not found: ", ROLE_LINES_PATH)
 		return
 	var text := file.get_as_text()
 	file.close()

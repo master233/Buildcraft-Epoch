@@ -17,7 +17,9 @@ config/icon="res://icon.svg"
 
 [autoload]
 
+GlobalConfig="*res://scenes/GlobalConfig.gd"
 ResourceCache="*res://scenes/ResourceCache.gd"
+SceneTransition="*res://scenes/SceneTransition.gd"
 
 [display]
 

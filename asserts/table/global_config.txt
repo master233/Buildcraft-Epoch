@@ -1,0 +1,3 @@
+key	value
+loading_tip	感谢老板举办的活动 我们会好好利用这5W的奖金的 ~_~\n\n(故意加的loading 让大家看到这句话~)
+loading_time	3

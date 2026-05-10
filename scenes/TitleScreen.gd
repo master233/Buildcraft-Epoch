@@ -1,10 +1,17 @@
 extends Node2D
 
+const LOADING_SCENE: PackedScene = preload("res://scenes/LoadingScreen.tscn")
+
 var _btn_ref: TextureButton = null
 var _btn_idle_tween: Tween = null
+var _starting: bool = false
+var _loading_instance: Node = null
 
 func _ready() -> void:
 	call_deferred("_build_ui")
+	# TitleScreen UI 渲染完后再后台预实例化 LoadingScreen，
+	# 让它的资源预加载在 TitleScreen 期间就开始跑（hidden、非 current_scene）
+	get_tree().create_timer(0.1).timeout.connect(_pre_instantiate_loading)
 
 func _build_ui() -> void:
 	var vp := get_viewport_rect().size
@@ -148,5 +155,32 @@ func _on_btn_release() -> void:
 	t.tween_property(_btn_ref, "scale", Vector2(1.0, 1.0), 0.08)\
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
+func _pre_instantiate_loading() -> void:
+	if _loading_instance != null:
+		return
+	# 把 LoadingScreen 要用的大资源塞进 ResourceCache，让 LoadingScreen 内部 load() 命中缓存
+	ResourceCache.add(load("res://asserts/image/backgroud/bg_test_1.jpg"))
+	ResourceCache.add(load("res://asserts/fonts/ZCOOLKuaiLe.ttf"))
+	_loading_instance = LOADING_SCENE.instantiate()
+	# 加为 root 的子节点（不是 current_scene）—— LoadingScreen._ready 会跑、
+	# UI 已建好但 _ui_layer.visible=false 隐藏，资源预加载在后台静默进行
+	get_tree().root.add_child(_loading_instance)
+
+
 func _on_start_pressed() -> void:
-	get_tree().change_scene_to_file("res://scenes/LoadingScreen.tscn")
+	if _starting:
+		return
+	_starting = true
+	if _btn_idle_tween != null:
+		_btn_idle_tween.kill()
+		_btn_idle_tween = null
+	# LoadingScreen 已经预实例化好了：arm() 立即显示并开始计最短显示时间
+	if _loading_instance == null:
+		# 罕见路径：用户点击得太快，预实例化还没跑。回退到普通切场景
+		get_tree().change_scene_to_packed(LOADING_SCENE)
+		return
+	_loading_instance.arm()
+	# 把 LoadingScreen 提升为 current_scene，TitleScreen 释放
+	var ls = _loading_instance
+	get_tree().current_scene = ls
+	queue_free()

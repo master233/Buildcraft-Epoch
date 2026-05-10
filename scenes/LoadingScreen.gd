@@ -3,10 +3,11 @@ extends Node2D
 # 真实异步预加载，最小显示 1.5s，预加载完成后切到 Main。
 
 const MAIN_SCENE := "res://scenes/Main.tscn"
-const MIN_DISPLAY_SEC := 2.0
-const TIP_TEXT := "感谢老板举办的活动 我们会好好利用这5W的奖金的 ~_~\n为了让大家看清 我估计延长了loading时间 其实一点都不卡哦~"
+const MIN_DISPLAY_FALLBACK := 2.0
+const TIP_FALLBACK := "感谢老板举办的活动 我们会好好利用这5W的奖金的 ~_~"
 
-const PRELOAD_PATHS: Array[String] = [
+# 与建筑等级无关的固定资源
+const BASE_PRELOAD: Array[String] = [
 	"res://asserts/fonts/ZCOOLKuaiLe.ttf",
 	"res://asserts/audio/bg1.wav",
 	"res://asserts/image/backgroud/bg_test_1.jpg",
@@ -14,53 +15,59 @@ const PRELOAD_PATHS: Array[String] = [
 	"res://asserts/image/animal/squirrel_sheet.png",
 	"res://asserts/image/role/role1_idle_sheet.png",
 
-	# 建筑参考贴图（lv1，用于尺寸基准）
+	# 建筑参考贴图（lv1，用于 _place_buildings 计算缩放，不随等级变）
 	"res://asserts/image/building/building_template/home1.png",
 	"res://asserts/image/building/building_template/tower1.png",
 	"res://asserts/image/building/building_template/lumberyard1.png",
 	"res://asserts/image/building/building_template/Mine1.png",
 	"res://asserts/image/building/building_template/Tavern1.png",
 	"res://asserts/image/building/building_template/research1.png",
+]
 
-	# 建筑动画序列图 lv1-lv3
-	"res://asserts/image/building/building_anim_sheet/home1_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/home2_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/home3_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/tower1_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/tower2_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/tower3_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/lumberyard1_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/lumberyard2_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/lumberyard3_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/mine1_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/mine2_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/mine3_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/tavern1_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/tavern2_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/tavern3_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/research1_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/research2_anim_sheet.png",
-	"res://asserts/image/building/building_anim_sheet/research3_anim_sheet.png",
+# 建筑 key → anim_sheet 文件名前缀（与 Main.gd 的 BUILDINGS 路径保持一致）
+const BUILDING_SHEET_PREFIX := "res://asserts/image/building/building_anim_sheet/"
+const BUILDING_KEYS: Array[String] = [
+	"home", "tower", "lumberyard", "mine", "tavern", "research",
 ]
 
 const BAR_WIDTH := 600.0
 const BAR_HEIGHT := 24.0
 
 var _bar: ProgressBar = null
+var _ui_layer: CanvasLayer = null
 var _start_msec: int = 0
 var _smooth_progress: float = 0.0
 var _pending: Array[String] = []
+var _total_paths: int = 0
 var _switched: bool = false
+var _armed: bool = false  # 玩家点开始游戏前为 false：可以预加载，但不切到 Main 也不计最短显示时间
+var _min_display_sec: float = MIN_DISPLAY_FALLBACK
 
 
 func _ready() -> void:
+	# 同步建 UI，让 LoadingScreen 第一帧就能完整渲染
+	_setup()
+	# 把资源预加载推迟到下一帧启动，否则 Web 单线程下这一批 load_threaded_request
+	# 会卡住 _ready 导致 LoadingScreen 延迟出现
+	call_deferred("_kickoff_preload")
+
+
+func arm() -> void:
+	# TitleScreen 点开始游戏后调用：显示 UI、开始计最短显示时间、允许切到 Main
+	_armed = true
+	_min_display_sec = GlobalConfig.get_float("loading_time", MIN_DISPLAY_FALLBACK)
 	_start_msec = Time.get_ticks_msec()
-	call_deferred("_setup")
+	# 重置视觉进度，让进度条从 0 开始爬升 —— TitleScreen 期间静默预加载可能已让 _smooth_progress 接近 1.0
+	_smooth_progress = 0.0
+	if _ui_layer:
+		_ui_layer.visible = true
 
 
 func _setup() -> void:
 	var vp := get_viewport_rect().size
 	var ui := CanvasLayer.new()
+	ui.visible = false  # 实例化后默认隐藏，等 arm() 时再显示（被预加载在 TitleScreen 期间静默运行）
+	_ui_layer = ui
 	add_child(ui)
 
 	var bg := TextureRect.new()
@@ -75,7 +82,7 @@ func _setup() -> void:
 	ui.add_child(dim)
 
 	var tip := Label.new()
-	tip.text = TIP_TEXT
+	tip.text = GlobalConfig.get_str("loading_tip", TIP_FALLBACK)
 	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tip.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	tip.size = Vector2(vp.x - 80.0, 110.0)
@@ -123,10 +130,24 @@ func _setup() -> void:
 	_bar.add_theme_constant_override("outline_size", 3)
 	ui.add_child(_bar)
 
-	for p in PRELOAD_PATHS:
+
+func _kickoff_preload() -> void:
+	var paths := _build_preload_paths()
+	_total_paths = paths.size()
+	for p in paths:
 		var err := ResourceLoader.load_threaded_request(p)
 		if err == OK:
 			_pending.append(p)
+
+
+func _build_preload_paths() -> Array[String]:
+	var paths: Array[String] = BASE_PRELOAD.duplicate()
+	# 18 张建筑 anim_sheet（6 建筑 × 3 等级）一次性全部预加载，
+	# 之后玩家升级建筑时 _apply_anim_sheet 里的 load() 全是缓存命中，无卡顿
+	for key in BUILDING_KEYS:
+		for lv in range(1, 4):
+			paths.append("%s%s%d_anim_sheet.png" % [BUILDING_SHEET_PREFIX, key, lv])
+	return paths
 
 
 func _process(delta: float) -> void:
@@ -147,14 +168,19 @@ func _process(delta: float) -> void:
 	for p in done_paths:
 		_pending.erase(p)
 
-	var total: int = PRELOAD_PATHS.size()
-	var done: int = total - _pending.size()
-	var target: float = float(done) / float(max(total, 1))
-	_smooth_progress = move_toward(_smooth_progress, target, delta * 1.5)
+	var done: int = _total_paths - _pending.size()
+	var target: float = 0.0 if _total_paths <= 0 else float(done) / float(_total_paths)
+	# arm 之前不推进视觉进度（让条停在 0），arm 之后让条均匀爬升占据 _min_display_sec 时段。
+	# 速率 = 1 / loading_time，确保进度条 0→1 大约用 loading_time 秒。
+	if _armed:
+		var rate: float = 1.0 / max(_min_display_sec, 0.1)
+		_smooth_progress = move_toward(_smooth_progress, target, delta * rate)
 	if _bar:
 		_bar.value = _smooth_progress
 
+	if not _armed:
+		return
 	var elapsed: float = (Time.get_ticks_msec() - _start_msec) / 1000.0
-	if _pending.is_empty() and _smooth_progress >= 0.999 and elapsed >= MIN_DISPLAY_SEC:
+	if _pending.is_empty() and _smooth_progress >= 0.999 and elapsed >= _min_display_sec:
 		_switched = true
 		get_tree().change_scene_to_file(MAIN_SCENE)
