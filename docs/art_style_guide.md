@@ -95,7 +95,7 @@
   "positivePrompt": "...",
   "negativePrompt": "...",
   "referenceImages": [
-    { "purpose": "source", "imageId": "<已上传的参考图ID>", "weight": 0.6 }
+	{ "purpose": "source", "imageId": "<已上传的参考图ID>", "weight": 0.6 }
   ],
   "waitForCompletion": true
 }

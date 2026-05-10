@@ -86,8 +86,10 @@ const BUILDINGS := {
 var _wood: int = 200
 var _ore: int = 100
 var _gold: int = 0
-var _reset_bg: ColorRect = null
+var _reset_bg: Panel = null
 var _reset_lbl: Label = null
+var _reset_style: StyleBoxFlat = null
+var _reset_hovering: bool = false
 var _panel_movable: Array = []
 var _panel_offsets: Array[Vector2] = []
 var _building_nodes: Dictionary = {}
@@ -96,6 +98,7 @@ var _panel_key: String = ""
 var _panel_visible: bool = false
 var _panel_nodes: Array = []
 var _upgrade_disabled: bool = false
+var _upgrade_pressing: bool = false
 var _bird_frames: SpriteFrames = null
 var _squirrel_frames: SpriteFrames = null
 var _bird_next_pattern: Array[int] = [0, 1, 2]
@@ -182,24 +185,42 @@ func _setup() -> void:
 func _spawn_reset_button() -> void:
 	var ui := $UI
 	var vp := get_viewport_rect().size
-	_reset_rect = Rect2(vp.x - 170, 10, 160, 36)
-	_reset_bg = ColorRect.new()
-	_reset_bg.color = Color(0.55, 0.12, 0.10)
-	_reset_bg.size = _reset_rect.size
+	_reset_rect = Rect2(vp.x - 178, 12, 164, 42)
+
+	_reset_style = StyleBoxFlat.new()
+	_reset_style.bg_color = Color(0.42, 0.07, 0.07)
+	_reset_style.set_corner_radius_all(10)
+	_reset_style.border_width_top    = 2
+	_reset_style.border_width_right  = 2
+	_reset_style.border_width_bottom = 3
+	_reset_style.border_width_left   = 2
+	_reset_style.border_color = Color(0.80, 0.28, 0.22, 1.0)
+	_reset_style.shadow_color = Color(0, 0, 0, 0.55)
+	_reset_style.shadow_size  = 6
+	_reset_style.shadow_offset = Vector2(1, 3)
+
+	_reset_bg = Panel.new()
+	_reset_bg.size     = _reset_rect.size
 	_reset_bg.position = _reset_rect.position
+	_reset_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_reset_bg.add_theme_stylebox_override("panel", _reset_style)
 	ui.add_child(_reset_bg)
+
 	_reset_lbl = Label.new()
 	_reset_lbl.text = "重置游戏数据"
 	_reset_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_reset_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_reset_lbl.size = _reset_rect.size
+	_reset_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	_reset_lbl.size     = _reset_rect.size
 	_reset_lbl.position = _reset_rect.position
+	_reset_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var ls := LabelSettings.new()
-	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
-	ls.font_size = 17
-	ls.font_color = Color.WHITE
-	ls.outline_size = 2
-	ls.outline_color = Color(0.0, 0.0, 0.0, 0.8)
+	ls.font       = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size  = 20
+	ls.font_color = Color(1.0, 0.82, 0.82)
+	ls.outline_size  = 2
+	ls.outline_color = Color(0.0, 0.0, 0.0, 0.75)
+	ls.shadow_size   = 2
+	ls.shadow_color  = Color(0, 0, 0, 0.45)
 	_reset_lbl.label_settings = ls
 	ui.add_child(_reset_lbl)
 
@@ -229,8 +250,22 @@ func _reset_game() -> void:
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
 		bgm.play()
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_handle_click(event.position)
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			if _panel_visible and _upgrade_rect.has_point(event.position) and not _upgrade_disabled:
+				_upgrade_pressing = true
+				_upgrade_btn.pivot_offset = _upgrade_btn.size / 2
+				_upgrade_lbl.pivot_offset = _upgrade_lbl.size / 2
+				var tw := create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+				tw.tween_property(_upgrade_btn, "scale", Vector2(0.78, 0.78), 0.1)
+				tw.parallel().tween_property(_upgrade_lbl, "scale", Vector2(0.78, 0.78), 0.1)
+			_handle_click(event.position)
+		else:
+			if _upgrade_pressing:
+				_upgrade_pressing = false
+				var tw := create_tween().set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+				tw.tween_property(_upgrade_btn, "scale", Vector2(1.0, 1.0), 0.5)
+				tw.parallel().tween_property(_upgrade_lbl, "scale", Vector2(1.0, 1.0), 0.5)
 
 func _process(delta: float) -> void:
 	_produce_timer += delta
@@ -241,6 +276,12 @@ func _process(delta: float) -> void:
 	if _speech_timer >= SPEECH_TICK_INTERVAL:
 		_speech_timer = 0.0
 		_tick_speech()
+	if _reset_style != null:
+		var hov := _reset_rect.has_point(get_viewport().get_mouse_position())
+		if hov != _reset_hovering:
+			_reset_hovering = hov
+			_reset_style.bg_color     = Color(0.62, 0.12, 0.12) if hov else Color(0.42, 0.07, 0.07)
+			_reset_style.border_color = Color(0.95, 0.40, 0.32) if hov else Color(0.80, 0.28, 0.22)
 
 func _place_buildings() -> void:
 	for key in BUILDINGS:
@@ -605,6 +646,13 @@ func _set_panel_visible(v: bool) -> void:
 
 func _handle_click(pos: Vector2) -> void:
 	if _reset_rect.has_point(pos):
+		_reset_bg.pivot_offset = _reset_bg.size / 2
+		_reset_lbl.pivot_offset = _reset_lbl.size / 2
+		var tw := create_tween()
+		tw.tween_property(_reset_bg,  "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(_reset_lbl, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(_reset_bg,  "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(_reset_lbl, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
 		_reset_game()
 		return
 	if _panel_visible:
@@ -641,8 +689,8 @@ func _reposition_panel(key: String) -> void:
 	var py := clampf(bpos.y - ph * 0.5, 10.0, vp.y - ph - 10.0)
 	var tl := Vector2(px, py)
 	_panel_rect    = Rect2(tl, Vector2(pw, ph))
-	_upgrade_rect  = Rect2(tl + Vector2(50, 265), Vector2(300, 110))
-	_close_rect    = Rect2(tl + Vector2(335, 0), Vector2(60, 60))
+	_upgrade_rect  = Rect2(tl + Vector2(50, 250), Vector2(300, 110))
+	_close_rect    = Rect2(tl + Vector2(335, 20), Vector2(60, 60))
 	for i in _panel_movable.size():
 		(_panel_movable[i] as Control).position = tl + _panel_offsets[i]
 
@@ -654,18 +702,25 @@ func _refresh_panel() -> void:
 	var lv: int = state["level"]
 	_panel_name_lbl.text = "%s  Lv.%d" % [cfg["display"], lv]
 	var desc: String = cfg.get("desc", "")
+	var produces: String = cfg.get("produces", "")
+	var prod_info := ""
+	if produces != "":
+		var res_name := "木材" if produces == "wood" else "矿石"
+		prod_info = "\n当前产量：%d %s / %d 秒" % [PRODUCE_RATES[lv - 1], res_name, int(PRODUCE_INTERVAL)]
+		if lv < 3:
+			prod_info += "\n下一级产量：%d %s / %d 秒" % [PRODUCE_RATES[lv], res_name, int(PRODUCE_INTERVAL)]
 	if lv >= 3:
-		_panel_info_lbl.text = "%s\n\n已达最高等级" % desc
+		_panel_info_lbl.text = "%s%s\n\n已达最高等级" % [desc, prod_info]
 		_upgrade_disabled = true
 	else:
 		var cost = cfg["upgrade_cost"][lv - 1]
 		var home_lv: int = _building_nodes["home"]["level"]
 		if _panel_key != "home" and lv >= home_lv:
-			_panel_info_lbl.text = "%s\n\n需先升级主基地至 Lv.%d" % [desc, lv + 1]
+			_panel_info_lbl.text = "%s%s\n\n需先升级主基地至 Lv.%d" % [desc, prod_info, lv + 1]
 			_upgrade_disabled = true
 		else:
 			var ok: bool = _wood >= int(cost["wood"]) and _ore >= int(cost["ore"])
-			_panel_info_lbl.text = "%s\n\n升级消耗：木材 %d  矿石 %d" % [desc, int(cost["wood"]), int(cost["ore"])]
+			_panel_info_lbl.text = "%s%s\n\n升级消耗：木材 %d  矿石 %d" % [desc, prod_info, int(cost["wood"]), int(cost["ore"])]
 			_upgrade_disabled = not ok
 	var a: float = _upgrade_btn.modulate.a
 	var tint: Color = Color(0.55, 0.55, 0.55, a) if _upgrade_disabled else Color(1, 1, 1, a)
@@ -853,7 +908,7 @@ func _build_upgrade_fx_frames() -> void:
 			push_error("Upgrade FX: cannot load " + res_path)
 			return
 		tex = ImageTexture.create_from_image(img)
-	var cols := 6
+	var cols := 5
 	var rows := 2
 	var fw := tex.get_width() / cols
 	var fh := tex.get_height() / rows
@@ -877,7 +932,7 @@ func _play_upgrade_fx(pos: Vector2) -> void:
 		return
 	var fx := AnimatedSprite2D.new()
 	fx.sprite_frames = _upgrade_fx_frames
-	fx.position = pos
+	fx.position = pos + Vector2(0, -40)
 	fx.z_index = 1000
 	fx.scale = Vector2(_upgrade_fx_scale, _upgrade_fx_scale)
 	var mat := CanvasItemMaterial.new()

@@ -55,7 +55,7 @@ outline_color = Color(1, 0.96, 0.85, 0.7)
 
 [sub_resource type="LabelSettings" id="LabelSettings_5"]
 font = ExtResource("2")
-font_size = 42
+font_size = 24
 font_color = Color(1, 1, 1, 1)
 outline_size = 7
 outline_color = Color(0.06, 0.24, 0.05, 1)
@@ -187,9 +187,9 @@ text = ""
 [node name="UpgradeBtn" type="TextureRect" parent="UI"]
 modulate = Color(1, 1, 1, 0)
 offset_left = 490.0
-offset_top = 465.0
+offset_top = 450.0
 offset_right = 790.0
-offset_bottom = 575.0
+offset_bottom = 560.0
 texture = ExtResource("8")
 expand_mode = 1
 stretch_mode = 5
@@ -197,9 +197,9 @@ stretch_mode = 5
 [node name="UpgradeLbl" type="Label" parent="UI"]
 modulate = Color(1, 1, 1, 0)
 offset_left = 490.0
-offset_top = 465.0
+offset_top = 450.0
 offset_right = 790.0
-offset_bottom = 575.0
+offset_bottom = 560.0
 horizontal_alignment = 1
 vertical_alignment = 1
 label_settings = SubResource("LabelSettings_5")
@@ -208,9 +208,9 @@ text = "升 级"
 [node name="CloseBtn" type="TextureRect" parent="UI"]
 modulate = Color(1, 1, 1, 0)
 offset_left = 775.0
-offset_top = 200.0
+offset_top = 220.0
 offset_right = 835.0
-offset_bottom = 260.0
+offset_bottom = 280.0
 texture = ExtResource("7")
 expand_mode = 1
 stretch_mode = 5

@@ -1,31 +1,83 @@
-# BuildcraftEpoch - 项目概览
+# CLAUDE.md
 
-## 游戏定位
-2D 模拟经营 + 肉鸽养成
+本文件为 Claude Code（claude.ai/code）提供在此代码仓库中工作的指引。
 
-## 技术栈
-- Godot 4.6
-- 目标平台：**HTML5（浏览器直接运行）**
-- 渲染：GL Compatibility（适合 Web）
-- 物理：Jolt Physics
+## 项目概览
+BuildcraftEpoch — 2D 模拟经营 + 肉鸽养成
+- 引擎：Godot 4.6，目标平台：**HTML5（浏览器直接运行）**
+- 渲染：GL Compatibility；物理：Jolt Physics
+- 分辨率：1280×720，拉伸模式：`canvas_items`
 
-## 核心设计文档
-- 详细设计见 `docs/GDD.md`
+## 构建与运行
 
-## 建筑系统（速览）
-6 栋建筑，每栋 3 个等级，升级消耗木材 + 矿石。
-主基地等级限制其他建筑的最高等级。
+**导出为 HTML5**（需要 Godot 在 PATH 中，或通过 Steam 安装在 C/D/E 盘）：
+```
+export.bat
+```
+输出到 `bin/` 目录。脚本会自动从 PATH 检测 Godot，找不到则依次检索 C/D/E 盘的 Steam 路径。
 
-## 美术风格（必须遵守）
-- 等距视角（Isometric 2.5D），45° 斜上方俯视
-- 风格化 3D 卡通渲染，参考 Clash of Clans 画风
-- 主色：钴蓝、暖棕、原木色；强调色：金黄、冰蓝、紫罗兰
-- 光源统一来自左上方
-- 建筑底部必须有石砌地基平台，透明背景 PNG
-- 详细规范见 `docs/art_style_guide.md`
+**在本地运行导出的游戏：**
+```
+bin\start.bat
+```
+启动 `bin/server.ps1`——一个 PowerShell HTTP 服务器，自动附带 WebAssembly SharedArrayBuffer 所需的 `Cross-Origin-Opener-Policy` / `Cross-Origin-Embedder-Policy` 响应头。默认在浏览器打开 `http://127.0.0.1:8089`。
 
-## 当前阶段
-设计阶段，尚未开始编码。
+**在编辑器中运行：** 用 Godot 4.6 打开 `project.godot`，按 F5。
+
+## 架构说明
+
+### 场景流程
+- **入口**：`scenes/TitleScreen.tscn` + `TitleScreen.gd` — Logo 动画 + 开始按钮，点击后切换到 Main
+- **核心玩法**：`scenes/Main.tscn` + `Main.gd` — 全部游戏逻辑集中在这一个场景
+
+两个场景的 UI 均完全在 GDScript 中构建（`_ready` → `call_deferred("_build_ui")`），`.tscn` 文件只有极少节点。
+
+### 建筑系统（`Main.gd`）
+六栋建筑全部定义在 `Main.gd` 顶部的 `BUILDINGS` 常量字典中，每个条目包含：
+- `paths[3]` — 各等级静态 PNG
+- `anim_sheets[3]` — 横向 8 帧精灵表，用于待机动画
+- `pos` — 固定的 `Vector2` 屏幕坐标
+- `upgrade_cost[2]` — 1→2 级、2→3 级各自消耗的木材和矿石
+- `produces` — `"wood"`、`"ore"` 或 `""`（不产出）
+
+运行时状态存储在 `_building_nodes` 字典中，按建筑名索引，包含 `level`、`sprite` 节点、`label` 节点。
+
+**文件命名特例**：`Mine` 和 `Tavern` 的资源文件名首字母大写（`Mine1.png`、`Tavern1.png`），其余建筑全部小写。
+
+### 资源与生产
+- 资源变量：`_wood`、`_ore`、`_gold`（均为 int，位于 `Main.gd`）
+- 生产每 `PRODUCE_INTERVAL = 5.0` 秒触发一次（在 `_process` 中计时）
+- 各等级每次产出量：`PRODUCE_RATES = [3, 6, 12]`（仅伐木场产木材，矿石场产矿石）
+- 升级限制：非主基地建筑的等级不能超过主基地等级
+
+### 输入处理
+点击检测完全用手动距离/矩形判断——无 Area2D 或物理体：
+- 建筑命中半径：`distance_to(建筑坐标) < 80.0`
+- 面板矩形（`_panel_rect`、`_upgrade_rect`、`_close_rect`）在每次打开时通过 `_reposition_panel` 重算，确保不超出屏幕边界
+
+### 存档 / 读档
+每次生产触发或升级后将 JSON 写入 `user://savegame.json`。数据结构：`{wood, ore, gold, levels: {建筑key: int}}`。点击"重置游戏数据"按钮会删除该文件。
+
+### 精灵表
+建筑使用 `AnimatedSprite2D`，`SpriteFrames` 在运行时从横向 8 帧精灵表动态构建。缩放比例以 1 级静态 PNG 为基准，保证各等级视觉大小一致。升级特效使用 6×2 网格精灵表（`build_lv_up_anim_sheet.png`），叠加模式为 Additive。
+
+### 资源目录
+资源文件夹拼写为 **`asserts/`**（非 `assets/`）。主要子目录：
+- `asserts/image/building/building_template/` — 各等级静态 PNG
+- `asserts/image/building/building_anim_sheet/` — 待机动画精灵表
+- `asserts/image/ui/` — UI 贴图（面板、按钮、图标）
+- `asserts/fonts/` — ZCOOLKuaiLe.ttf（主显示字体）、NotoSansSC.ttf
+- `asserts/fx/building_anim_sheet/` — 升级特效精灵表
+- `asserts/image/animal/` — 鸟类、松鼠精灵表
+- `bin/` — 导出的 Web 构建产物（HTML/WASM/PCK），不要手动修改
+
+### 图像处理工具
+`tools/` 目录下是用于美术资源流程的独立 Python（PIL）脚本。脚本内路径**硬编码**为 `D:\Buildcraft-Epoch\...`，如果项目在其他盘需先修改路径。
+
+## 设计文档
+- 完整 GDD：`docs/GDD.md`
+- 美术风格规范：`docs/art_style_guide.md`
+- 建筑 key → 文件名对照：`docs/building_assets.md`
 
 ## AIART 使用规范（必须遵守）
 - `taskType` 必须是 `multiEdit`，禁止使用 `general` / `chat`
