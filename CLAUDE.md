@@ -37,4 +37,22 @@
   - `no camera movement, no zoom` — 禁止推拉镜头
   - `consistent framing` — 构图一致
 - `negativePrompt` 必须包含 `white background, solid background, background scenery`
-- 禁止生成后再调 `removeBackground`，一步到位生成带透明通道的图片
+- 禁止生成后再调 AIART 的 `removeBackground` 任务，一步到位生成带透明通道的图片
+- 收到结果后立即用 PIL 验证 alpha：`Image.open(path).mode == 'RGBA'` 且四角像素 alpha=0；AIART 即使 prompt 写了 transparent 也可能返回 RGB
+
+## 透明背景兜底脚本：`tools/remove_solid_bg.py`
+当 AIART 输出意外带纯色（近白）背景时，**用本脚本本地补 alpha，不要写一次性 PIL 代码**：
+
+```bash
+python tools/remove_solid_bg.py <png_path> [<png_path> ...] [--hard 10] [--soft 28]
+```
+
+- 自动取四角像素均值作为 bg 颜色
+- `--hard`（默认 10）：颜色距离 ≤ hard 的像素全透明
+- `--soft`（默认 28）：颜色距离 ≥ soft 的像素全不透明，中间线性渐变
+- **AIART 输出实测默认值偏弱**，会留下 alpha=1-50 的薄雾残留。推荐 `--hard 30 --soft 55`
+- 处理后必须执行 `--headless --import` 让 Godot 重新导入 PNG，alpha 才会生效
+- 验证：处理后用 PIL 查 alpha 直方图，1-50 区间应该 < 1 万像素，否则继续提高 hard
+
+## rembg 脚本：`tools/remove_bg.py`
+用于复杂背景的建筑序列图（U2Net AI 模型，慢但效果好）。UI 小图标用 `remove_solid_bg.py` 即可。

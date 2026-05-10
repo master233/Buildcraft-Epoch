@@ -1,3 +1,4 @@
 key	value
+# 配置键	对应值；value 内字面量 \n 自动转为换行
 loading_tip	感谢老板举办的活动 我们会好好利用这5W的奖金的 ~_~\n\n(故意加的loading 让大家看到这句话~)
 loading_time	3

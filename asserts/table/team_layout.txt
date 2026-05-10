@@ -1,4 +1,5 @@
 key	value
+# slot_N: 第 N 号站位坐标 x,y    layout_size_N: 队伍人数=N 时使用的站位序号列表（中心向两侧扩散，左侧优先）
 slot_0	460,585
 slot_1	550,585
 slot_2	640,585

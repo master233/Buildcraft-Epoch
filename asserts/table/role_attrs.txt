@@ -1,0 +1,3 @@
+role_id	init_atk	init_def	init_hp	init_speed	init_crit	init_dodge	lv_atk	lv_def	lv_hp	lv_speed	lv_crit	lv_dodge	star_atk	star_def	star_hp	star_speed	star_crit	star_dodge
+# 关联 roles.txt	初始攻击	初始防御	初始生命	初始出手速度	初始暴击率(万分比,500=5%)	初始闪避率(万分比)	每级攻击+	每级防御+	每级生命+	每级速度+	每级暴击+(万分比)	每级闪避+(万分比)	每星攻击+	每星防御+	每星生命+	每星速度+	每星暴击+(万分比)	每星闪避+(万分比)
+10001	100	60	1000	80	500	300	10	6	100	4	100	100	50	30	500	20	500	300

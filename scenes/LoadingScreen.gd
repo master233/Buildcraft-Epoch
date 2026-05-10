@@ -14,6 +14,7 @@ const BASE_PRELOAD: Array[String] = [
 	"res://asserts/image/animal/bird_sheet.png",
 	"res://asserts/image/animal/squirrel_sheet.png",
 	"res://asserts/image/role/role1_idle_sheet.png",
+	"res://asserts/image/ui/star.png",
 
 	# 建筑参考贴图（lv1，用于 _place_buildings 计算缩放，不随等级变）
 	"res://asserts/image/building/building_template/home1.png",

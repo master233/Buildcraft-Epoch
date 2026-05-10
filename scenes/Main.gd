@@ -105,7 +105,9 @@ var _roles: Dictionary = {}  # role_id → {name, idle_sheet, idle_frames, idle_
 var _slot_positions: Array[Vector2] = []
 var _layout_by_size: Dictionary = {}  # team_size:int → Array[int] of slot indices
 var _role_lines: Dictionary = {}
-var _team_slots: Array = []  # [{slot: Node2D, role_id: String, head_top_y: float}]
+var _team_slots: Array = []  # [{slot: Node2D, role_id: String, head_top_y, name_lbl, stars_lbl}]
+var _team_levels: Array[int] = []
+var _team_stars: Array[int] = []
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
 
@@ -214,6 +216,12 @@ func _reset_game() -> void:
 		else:
 			(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][0])
 		_refresh_label(key)
+	for i in _team_slots.size():
+		var rid: String = _team_slots[i].get("role_id", "")
+		var role_data: Dictionary = _roles.get(rid, {})
+		_team_levels[i] = int(role_data.get("init_level", 1))
+		_team_stars[i] = int(role_data.get("init_star", 1))
+		_refresh_role_label(i)
 	_refresh_hud()
 	_set_panel_visible(false)
 	_panel_key = ""
@@ -302,6 +310,15 @@ func _place_expedition_team() -> void:
 	if layout.is_empty():
 		push_warning("team_layout.txt missing layout_size_%d" % team_size)
 		return
+	# 初始化每个成员的等级/星级，默认值取自 roles.txt 的 init_level / init_star；
+	# 后面 _load_game 会用存档覆盖
+	_team_levels.clear()
+	_team_stars.clear()
+	for i in team_size:
+		var rid: String = EXPEDITION_TEAM_IDS[i]
+		var role_data: Dictionary = _roles.get(rid, {})
+		_team_levels.append(int(role_data.get("init_level", 1)))
+		_team_stars.append(int(role_data.get("init_star", 1)))
 	for i in team_size:
 		var role_id: String = EXPEDITION_TEAM_IDS[i]
 		if not _roles.has(role_id):
@@ -345,11 +362,20 @@ func _place_expedition_team() -> void:
 		sprite.play("idle")
 		slot.add_child(sprite)
 
+		# 星级行：放在角色脚下
+		var stars_box := HBoxContainer.new()
+		stars_box.alignment = BoxContainer.ALIGNMENT_CENTER
+		# 负 separation 抵消 PNG 自带的透明 padding，让相邻星视觉上不留空隙
+		stars_box.add_theme_constant_override("separation", -6)
+		stars_box.size = Vector2(160, 24)
+		stars_box.position = Vector2(-80.0, frame_h * idle_scale * 0.4)
+		slot.add_child(stars_box)
+
+		# 名字 + 等级：紧贴角色头顶
 		var name_lbl := Label.new()
-		name_lbl.text = String(data.get("name", role_id))
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		name_lbl.size = Vector2(120, 22)
-		name_lbl.position = Vector2(-60.0, -frame_h * idle_scale * 0.5 - 24.0)
+		name_lbl.size = Vector2(160, 22)
+		name_lbl.position = Vector2(-80.0, -frame_h * idle_scale * 0.5 - 24.0)
 		var nls := LabelSettings.new()
 		nls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 		nls.font_size = 14
@@ -358,6 +384,38 @@ func _place_expedition_team() -> void:
 		nls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
 		name_lbl.label_settings = nls
 		slot.add_child(name_lbl)
+		_team_slots[_team_slots.size() - 1]["name_lbl"] = name_lbl
+		_team_slots[_team_slots.size() - 1]["stars_box"] = stars_box
+		_refresh_role_label(_team_slots.size() - 1)
+
+const STAR_ICON_PATH := "res://asserts/image/ui/star.png"
+const STAR_ICON_SIZE := Vector2(22, 22)
+
+func _refresh_role_label(idx: int) -> void:
+	if idx < 0 or idx >= _team_slots.size():
+		return
+	var entry = _team_slots[idx]
+	var role_id: String = entry.get("role_id", "")
+	var role_data: Dictionary = _roles.get(role_id, {})
+	var role_name: String = String(role_data.get("name", role_id))
+	var lv: int = _team_levels[idx] if idx < _team_levels.size() else 1
+	var star: int = _team_stars[idx] if idx < _team_stars.size() else 1
+	if entry.has("name_lbl") and entry["name_lbl"]:
+		entry["name_lbl"].text = "%s  Lv.%d" % [role_name, lv]
+	if entry.has("stars_box") and entry["stars_box"]:
+		var box: HBoxContainer = entry["stars_box"]
+		for child in box.get_children():
+			box.remove_child(child)
+			child.queue_free()
+		var star_tex: Texture2D = load(STAR_ICON_PATH)
+		for n in maxi(star, 0):
+			var sr := TextureRect.new()
+			sr.texture = star_tex
+			sr.custom_minimum_size = STAR_ICON_SIZE
+			sr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			sr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			box.add_child(sr)
+
 
 func _read_table_text(path: String) -> String:
 	# 注意：不能用 FileAccess.file_exists() 预检查 —— Godot 4 在 Web 导出里对 pack 内的
@@ -384,7 +442,7 @@ func _load_roles_table() -> void:
 	var headers := (raw[0] as String).strip_edges().split("\t")
 	for i in range(1, raw.size()):
 		var line: String = (raw[i] as String).strip_edges()
-		if line.is_empty():
+		if line.is_empty() or line.begins_with("#"):
 			continue
 		var parts := line.split("\t")
 		if parts.size() < headers.size():
@@ -401,6 +459,8 @@ func _load_roles_table() -> void:
 			"idle_frames": int(entry.get("idle_frames", "1")),
 			"idle_scale": float(entry.get("idle_scale", "1.0")),
 			"idle_anim_fps": float(entry.get("idle_anim_fps", "8.0")),
+			"init_level": int(entry.get("init_level", "1")),
+			"init_star": int(entry.get("init_star", "1")),
 		}
 
 func _load_team_layout() -> void:
@@ -413,7 +473,7 @@ func _load_team_layout() -> void:
 	var slot_dict := {}
 	for i in range(1, raw.size()):
 		var line: String = (raw[i] as String).strip_edges()
-		if line.is_empty():
+		if line.is_empty() or line.begins_with("#"):
 			continue
 		var parts := line.split("\t")
 		if parts.size() < 2:
@@ -447,7 +507,7 @@ func _load_role_lines() -> void:
 	var raw_lines := text.split("\n", false)
 	for i in range(1, raw_lines.size()):  # skip header
 		var line: String = (raw_lines[i] as String).strip_edges()
-		if line.is_empty():
+		if line.is_empty() or line.begins_with("#"):
 			continue
 		var parts := line.split("\t")
 		if parts.size() < 3:
@@ -722,9 +782,17 @@ func _refresh_label(key: String) -> void:
 	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
 
 func _save_game() -> void:
-	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "levels": {}}
+	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "levels": {}, "roles": {}}
 	for key in _building_nodes:
 		data["levels"][key] = _building_nodes[key]["level"]
+	for i in _team_slots.size():
+		var rid: String = _team_slots[i].get("role_id", "")
+		if rid.is_empty():
+			continue
+		data["roles"][rid] = {
+			"level": _team_levels[i] if i < _team_levels.size() else 1,
+			"star": _team_stars[i] if i < _team_stars.size() else 1,
+		}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		return
@@ -761,6 +829,20 @@ func _load_game() -> void:
 			else:
 				(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][lv - 1])
 			_refresh_label(key)
+	if data.has("roles") and data["roles"] is Dictionary:
+		var roles_state: Dictionary = data["roles"]
+		for i in _team_slots.size():
+			var rid: String = _team_slots[i].get("role_id", "")
+			if rid.is_empty() or not roles_state.has(rid):
+				continue
+			var s = roles_state[rid]
+			if not (s is Dictionary):
+				continue
+			if i < _team_levels.size():
+				_team_levels[i] = int(s.get("level", _team_levels[i]))
+			if i < _team_stars.size():
+				_team_stars[i] = int(s.get("star", _team_stars[i]))
+			_refresh_role_label(i)
 
 func _build_upgrade_fx_frames() -> void:
 	var res_path := "res://asserts/fx/building_anim_sheet/build_lv_up_anim_sheet.png"

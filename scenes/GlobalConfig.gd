@@ -27,7 +27,7 @@ func _load() -> void:
 		return
 	for i in range(1, raw.size()):  # skip header
 		var line: String = (raw[i] as String).strip_edges()
-		if line.is_empty():
+		if line.is_empty() or line.begins_with("#"):
 			continue
 		var parts := line.split("\t")
 		if parts.size() < 2:
