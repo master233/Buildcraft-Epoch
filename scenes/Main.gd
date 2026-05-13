@@ -18,13 +18,16 @@ const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
 
-# 当前队伍成员（按 1 号位起的真实序号），值为 roles.txt 中的 role_id。
-const EXPEDITION_TEAM_IDS: Array[String] = ["10001"]
+# 远征队伍由 _resolve_team_from_owned() 根据 owned 角色列表推导：
+# owned 取自存档，没存档或字段缺失时读 GlobalConfig.default_owned_roles；
+# 入队规则：owned.size() <= MAX_EXPEDITION_SIZE 时全部自动入队，超过则取前 N 个。
+const MAX_EXPEDITION_SIZE := 5
+var _owned_role_ids: Array[String] = []
+var _expedition_team_ids: Array[String] = []
 const ROLES_TABLE_PATH := "res://asserts/table/roles.txt"
 const TEAM_LAYOUT_PATH := "res://asserts/table/team_layout.txt"
 const ROLE_LINES_PATH := "res://asserts/table/role_lines.txt"
-const SPEECH_TICK_INTERVAL := 5.0
-const SPEECH_CHANCE := 0.30
+const SPEECH_TICK_INTERVAL := 6.0
 const SPEECH_DURATION := 3.0
 
 var _panel_rect    := Rect2(440, 200, 400, 380)
@@ -113,6 +116,7 @@ var _team_levels: Array[int] = []
 var _team_stars: Array[int] = []
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
+var _last_speech_slot_idx: int = -1
 
 func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
@@ -169,6 +173,7 @@ func _setup() -> void:
 	_load_roles_table()
 	_load_team_layout()
 	_load_role_lines()
+	_resolve_team_from_owned()
 	_place_expedition_team()
 	_load_game()
 	_refresh_hud()
@@ -237,15 +242,22 @@ func _reset_game() -> void:
 		else:
 			(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][0])
 		_refresh_label(key)
-	for i in _team_slots.size():
-		var rid: String = _team_slots[i].get("role_id", "")
-		var role_data: Dictionary = _roles.get(rid, {})
-		_team_levels[i] = int(role_data.get("init_level", 1))
-		_team_stars[i] = int(role_data.get("init_star", 1))
-		_refresh_role_label(i)
+	_clear_team_nodes()
+	_resolve_team_from_owned()
+	_place_expedition_team()
 	_refresh_hud()
 	_set_panel_visible(false)
 	_panel_key = ""
+	_save_game()
+
+func _clear_team_nodes() -> void:
+	for entry in _team_slots:
+		var node = entry.get("slot", null)
+		if node != null and is_instance_valid(node):
+			node.queue_free()
+	_team_slots.clear()
+	_team_levels.clear()
+	_team_stars.clear()
 
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
@@ -344,7 +356,7 @@ func _place_buildings() -> void:
 		_refresh_label(key)
 
 func _place_expedition_team() -> void:
-	var team_size: int = EXPEDITION_TEAM_IDS.size()
+	var team_size: int = _expedition_team_ids.size()
 	if team_size <= 0 or _slot_positions.is_empty():
 		return
 	var layout: Array = _layout_by_size.get(team_size, [])
@@ -356,12 +368,12 @@ func _place_expedition_team() -> void:
 	_team_levels.clear()
 	_team_stars.clear()
 	for i in team_size:
-		var rid: String = EXPEDITION_TEAM_IDS[i]
+		var rid: String = _expedition_team_ids[i]
 		var role_data: Dictionary = _roles.get(rid, {})
 		_team_levels.append(int(role_data.get("init_level", 1)))
 		_team_stars.append(int(role_data.get("init_star", 1)))
 	for i in team_size:
-		var role_id: String = EXPEDITION_TEAM_IDS[i]
+		var role_id: String = _expedition_team_ids[i]
 		if not _roles.has(role_id):
 			push_warning("roles.txt missing role_id: " + role_id)
 			continue
@@ -504,6 +516,49 @@ func _load_roles_table() -> void:
 			"init_star": int(entry.get("init_star", "1")),
 		}
 
+func _resolve_team_from_owned() -> void:
+	# 存档存在 → 以存档为准（即使某字段缺失也不回退到配表，避免静默合入默认角色）
+	# 存档不存在（首次进入 / 重置后） → 从 GlobalConfig.default_owned_roles 初始化，队伍取前 MAX_EXPEDITION_SIZE 人
+	_owned_role_ids.clear()
+	_expedition_team_ids.clear()
+	if FileAccess.file_exists(SAVE_PATH):
+		var save_data := _read_save_dict()
+		var owned_arr: Array = save_data.get("owned_roles", []) if save_data.get("owned_roles", null) is Array else []
+		var team_arr: Array = save_data.get("team_ids", []) if save_data.get("team_ids", null) is Array else []
+		for rid in owned_arr:
+			var s: String = String(rid)
+			if _roles.has(s) and not s in _owned_role_ids:
+				_owned_role_ids.append(s)
+		for rid in team_arr:
+			var s2: String = String(rid)
+			if not _roles.has(s2) or s2 in _expedition_team_ids:
+				continue
+			if not s2 in _owned_role_ids:
+				continue
+			if _expedition_team_ids.size() >= MAX_EXPEDITION_SIZE:
+				break
+			_expedition_team_ids.append(s2)
+	else:
+		var defaults := GlobalConfig.get_str("default_owned_roles", "")
+		for piece in defaults.split(","):
+			var rid: String = (piece as String).strip_edges()
+			if rid.is_empty() or not _roles.has(rid) or rid in _owned_role_ids:
+				continue
+			_owned_role_ids.append(rid)
+		var cap: int = min(_owned_role_ids.size(), MAX_EXPEDITION_SIZE)
+		for i in cap:
+			_expedition_team_ids.append(_owned_role_ids[i])
+
+func _read_save_dict() -> Dictionary:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return {}
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed = JSON.parse_string(file.get_as_text())
+	file.close()
+	return parsed if parsed is Dictionary else {}
+
 func _load_team_layout() -> void:
 	var text := _read_table_text(TEAM_LAYOUT_PATH)
 	if text.is_empty():
@@ -562,8 +617,6 @@ func _load_role_lines() -> void:
 func _tick_speech() -> void:
 	if _is_anyone_speaking or _team_slots.is_empty():
 		return
-	if randf() > SPEECH_CHANCE:
-		return
 	var eligible: Array[int] = []
 	for i in _team_slots.size():
 		var rid: String = _team_slots[i]["role_id"]
@@ -571,7 +624,12 @@ func _tick_speech() -> void:
 			eligible.append(i)
 	if eligible.is_empty():
 		return
-	var idx: int = eligible[randi() % eligible.size()]
+	# 不允许与上一次同槽位重复；只有一人可选时才豁免
+	var pool: Array[int] = eligible
+	if eligible.size() > 1 and _last_speech_slot_idx in eligible:
+		pool = eligible.filter(func(i): return i != _last_speech_slot_idx)
+	var idx: int = pool[randi() % pool.size()]
+	_last_speech_slot_idx = idx
 	_show_speech_bubble(idx)
 
 func _show_speech_bubble(slot_idx: int) -> void:
@@ -837,7 +895,7 @@ func _refresh_label(key: String) -> void:
 	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
 
 func _save_game() -> void:
-	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "levels": {}, "roles": {}}
+	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
 	for key in _building_nodes:
 		data["levels"][key] = _building_nodes[key]["level"]
 	for i in _team_slots.size():
