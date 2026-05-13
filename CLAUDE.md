@@ -92,6 +92,44 @@ bin\start.bat
 - 禁止生成后再调 AIART 的 `removeBackground` 任务，一步到位生成带透明通道的图片
 - 收到结果后立即用 PIL 验证 alpha：`Image.open(path).mode == 'RGBA'` 且四角像素 alpha=0；AIART 即使 prompt 写了 transparent 也可能返回 RGB
 
+### 角色序列帧生成规则（白色背景视频）
+**重要：用户提供的所有角色视频背景都是纯白色，必须使用以下流程，禁止使用 rembg**
+
+标准流程（12 帧，目标尺寸 512×512）：
+1. **询问截取时间段**：必须先询问用户提供视频截取时间段（例如 "2-4 秒"）
+2. **提取原始帧**：
+   ```bash
+   ffmpeg -i "视频路径" -ss 起始秒 -to 结束秒 -vf "fps=12/时长,scale=-1:-1" -vsync 0 "输出路径/frame_%02d.png"
+   ```
+3. **备份原始帧**：
+   ```bash
+   mkdir -p 备份目录 && cp 原始帧*.png 备份目录/
+   ```
+4. **直接去白色背景**（**禁止使用 rembg**，白色背景用颜色距离算法即可）：
+   ```bash
+   python tools/remove_solid_bg.py 原始帧*.png --hard 30 --soft 55
+   ```
+5. **合并为精灵表并缩放到 512 高度**：
+   ```python
+   from PIL import Image
+   import glob
+   frames = sorted(glob.glob('原始帧*.png'))
+   imgs = [Image.open(f) for f in frames]
+   w, h = imgs[0].size
+   sheet = Image.new('RGBA', (w * len(imgs), h), (0, 0, 0, 0))
+   for i, img in enumerate(imgs):
+       sheet.paste(img, (i * w, 0))
+   scale = 512 / h
+   new_w = int(w * len(imgs) * scale)
+   resized = sheet.resize((new_w, 512), Image.Resampling.LANCZOS)
+   resized.save('角色_alert_sheet.png')
+   ```
+6. **更新配置表**：在 `asserts/table/roles.txt` 中添加 `alert_sheet` 路径和参数（12 帧，12 fps）
+
+**为什么不用 rembg**：
+- rembg 的 AI 模型会把接近白色的物体（如弓箭、浅色装备）误判为背景去除
+- 纯白背景用简单的颜色距离算法（`remove_solid_bg.py`）更可靠、更快
+
 ## 透明背景兜底脚本：`tools/remove_solid_bg.py`
 当 AIART 输出意外带纯色（近白）背景时，**用本脚本本地补 alpha，不要写一次性 PIL 代码**：
 
