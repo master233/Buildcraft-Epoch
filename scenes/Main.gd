@@ -398,6 +398,7 @@ func _place_expedition_team() -> void:
 			"slot": slot,
 			"role_id": role_id,
 			"head_top_y": -frame_h * idle_scale * 0.5,
+			"current_action": "idle",  # 当前动作：idle / alert / attack / cast
 		})
 		var sf := SpriteFrames.new()
 		sf.add_animation("idle")
@@ -409,11 +410,31 @@ func _place_expedition_team() -> void:
 			at.region = Rect2(f * frame_w, 0, frame_w, frame_h)
 			at.filter_clip = true
 			sf.add_frame("idle", at)
+
+		# 构建 alert 动画（如果有）
+		var alert_sheet_path: String = String(data.get("alert_sheet", ""))
+		if not alert_sheet_path.is_empty() and ResourceLoader.exists(alert_sheet_path):
+			var alert_frames: int = int(data.get("alert_frames", 1))
+			var alert_anim_fps: float = float(data.get("alert_anim_fps", 12.0))
+			var alert_tex: Texture2D = load(alert_sheet_path)
+			var alert_w := alert_tex.get_width() / alert_frames
+			var alert_h := alert_tex.get_height()
+			sf.add_animation("alert")
+			sf.set_animation_speed("alert", alert_anim_fps)
+			sf.set_animation_loop("alert", true)
+			for f in alert_frames:
+				var at := AtlasTexture.new()
+				at.atlas = alert_tex
+				at.region = Rect2(f * alert_w, 0, alert_w, alert_h)
+				at.filter_clip = true
+				sf.add_frame("alert", at)
+
 		var sprite := AnimatedSprite2D.new()
 		sprite.sprite_frames = sf
 		sprite.scale = Vector2(idle_scale, idle_scale)
 		sprite.play("idle")
 		slot.add_child(sprite)
+		_team_slots[_team_slots.size() - 1]["sprite"] = sprite
 
 		# 星级行：放在角色脚下
 		var stars_box := HBoxContainer.new()
@@ -512,6 +533,9 @@ func _load_roles_table() -> void:
 			"idle_frames": int(entry.get("idle_frames", "1")),
 			"idle_scale": float(entry.get("idle_scale", "1.0")),
 			"idle_anim_fps": float(entry.get("idle_anim_fps", "8.0")),
+			"alert_sheet": String(entry.get("alert_sheet", "")),
+			"alert_frames": int(entry.get("alert_frames", "1")),
+			"alert_anim_fps": float(entry.get("alert_anim_fps", "12.0")),
 			"init_level": int(entry.get("init_level", "1")),
 			"init_star": int(entry.get("init_star", "1")),
 		}
@@ -726,6 +750,15 @@ func _handle_click(pos: Vector2) -> void:
 		_set_panel_visible(false)
 		_panel_key = ""
 		return
+
+	# 检测角色点击
+	for i in _team_slots.size():
+		var entry = _team_slots[i]
+		var slot: Node2D = entry["slot"]
+		if pos.distance_to(slot.position) < 60.0:
+			_switch_role_action(i)
+			return
+
 	for key in _building_nodes:
 		if pos.distance_to(BUILDINGS[key]["pos"]) < 80.0:
 			_panel_key = key
@@ -733,6 +766,31 @@ func _handle_click(pos: Vector2) -> void:
 			_reposition_panel(key)
 			_set_panel_visible(true)
 			return
+
+func _switch_role_action(idx: int) -> void:
+	if idx < 0 or idx >= _team_slots.size():
+		return
+	var entry = _team_slots[idx]
+	var sprite: AnimatedSprite2D = entry.get("sprite", null)
+	if sprite == null:
+		return
+	var current: String = entry.get("current_action", "idle")
+	var next_action: String = ""
+	match current:
+		"idle":
+			# 待机 → 警戒（如果有 alert 动画）
+			if sprite.sprite_frames.has_animation("alert"):
+				next_action = "alert"
+			else:
+				next_action = "idle"  # 没有 alert，保持 idle
+		"alert":
+			# 警戒 → 攻击（暂无，跳过）→ 施法（暂无，跳过）→ 待机
+			next_action = "idle"
+		_:
+			next_action = "idle"
+
+	entry["current_action"] = next_action
+	sprite.play(next_action)
 
 func _reposition_panel(key: String) -> void:
 	var vp   := get_viewport_rect().size
