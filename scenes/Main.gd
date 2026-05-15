@@ -447,6 +447,24 @@ func _place_expedition_team() -> void:
 				at.filter_clip = true
 				sf.add_frame("attack", at)
 
+		# 构建 dead 动画（如果有）
+		var dead_sheet_path: String = String(data.get("dead_sheet", ""))
+		if not dead_sheet_path.is_empty() and ResourceLoader.exists(dead_sheet_path):
+			var dead_frames: int = int(data.get("dead_frames", 1))
+			var dead_anim_fps: float = float(data.get("dead_anim_fps", 12.0))
+			var dead_tex: Texture2D = load(dead_sheet_path)
+			var dead_w := dead_tex.get_width() / dead_frames
+			var dead_h := dead_tex.get_height()
+			sf.add_animation("dead")
+			sf.set_animation_speed("dead", dead_anim_fps)
+			sf.set_animation_loop("dead", false)
+			for f in dead_frames:
+				var at := AtlasTexture.new()
+				at.atlas = dead_tex
+				at.region = Rect2(f * dead_w, 0, dead_w, dead_h)
+				at.filter_clip = true
+				sf.add_frame("dead", at)
+
 		# 构建 cast 动画（如果有）
 		var cast_sheet_path: String = String(data.get("cast_sheet", ""))
 		if not cast_sheet_path.is_empty() and ResourceLoader.exists(cast_sheet_path):
@@ -578,6 +596,9 @@ func _load_roles_table() -> void:
 			"cast_sheet": String(entry.get("cast_sheet", "")),
 			"cast_frames": int(entry.get("cast_frames", "1")),
 			"cast_anim_fps": float(entry.get("cast_anim_fps", "12.0")),
+			"dead_sheet": String(entry.get("dead_sheet", "")),
+			"dead_frames": int(entry.get("dead_frames", "1")),
+			"dead_anim_fps": float(entry.get("dead_anim_fps", "12.0")),
 			"init_level": int(entry.get("init_level", "1")),
 			"init_star": int(entry.get("init_star", "1")),
 		}
@@ -816,7 +837,7 @@ func _switch_role_action(idx: int) -> void:
 	var sprite: AnimatedSprite2D = entry.get("sprite", null)
 	if sprite == null:
 		return
-	var action_order := ["idle", "alert", "attack", "cast"]
+	var action_order := ["idle", "alert", "attack", "cast", "dead"]
 	var current: String = entry.get("current_action", "idle")
 	var current_idx := action_order.find(current)
 	if current_idx == -1:
