@@ -93,6 +93,9 @@ var _reset_bg: Panel = null
 var _reset_lbl: Label = null
 var _reset_style: StyleBoxFlat = null
 var _reset_hovering: bool = false
+var _expedition_btn_bg: Panel = null
+var _expedition_btn_lbl: Label = null
+var _expedition_btn_rect := Rect2(0, 0, 140, 48)
 var _panel_movable: Array = []
 var _panel_offsets: Array[Vector2] = []
 var _building_nodes: Dictionary = {}
@@ -186,6 +189,7 @@ func _setup() -> void:
 	_spawn_squirrel(500.0, 0.50)
 	_spawn_squirrel(820.0, 0.55)
 	_spawn_reset_button()
+	_spawn_expedition_button()
 
 func _spawn_reset_button() -> void:
 	var ui := $UI
@@ -228,6 +232,59 @@ func _spawn_reset_button() -> void:
 	ls.shadow_color  = Color(0, 0, 0, 0.45)
 	_reset_lbl.label_settings = ls
 	ui.add_child(_reset_lbl)
+
+const BATTLE_SCENE_PATH := "res://scenes/BattleScene.tscn"
+
+func _spawn_expedition_button() -> void:
+	var ui := $UI
+	var vp := get_viewport_rect().size
+	# 队伍最低 slot y=585，角色脚下偏移约 60px，按钮放在 y≈670
+	var btn_x := vp.x * 0.5 - _expedition_btn_rect.size.x * 0.5
+	var btn_y := 670.0
+	_expedition_btn_rect = Rect2(btn_x, btn_y, _expedition_btn_rect.size.x, _expedition_btn_rect.size.y)
+
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.55, 0.32, 0.05, 0.92)
+	style.set_corner_radius_all(12)
+	style.border_width_top    = 2
+	style.border_width_right  = 2
+	style.border_width_bottom = 3
+	style.border_width_left   = 2
+	style.border_color  = Color(1.0, 0.78, 0.25, 1.0)
+	style.shadow_color  = Color(0, 0, 0, 0.6)
+	style.shadow_size   = 8
+	style.shadow_offset = Vector2(1, 3)
+
+	_expedition_btn_bg = Panel.new()
+	_expedition_btn_bg.size     = _expedition_btn_rect.size
+	_expedition_btn_bg.position = _expedition_btn_rect.position
+	_expedition_btn_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_expedition_btn_bg.add_theme_stylebox_override("panel", style)
+	ui.add_child(_expedition_btn_bg)
+
+	_expedition_btn_lbl = Label.new()
+	_expedition_btn_lbl.text = "出征"
+	_expedition_btn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_expedition_btn_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	_expedition_btn_lbl.size     = _expedition_btn_rect.size
+	_expedition_btn_lbl.position = _expedition_btn_rect.position
+	_expedition_btn_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+	var ls := LabelSettings.new()
+	ls.font       = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size  = 26
+	ls.font_color = Color(1.0, 0.95, 0.6)
+	ls.outline_size  = 3
+	ls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
+	ls.shadow_size   = 3
+	ls.shadow_color  = Color(0, 0, 0, 0.5)
+	_expedition_btn_lbl.label_settings = ls
+	ui.add_child(_expedition_btn_lbl)
+	_expedition_btn_lbl.gui_input.connect(_on_expedition_btn_input)
+
+func _on_expedition_btn_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		var scene := load(BATTLE_SCENE_PATH) as PackedScene
+		SceneTransition.change_to(scene)
 
 func _reset_game() -> void:
 	if FileAccess.file_exists(SAVE_PATH):
