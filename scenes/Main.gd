@@ -429,6 +429,42 @@ func _place_expedition_team() -> void:
 				at.filter_clip = true
 				sf.add_frame("alert", at)
 
+		# 构建 attack 动画（如果有）
+		var attack_sheet_path: String = String(data.get("attack_sheet", ""))
+		if not attack_sheet_path.is_empty() and ResourceLoader.exists(attack_sheet_path):
+			var attack_frames: int = int(data.get("attack_frames", 1))
+			var attack_anim_fps: float = float(data.get("attack_anim_fps", 12.0))
+			var attack_tex: Texture2D = load(attack_sheet_path)
+			var attack_w := attack_tex.get_width() / attack_frames
+			var attack_h := attack_tex.get_height()
+			sf.add_animation("attack")
+			sf.set_animation_speed("attack", attack_anim_fps)
+			sf.set_animation_loop("attack", true)
+			for f in attack_frames:
+				var at := AtlasTexture.new()
+				at.atlas = attack_tex
+				at.region = Rect2(f * attack_w, 0, attack_w, attack_h)
+				at.filter_clip = true
+				sf.add_frame("attack", at)
+
+		# 构建 cast 动画（如果有）
+		var cast_sheet_path: String = String(data.get("cast_sheet", ""))
+		if not cast_sheet_path.is_empty() and ResourceLoader.exists(cast_sheet_path):
+			var cast_frames: int = int(data.get("cast_frames", 1))
+			var cast_anim_fps: float = float(data.get("cast_anim_fps", 12.0))
+			var cast_tex: Texture2D = load(cast_sheet_path)
+			var cast_w := cast_tex.get_width() / cast_frames
+			var cast_h := cast_tex.get_height()
+			sf.add_animation("cast")
+			sf.set_animation_speed("cast", cast_anim_fps)
+			sf.set_animation_loop("cast", true)
+			for f in cast_frames:
+				var at := AtlasTexture.new()
+				at.atlas = cast_tex
+				at.region = Rect2(f * cast_w, 0, cast_w, cast_h)
+				at.filter_clip = true
+				sf.add_frame("cast", at)
+
 		var sprite := AnimatedSprite2D.new()
 		sprite.sprite_frames = sf
 		sprite.scale = Vector2(idle_scale, idle_scale)
@@ -536,6 +572,12 @@ func _load_roles_table() -> void:
 			"alert_sheet": String(entry.get("alert_sheet", "")),
 			"alert_frames": int(entry.get("alert_frames", "1")),
 			"alert_anim_fps": float(entry.get("alert_anim_fps", "12.0")),
+			"attack_sheet": String(entry.get("attack_sheet", "")),
+			"attack_frames": int(entry.get("attack_frames", "1")),
+			"attack_anim_fps": float(entry.get("attack_anim_fps", "12.0")),
+			"cast_sheet": String(entry.get("cast_sheet", "")),
+			"cast_frames": int(entry.get("cast_frames", "1")),
+			"cast_anim_fps": float(entry.get("cast_anim_fps", "12.0")),
 			"init_level": int(entry.get("init_level", "1")),
 			"init_star": int(entry.get("init_star", "1")),
 		}
@@ -774,20 +816,17 @@ func _switch_role_action(idx: int) -> void:
 	var sprite: AnimatedSprite2D = entry.get("sprite", null)
 	if sprite == null:
 		return
+	var action_order := ["idle", "alert", "attack", "cast"]
 	var current: String = entry.get("current_action", "idle")
-	var next_action: String = ""
-	match current:
-		"idle":
-			# 待机 → 警戒（如果有 alert 动画）
-			if sprite.sprite_frames.has_animation("alert"):
-				next_action = "alert"
-			else:
-				next_action = "idle"  # 没有 alert，保持 idle
-		"alert":
-			# 警戒 → 攻击（暂无，跳过）→ 施法（暂无，跳过）→ 待机
-			next_action = "idle"
-		_:
-			next_action = "idle"
+	var current_idx := action_order.find(current)
+	if current_idx == -1:
+		current_idx = 0
+	var next_action := "idle"
+	for step in range(1, action_order.size() + 1):
+		var candidate: String = action_order[(current_idx + step) % action_order.size()]
+		if candidate == "idle" or sprite.sprite_frames.has_animation(candidate):
+			next_action = candidate
+			break
 
 	entry["current_action"] = next_action
 	sprite.play(next_action)

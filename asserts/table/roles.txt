@@ -1,7 +1,7 @@
-role_id	name	idle_sheet	idle_frames	idle_scale	idle_anim_fps	alert_sheet	alert_frames	alert_anim_fps	init_level	init_star
-# 角色 ID	显示名称	idle 序列图路径	idle 帧数	显示缩放	idle 播放帧率	alert 序列图路径	alert 帧数	alert 播放帧率	初始等级	初始星级
-10001	圣盾骑士	res://asserts/image/role/role1_idle_sheet.png	12	0.27	6	res://asserts/image/role/role1_alert_sheet.png	12	12	1	1
-10002	远行游侠	res://asserts/image/role/role2_idle_sheet.png	12	0.27	6	res://asserts/image/role/role2_alert_sheet.png	12	12	1	1
-10003	兽族萨满	res://asserts/image/role/role3_idle_sheet.png	12	0.27	6	res://asserts/image/role/role3_alert_sheet.png	12	12	1	1
-10004	亡灵法师	res://asserts/image/role/role4_idle_sheet.png	12	0.27	6	res://asserts/image/role/role4_alert_sheet.png	12	12	1	1
-10005	矮人锤手	res://asserts/image/role/role5_idle_sheet.png	12	0.27	6	res://asserts/image/role/role5_alert_sheet.png	12	12	1	1
+role_id	name	idle_sheet	idle_frames	idle_scale	idle_anim_fps	alert_sheet	alert_frames	alert_anim_fps	attack_sheet	attack_frames	attack_anim_fps	cast_sheet	cast_frames	cast_anim_fps	init_level	init_star
+# 角色 ID	显示名称	idle 序列图路径	idle 帧数	显示缩放	idle 播放帧率	alert 序列图路径	alert 帧数	alert 播放帧率	attack 序列图路径	attack 帧数	attack 播放帧率	cast 序列图路径	cast 帧数	cast 播放帧率	初始等级	初始星级
+10001	圣盾骑士	res://asserts/image/role/role1_idle_sheet.png	12	0.27	6	res://asserts/image/role/role1_alert_sheet.png	12	12	res://asserts/image/role/role1_attack_sheet.png	12	12				1	1
+10002	远行游侠	res://asserts/image/role/role2_idle_sheet.png	12	0.27	6	res://asserts/image/role/role2_alert_sheet.png	12	12							1	1
+10003	兽族萨满	res://asserts/image/role/role3_idle_sheet.png	12	0.27	6	res://asserts/image/role/role3_alert_sheet.png	12	12							1	1
+10004	亡灵法师	res://asserts/image/role/role4_idle_sheet.png	12	0.27	6	res://asserts/image/role/role4_alert_sheet.png	12	12							1	1
+10005	矮人锤手	res://asserts/image/role/role5_idle_sheet.png	12	0.27	6	res://asserts/image/role/role5_alert_sheet.png	12	12							1	1
