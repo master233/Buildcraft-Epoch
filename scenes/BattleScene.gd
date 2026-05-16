@@ -1,10 +1,19 @@
 extends Node2D
 
-const MAIN_SCENE_PATH       := "res://scenes/Main.tscn"
-const ROLES_TABLE_PATH      := "res://asserts/table/roles.txt"
-const BATTLE_LAYOUT_PATH    := "res://asserts/table/battle_layout.txt"
-const GRID_ROWS             := 7
-const GRID_COLS             := 12
+const MAIN_SCENE_PATH    := "res://scenes/Main.tscn"
+const ROLES_TABLE_PATH   := "res://asserts/table/roles.txt"
+const BATTLE_LAYOUT_PATH := "res://asserts/table/battle_layout.txt"
+const GRID_ROWS          := 7
+const GRID_COLS          := 12
+
+const ROLE_MAX_HP := 100
+const ROLE_MAX_MP := 60
+
+# 血条显示参数（相对角色中心）
+const BAR_W      := 86.4
+const BAR_H      := 9.0
+const HP_OFFSET  := Vector2(-43.2, -68.0)  # 血条左上角相对角色中心
+const MP_OFFSET  := Vector2(-43.2, -57.0)  # 蓝条左上角
 
 func _ready() -> void:
 	call_deferred("_build_ui")
@@ -12,7 +21,6 @@ func _ready() -> void:
 func _build_ui() -> void:
 	var vp := get_viewport_rect().size
 
-	# 背景
 	var bg := Sprite2D.new()
 	bg.texture = load("res://asserts/image/backgroud/bg_battle.jpg")
 	var tex := bg.texture
@@ -22,15 +30,12 @@ func _build_ui() -> void:
 	bg.z_index = -10
 	add_child(bg)
 
-	# 放置角色
 	_place_battle_roles(vp)
 
-	# UI 层
 	var ui := CanvasLayer.new()
 	ui.layer = 10
 	add_child(ui)
 
-	# 右上角退出按钮
 	var exit_btn := _make_button("退出", Vector2(vp.x - 120, 16), Vector2(104, 44))
 	ui.add_child(exit_btn.panel)
 	ui.add_child(exit_btn.label)
@@ -52,13 +57,13 @@ func _load_roles_table() -> Dictionary:
 			continue
 		var rid := int(parts[0])
 		result[rid] = {
-			"idle_sheet":       parts[2]  if parts.size() > 2  else "",
-			"idle_frames":      int(parts[3])   if parts.size() > 3  else 1,
-			"idle_scale":       float(parts[4]) if parts.size() > 4  else 0.27,
-			"idle_anim_fps":    float(parts[5]) if parts.size() > 5  else 6.0,
-			"alert_sheet":      parts[6]  if parts.size() > 6  else "",
-			"alert_frames":     int(parts[7])   if parts.size() > 7  else 1,
-			"alert_anim_fps":   float(parts[8]) if parts.size() > 8  else 6.0,
+			"idle_sheet":    parts[2]  if parts.size() > 2 else "",
+			"idle_frames":   int(parts[3])   if parts.size() > 3 else 1,
+			"idle_scale":    float(parts[4]) if parts.size() > 4 else 0.27,
+			"idle_anim_fps": float(parts[5]) if parts.size() > 5 else 6.0,
+			"alert_sheet":   parts[6]  if parts.size() > 6 else "",
+			"alert_frames":  int(parts[7])   if parts.size() > 7 else 1,
+			"alert_anim_fps":float(parts[8]) if parts.size() > 8 else 6.0,
 		}
 	file.close()
 	return result
@@ -89,13 +94,17 @@ func _place_battle_roles(vp: Vector2) -> void:
 	var cell_w := vp.x / GRID_COLS
 	var cell_h := vp.y / GRID_ROWS
 
-	var roles_data   := _load_roles_table()
+	var roles_data    := _load_roles_table()
 	var battle_layout := _load_battle_layout()
 
+	var hp_tex := load("res://asserts/image/ui/hp_bar.png") as Texture2D
+	var mp_tex := load("res://asserts/image/ui/mp_bar.png") as Texture2D
+	var font   := load("res://asserts/fonts/ZCOOLKuaiLe.ttf") as Font
+
 	for entry in battle_layout:
-		var rid   : int   = entry.role_id
-		var row   : int   = entry.battle_row   # 1-indexed
-		var col   : int   = entry.battle_col   # 1-indexed
+		var rid : int = entry.role_id
+		var row : int = entry.battle_row
+		var col : int = entry.battle_col
 		if not roles_data.has(rid):
 			continue
 
@@ -105,23 +114,22 @@ func _place_battle_roles(vp: Vector2) -> void:
 
 		var sc : float = rd.idle_scale
 
-		# 优先使用 alert，无则回退 idle
 		var use_anim   : String
-		var sheet_path2 : String
+		var sheet_path : String
 		var frames2    : int
 		var fps2       : float
 		if rd.alert_sheet != "":
-			use_anim    = "alert"
-			sheet_path2 = rd.alert_sheet
-			frames2     = rd.alert_frames
-			fps2        = rd.alert_anim_fps
+			use_anim   = "alert"
+			sheet_path = rd.alert_sheet
+			frames2    = rd.alert_frames
+			fps2       = rd.alert_anim_fps
 		else:
-			use_anim    = "idle"
-			sheet_path2 = rd.idle_sheet
-			frames2     = rd.idle_frames
-			fps2        = rd.idle_anim_fps
+			use_anim   = "idle"
+			sheet_path = rd.idle_sheet
+			frames2    = rd.idle_frames
+			fps2       = rd.idle_anim_fps
 
-		var tex2 := load(sheet_path2) as Texture2D
+		var tex2 := load(sheet_path) as Texture2D
 		if not tex2:
 			continue
 
@@ -137,22 +145,80 @@ func _place_battle_roles(vp: Vector2) -> void:
 			at.region = Rect2(i * frame_w, 0, frame_w, frame_h)
 			sf.add_frame(use_anim, at)
 
+		# 父容器：角色精灵 + 血条都挂在这里
+		var root := Node2D.new()
+		root.position = Vector2(
+			(col - 1) * cell_w + cell_w * 0.5,
+			(row - 1) * cell_h + cell_h * 0.5
+		)
+		add_child(root)
+
 		var sprite := AnimatedSprite2D.new()
 		sprite.sprite_frames = sf
 		sprite.animation     = use_anim
 		sprite.scale         = Vector2(sc, sc)
-		sprite.position      = Vector2(
-			(col - 1) * cell_w + cell_w * 0.5,
-			(row - 1) * cell_h + cell_h * 0.5
-		)
 		sprite.play(use_anim)
-		add_child(sprite)
+		root.add_child(sprite)
+
+		# 血条节点（纯 Node2D，用 _draw 绘制，自动跟随父容器）
+		var bar := RoleStatusBar.new(
+			ROLE_MAX_HP, ROLE_MAX_MP,
+			hp_tex, mp_tex, font,
+			BAR_W, BAR_H, HP_OFFSET, MP_OFFSET
+		)
+		root.add_child(bar)
+
+# ── 血条节点类 ────────────────────────────────────────────────────────────────
+
+class RoleStatusBar extends Node2D:
+	var cur_hp : int
+	var max_hp : int
+	var cur_mp : int
+	var max_mp : int
+	var hp_tex : Texture2D
+	var mp_tex : Texture2D
+	var font   : Font
+	var bar_w  : float
+	var bar_h  : float
+	var hp_off : Vector2
+	var mp_off : Vector2
+
+	func _init(mhp:int, mmp:int, htex:Texture2D, mtex:Texture2D,
+	           fnt:Font, bw:float, bh:float, hoff:Vector2, moff:Vector2) -> void:
+		cur_hp = mhp; max_hp = mhp
+		cur_mp = mmp; max_mp = mmp
+		hp_tex = htex; mp_tex = mtex
+		font = fnt
+		bar_w = bw; bar_h = bh
+		hp_off = hoff; mp_off = moff
+
+	func _draw() -> void:
+		_draw_bar(hp_off, cur_hp, max_hp, hp_tex)
+		_draw_bar(mp_off, cur_mp, max_mp, mp_tex)
+
+	func _draw_bar(off: Vector2, cur: int, mx: int, frame: Texture2D) -> void:
+		# 边框装饰图（拉伸到 bar_w × bar_h）
+		if frame:
+			draw_texture_rect(frame, Rect2(off, Vector2(bar_w, bar_h)), false)
+
+		# 数值文字
+		var txt := "%d/%d" % [cur, mx]
+		var font_size := 8
+		var txt_size  := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+		var txt_pos   := off + Vector2((bar_w - txt_size.x) * 0.5, bar_h * 0.5 + txt_size.y * 0.35)
+		# 描边
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				if dx != 0 or dy != 0:
+					draw_string(font, txt_pos + Vector2(dx, dy), txt,
+						HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0, 0, 0, 0.9))
+		draw_string(font, txt_pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1, 1, 1, 1))
 
 # ── 工具：生成按钮 ────────────────────────────────────────────────────────────
 
 func _make_button(text: String, pos: Vector2, size: Vector2) -> Dictionary:
 	var style := StyleBoxFlat.new()
-	style.bg_color       = Color(0.10, 0.08, 0.05, 0.88)
+	style.bg_color = Color(0.10, 0.08, 0.05, 0.88)
 	style.set_corner_radius_all(10)
 	style.border_width_top    = 2
 	style.border_width_right  = 2

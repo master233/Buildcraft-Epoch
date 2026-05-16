@@ -82,22 +82,22 @@ func _setup() -> void:
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(dim)
 
-	var tip := Label.new()
-	tip.text = GlobalConfig.get_str("loading_tip", TIP_FALLBACK)
-	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	tip.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	tip.size = Vector2(vp.x - 80.0, 110.0)
-	tip.position = Vector2(40.0, vp.y * 0.62 - 55.0)
-	var tls := LabelSettings.new()
-	tls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
-	tls.font_size = 32
-	tls.font_color = Color(1.0, 0.94, 0.65)
-	tls.outline_size = 6
-	tls.outline_color = Color(0.0, 0.0, 0.0, 0.95)
-	tls.shadow_size = 4
-	tls.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
-	tls.shadow_offset = Vector2(2, 3)
-	tip.label_settings = tls
+	var tip := RichTextLabel.new()
+	tip.bbcode_enabled = true
+	tip.scroll_active = false
+	tip.fit_content = true
+	var tip_font := load("res://asserts/fonts/ZCOOLKuaiLe.ttf") as Font
+	tip.add_theme_font_override("normal_font", tip_font)
+	tip.add_theme_font_size_override("normal_font_size", 32)
+	tip.add_theme_color_override("default_color", Color(1.0, 0.94, 0.65))
+	tip.add_theme_constant_override("outline_size", 6)
+	tip.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
+	tip.add_theme_constant_override("shadow_offset_x", 2)
+	tip.add_theme_constant_override("shadow_offset_y", 3)
+	tip.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.55))
+	tip.size = Vector2(vp.x - 80.0, 140.0)
+	tip.position = Vector2(40.0, vp.y * 0.62 - 70.0)
+	tip.text = "[center]" + GlobalConfig.get_str("loading_tip", TIP_FALLBACK) + "[/center]"
 	ui.add_child(tip)
 
 	_bar = ProgressBar.new()
