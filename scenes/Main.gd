@@ -95,7 +95,14 @@ var _reset_style: StyleBoxFlat = null
 var _reset_hovering: bool = false
 var _expedition_btn_bg: Panel = null
 var _expedition_btn_lbl: Label = null
-var _expedition_btn_rect := Rect2(0, 0, 140, 48)
+var _expedition_btn_rect := Rect2(0, 0, 120, 48)
+
+const FORMATION_BTN_W := 130.0
+var _formation_id: int = 1
+var _formation_name: String = "标准阵"
+var _formation_btn_bg: Panel = null
+var _formation_btn_lbl: Label = null
+var _formation_btn_rect := Rect2(0, 0, FORMATION_BTN_W, 48)
 var _panel_movable: Array = []
 var _panel_offsets: Array[Vector2] = []
 var _building_nodes: Dictionary = {}
@@ -191,6 +198,15 @@ func _setup() -> void:
 	_spawn_reset_button()
 	_spawn_expedition_button()
 
+	# 从阵型选择场景返回时，读取玩家选中的阵型
+	var sel_id = GlobalConfig.get_runtime("selected_formation_id")
+	if sel_id != null:
+		_formation_id   = int(sel_id)
+		_formation_name = String(GlobalConfig.get_runtime("selected_formation_name"))
+		GlobalConfig.clear_runtime()
+		_refresh_formation_btn()
+		_save_game()
+
 func _spawn_reset_button() -> void:
 	var ui := $UI
 	var vp := get_viewport_rect().size
@@ -238,11 +254,13 @@ const BATTLE_SCENE_PATH := "res://scenes/BattleScene.tscn"
 func _spawn_expedition_button() -> void:
 	var ui := $UI
 	var vp := get_viewport_rect().size
-	# 队伍最低 slot y=585，角色脚下偏移约 60px，按钮放在 y≈670
-	var btn_x := vp.x * 0.5 - _expedition_btn_rect.size.x * 0.5
 	var btn_y := 670.0
-	_expedition_btn_rect = Rect2(btn_x, btn_y, _expedition_btn_rect.size.x, _expedition_btn_rect.size.y)
+	var gap := 10.0
+	var total_w := _expedition_btn_rect.size.x + gap + FORMATION_BTN_W
+	var start_x := vp.x * 0.5 - total_w * 0.5
 
+	# 出征按钮
+	_expedition_btn_rect = Rect2(start_x, btn_y, _expedition_btn_rect.size.x, 48)
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.55, 0.32, 0.05, 0.92)
 	style.set_corner_radius_all(12)
@@ -281,8 +299,63 @@ func _spawn_expedition_button() -> void:
 	ui.add_child(_expedition_btn_lbl)
 	_expedition_btn_lbl.gui_input.connect(_on_expedition_btn_input)
 
+	# 阵型按钮（出征按钮右侧）
+	var form_x := start_x + _expedition_btn_rect.size.x + gap
+	_formation_btn_rect = Rect2(form_x, btn_y, FORMATION_BTN_W, 48)
+
+	var fstyle := StyleBoxFlat.new()
+	fstyle.bg_color = Color(0.08, 0.22, 0.45, 0.92)
+	fstyle.set_corner_radius_all(12)
+	fstyle.border_width_top    = 2
+	fstyle.border_width_right  = 2
+	fstyle.border_width_bottom = 3
+	fstyle.border_width_left   = 2
+	fstyle.border_color  = Color(0.35, 0.70, 1.0, 1.0)
+	fstyle.shadow_color  = Color(0, 0, 0, 0.6)
+	fstyle.shadow_size   = 8
+	fstyle.shadow_offset = Vector2(1, 3)
+
+	_formation_btn_bg = Panel.new()
+	_formation_btn_bg.size     = _formation_btn_rect.size
+	_formation_btn_bg.position = _formation_btn_rect.position
+	_formation_btn_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_formation_btn_bg.add_theme_stylebox_override("panel", fstyle)
+	ui.add_child(_formation_btn_bg)
+
+	_formation_btn_lbl = Label.new()
+	_formation_btn_lbl.text = _formation_name
+	_formation_btn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_formation_btn_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	_formation_btn_lbl.size     = _formation_btn_rect.size
+	_formation_btn_lbl.position = _formation_btn_rect.position
+	_formation_btn_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+	var fls := LabelSettings.new()
+	fls.font       = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	fls.font_size  = 22
+	fls.font_color = Color(0.75, 0.92, 1.0)
+	fls.outline_size  = 3
+	fls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
+	fls.shadow_size   = 3
+	fls.shadow_color  = Color(0, 0, 0, 0.5)
+	_formation_btn_lbl.label_settings = fls
+	ui.add_child(_formation_btn_lbl)
+	_formation_btn_lbl.gui_input.connect(_on_formation_btn_input)
+
+func _refresh_formation_btn() -> void:
+	if _formation_btn_lbl and is_instance_valid(_formation_btn_lbl):
+		_formation_btn_lbl.text = _formation_name
+
 func _on_expedition_btn_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		GlobalConfig.set_runtime("scene_mode", "battle")
+		GlobalConfig.set_runtime("formation_id", _formation_id)
+		var scene := load(BATTLE_SCENE_PATH) as PackedScene
+		SceneTransition.change_to(scene)
+
+func _on_formation_btn_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		GlobalConfig.set_runtime("scene_mode", "formation")
+		GlobalConfig.set_runtime("formation_id", _formation_id)
 		var scene := load(BATTLE_SCENE_PATH) as PackedScene
 		SceneTransition.change_to(scene)
 
@@ -1070,7 +1143,7 @@ func _refresh_label(key: String) -> void:
 	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
 
 func _save_game() -> void:
-	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
+	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
 	for key in _building_nodes:
 		data["levels"][key] = _building_nodes[key]["level"]
 	for i in _team_slots.size():
@@ -1105,6 +1178,8 @@ func _load_game() -> void:
 		_ore = int(data["ore"])
 	if data.has("gold"):
 		_gold = int(data["gold"])
+	if data.has("formation_id"):
+		_formation_id = int(data["formation_id"])
 	if data.has("levels") and data["levels"] is Dictionary:
 		var levels: Dictionary = data["levels"]
 		for key in levels:
@@ -1131,6 +1206,23 @@ func _load_game() -> void:
 			if i < _team_stars.size():
 				_team_stars[i] = int(s.get("star", _team_stars[i]))
 			_refresh_role_label(i)
+	# 读档后用 formation_id 查名字并刷新按钮
+	_formation_name = _query_formation_name(_formation_id)
+	_refresh_formation_btn()
+
+func _query_formation_name(fid: int) -> String:
+	var text := _read_table_text("res://asserts/table/formations.txt")
+	if text.is_empty():
+		return "标准阵"
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() >= 2 and parts[0].is_valid_int() and int(parts[0]) == fid:
+			return parts[1]
+	return "标准阵"
 
 func _build_upgrade_fx_frames() -> void:
 	var res_path := "res://asserts/fx/building_anim_sheet/build_lv_up_anim_sheet.png"

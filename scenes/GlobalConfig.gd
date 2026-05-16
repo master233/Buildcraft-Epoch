@@ -5,6 +5,7 @@ extends Node
 const PATH := "res://asserts/table/global_config.txt"
 
 var _data: Dictionary = {}
+var _runtime: Dictionary = {}
 
 
 func _ready() -> void:
@@ -47,3 +48,13 @@ func get_int(key: String, default_value: int = 0) -> int:
 
 func get_float(key: String, default_value: float = 0.0) -> float:
 	return float(_data.get(key, default_value))
+
+
+func set_runtime(key: String, value) -> void:
+	_runtime[key] = value
+
+func get_runtime(key: String, default = null):
+	return _runtime.get(key, default)
+
+func clear_runtime() -> void:
+	_runtime.clear()
