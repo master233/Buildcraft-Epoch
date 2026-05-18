@@ -27,6 +27,16 @@ var _expedition_team_ids: Array[String] = []
 const ROLES_TABLE_PATH := "res://asserts/table/roles.txt"
 const TEAM_LAYOUT_PATH := "res://asserts/table/team_layout.txt"
 const ROLE_LINES_PATH := "res://asserts/table/role_lines.txt"
+const BUILDING_BTN_PATHS := {
+	"upgrade":    "res://asserts/image/building/building_button/btn_upgrade.png",
+	"tower":      "res://asserts/image/building/building_button/btn_tower.png",
+	"lumberyard": "res://asserts/image/building/building_button/btn_lumberyard.png",
+	"tavern":     "res://asserts/image/building/building_button/btn_tavern.png",
+	"home":       "res://asserts/image/building/building_button/btn_home.png",
+	"research":   "res://asserts/image/building/building_button/btn_research.png",
+	"mine":       "res://asserts/image/building/building_button/btn_mine.png",
+}
+const BUILDING_BTN_MAP := {"home": "home", "tower": "tower", "lumberyard": "lumberyard", "tavern": "tavern", "research": "research", "mine": "mine"}
 const SPEECH_TICK_INTERVAL := 6.0
 const SPEECH_DURATION := 3.0
 
@@ -482,7 +492,35 @@ func _place_buildings() -> void:
 		label.size = Vector2(180, 28)
 		label.position = Vector2(-90.0, label_y_offset)
 
-		_building_nodes[key] = {"level": 1, "sprite": display_node, "label": label}
+		# 建筑按钮：升级和功能按钮显示在名字上方
+		var up_sprite: Sprite2D = null
+		var fn_sprite: Sprite2D = null
+		var btn_size := 36.0
+		var btn_gap := 6.0
+		var btn_y := label_y_offset - btn_size - 4.0
+		# 升级按钮
+		var up_tex: Texture2D = load(BUILDING_BTN_PATHS["upgrade"])
+		if up_tex:
+			var up_scale := btn_size / up_tex.get_height()
+			up_sprite = Sprite2D.new()
+			up_sprite.texture = up_tex
+			up_sprite.scale = Vector2(up_scale, up_scale)
+			up_sprite.set_meta("base_scale", Vector2(up_scale, up_scale))
+			up_sprite.position = Vector2(-btn_size * 0.5 - btn_gap * 0.5, btn_y + btn_size * 0.5)
+			container.add_child(up_sprite)
+		# 功能按钮
+		var func_name: String = BUILDING_BTN_MAP.get(key, "")
+		if not func_name.is_empty():
+			var fn_tex: Texture2D = load(BUILDING_BTN_PATHS[func_name])
+			if fn_tex:
+				var fn_scale := btn_size / fn_tex.get_height()
+				fn_sprite = Sprite2D.new()
+				fn_sprite.texture = fn_tex
+				fn_sprite.scale = Vector2(fn_scale, fn_scale)
+				fn_sprite.position = Vector2(btn_size * 0.5 + btn_gap * 0.5, btn_y + btn_size * 0.5)
+				container.add_child(fn_sprite)
+
+		_building_nodes[key] = {"level": 1, "sprite": display_node, "label": label, "upgrade_btn": up_sprite, "func_btn": fn_sprite}
 		_refresh_label(key)
 
 func _place_expedition_team() -> void:
@@ -952,14 +990,24 @@ func _handle_click(pos: Vector2) -> void:
 			_switch_role_action(i)
 			return
 
-	for key in _building_nodes:
-		if pos.distance_to(BUILDINGS[key]["pos"]) < 80.0:
-			_panel_key = key
-			_refresh_panel()
-			_reposition_panel(key)
-			_set_panel_visible(true)
-			return
-
+		for key in _building_nodes:
+			var btn = _building_nodes[key].get("upgrade_btn")
+			if btn and is_instance_valid(btn):
+				var btn_pos: Vector2 = BUILDINGS[key]["pos"] + btn.position
+				if pos.distance_to(btn_pos) < 24.0:
+					var is_disabled: bool = btn.get_meta("disabled", false)
+					if not is_disabled:
+						# 点击动画
+						var base_s: Vector2 = btn.get_meta("base_scale", btn.scale)
+						var tw := create_tween()
+						tw.tween_property(btn, "scale", base_s * 0.75, 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+						tw.tween_property(btn, "scale", base_s, 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+					# 打开升级面板
+					_panel_key = key
+					_refresh_panel()
+					_reposition_panel(key)
+					_set_panel_visible(true)
+					return
 func _switch_role_action(idx: int) -> void:
 	if idx < 0 or idx >= _team_slots.size():
 		return
@@ -1065,6 +1113,11 @@ func upgrade_building(key: String) -> void:
 	else:
 		(state["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][lv - 1])
 	_refresh_label(key)
+	# 主基地升级后，刷新其他建筑的灰度状态
+	if key == "home":
+		for k in _building_nodes:
+			if k != "home":
+				_refresh_label(k)
 	_play_upgrade_fx(BUILDINGS[key]["pos"])
 
 func _apply_anim_sheet(key: String, lv: int) -> void:
@@ -1141,7 +1194,13 @@ func _refresh_hud() -> void:
 func _refresh_label(key: String) -> void:
 	var state = _building_nodes[key]
 	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
-
+	# 满级时升级按钮置灰
+	var btn = state.get("upgrade_btn")
+	if btn and is_instance_valid(btn):
+		var lv: int = state["level"]
+		var maxed: bool = lv >= 3 or (_building_nodes.has("home") and key != "home" and lv >= int(_building_nodes["home"]["level"]))
+		btn.modulate = Color(0.7, 0.7, 0.7, 1.0) if maxed else Color.WHITE
+		btn.set_meta("disabled", maxed)
 func _save_game() -> void:
 	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
 	for key in _building_nodes:

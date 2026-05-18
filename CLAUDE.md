@@ -118,7 +118,7 @@ bin\start.bat
    w, h = imgs[0].size
    sheet = Image.new('RGBA', (w * len(imgs), h), (0, 0, 0, 0))
    for i, img in enumerate(imgs):
-       sheet.paste(img, (i * w, 0))
+	   sheet.paste(img, (i * w, 0))
    scale = 512 / h
    new_w = int(w * len(imgs) * scale)
    resized = sheet.resize((new_w, 512), Image.Resampling.LANCZOS)

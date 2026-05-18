@@ -459,7 +459,7 @@ class RoleStatusBar extends Node2D:
 	var mp_off : Vector2
 
 	func _init(mhp:int, mmp:int, htex:Texture2D, mtex:Texture2D,
-	           fnt:Font, bw:float, bh:float, hoff:Vector2, moff:Vector2) -> void:
+			   fnt:Font, bw:float, bh:float, hoff:Vector2, moff:Vector2) -> void:
 		cur_hp = mhp; max_hp = mhp
 		cur_mp = mmp; max_mp = mmp
 		hp_tex = htex; mp_tex = mtex
