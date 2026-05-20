@@ -30,7 +30,7 @@ func _build_ui() -> void:
 
 	var bg := Sprite2D.new()
 	bg.texture = load("res://asserts/image/backgroud/bg_battle.jpg")
-	var tex := bg.texture
+	var tex: Texture2D = bg.texture
 	var scale_f := max(vp.x / float(tex.get_width()), vp.y / float(tex.get_height()))
 	bg.scale = Vector2(scale_f, scale_f)
 	bg.position = vp / 2.0
