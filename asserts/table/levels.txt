@@ -1,0 +1,4 @@
+level_id	name	monster_ids	formation_id
+# 关卡 ID	关卡名称	怪物 ID 组（逗号分隔，支持重复）	出战阵型 ID
+# monster_ids 顺序对应阵型 pos1~pos5，不足 5 个留空位用 0 占位
+10101	哥布林巡逻队	20001,20001,20001,20001,20001	1

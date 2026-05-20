@@ -3,6 +3,7 @@ extends Node2D
 const MAIN_SCENE_PATH    := "res://scenes/Main.tscn"
 const ROLES_TABLE_PATH   := "res://asserts/table/roles.txt"
 const FORMATIONS_TABLE_PATH := "res://asserts/table/formations.txt"
+const LEVELS_TABLE_PATH  := "res://asserts/table/levels.txt"
 const GRID_ROWS          := 7
 const GRID_COLS          := 12
 
@@ -43,6 +44,7 @@ func _build_ui() -> void:
 		_build_formation_mode(vp)
 	else:
 		_place_battle_roles(vp)
+		_place_enemy_roles(vp)
 		var ui := CanvasLayer.new()
 		ui.layer = 10
 		add_child(ui)
@@ -338,13 +340,19 @@ func _load_roles_table() -> Dictionary:
 		if rid.is_empty():
 			continue
 		result[rid] = {
-			"idle_sheet":    String(entry.get("idle_sheet", "")),
-			"idle_frames":   int(entry.get("idle_frames", "1")),
-			"idle_scale":    float(entry.get("idle_scale", "0.27")),
-			"idle_anim_fps": float(entry.get("idle_anim_fps", "6.0")),
-			"alert_sheet":   String(entry.get("alert_sheet", "")),
-			"alert_frames":  int(entry.get("alert_frames", "1")),
-			"alert_anim_fps":float(entry.get("alert_anim_fps", "6.0")),
+			"idle_sheet":     String(entry.get("idle_sheet", "")),
+			"idle_frames":    int(entry.get("idle_frames", "1")),
+			"idle_scale":     float(entry.get("idle_scale", "0.27")),
+			"idle_anim_fps":  float(entry.get("idle_anim_fps", "6.0")),
+			"alert_sheet":    String(entry.get("alert_sheet", "")),
+			"alert_frames":   int(entry.get("alert_frames", "1")),
+			"alert_anim_fps": float(entry.get("alert_anim_fps", "6.0")),
+			"attack_sheet":   String(entry.get("attack_sheet", "")),
+			"attack_frames":  int(entry.get("attack_frames", "1")),
+			"attack_anim_fps":float(entry.get("attack_anim_fps", "12.0")),
+			"dead_sheet":     String(entry.get("dead_sheet", "")),
+			"dead_frames":    int(entry.get("dead_frames", "1")),
+			"dead_anim_fps":  float(entry.get("dead_anim_fps", "12.0")),
 		}
 	return result
 
@@ -429,6 +437,141 @@ func _place_battle_roles(vp: Vector2) -> void:
 		sprite.sprite_frames = sf
 		sprite.animation     = use_anim
 		sprite.scale         = Vector2(sc, sc)
+		sprite.play(use_anim)
+		root.add_child(sprite)
+
+		var bar := RoleStatusBar.new(
+			ROLE_MAX_HP, ROLE_MAX_MP,
+			hp_tex, mp_tex, font,
+			BAR_W, BAR_H, HP_OFFSET, MP_OFFSET
+		)
+		root.add_child(bar)
+
+# ── 解析 levels.txt ───────────────────────────────────────────────────────────
+
+func _load_levels_table() -> Dictionary:
+	var result := {}
+	var file := FileAccess.open(LEVELS_TABLE_PATH, FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return result
+	var headers := (raw[0] as String).strip_edges().split("\t")
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < headers.size():
+			continue
+		var entry := {}
+		for j in headers.size():
+			entry[headers[j]] = parts[j]
+		var lid: String = String(entry.get("level_id", ""))
+		if lid.is_empty():
+			continue
+		var monster_ids: Array[String] = []
+		for piece in String(entry.get("monster_ids", "")).split(","):
+			var s: String = (piece as String).strip_edges()
+			if not s.is_empty() and s != "0":
+				monster_ids.append(s)
+		result[lid] = {
+			"name":         String(entry.get("name", "")),
+			"monster_ids":  monster_ids,
+			"formation_id": int(entry.get("formation_id", "1")),
+		}
+	return result
+
+# ── 放置敌方怪物（右侧镜像阵型） ─────────────────────────────────────────────
+
+func _place_enemy_roles(vp: Vector2) -> void:
+	var level_id: String = String(GlobalConfig.get_runtime("level_id"))
+	if level_id.is_empty():
+		return
+	var levels_data := _load_levels_table()
+	if not levels_data.has(level_id):
+		return
+	var level: Dictionary = levels_data[level_id]
+	var monster_ids: Array = level["monster_ids"]
+	if monster_ids.is_empty():
+		return
+
+	var formations := _load_formations_table()
+	var formation_positions: Array = []
+	for f in formations:
+		if int(f["id"]) == int(level["formation_id"]):
+			formation_positions = f["positions"]
+			break
+	if formation_positions.is_empty():
+		return
+
+	var roles_data := _load_roles_table()
+	var cell_w := vp.x / GRID_COLS
+	var cell_h := vp.y / GRID_ROWS
+	var hp_tex := load("res://asserts/image/ui/hp_bar.png") as Texture2D
+	var mp_tex := load("res://asserts/image/ui/mp_bar.png") as Texture2D
+	var font   := load("res://asserts/fonts/ZCOOLKuaiLe.ttf") as Font
+
+	for i in mini(monster_ids.size(), formation_positions.size()):
+		var rc: Vector2 = formation_positions[i]
+		if rc == Vector2.ZERO:
+			continue
+		var row := int(rc.x)
+		var col := mirror_col(int(rc.y))
+		var rid: String = monster_ids[i]
+		if not roles_data.has(rid):
+			continue
+		var rd: Dictionary = roles_data[rid]
+
+		var use_anim: String
+		var sheet_path: String
+		var frames2: int
+		var fps2: float
+		if not rd.alert_sheet.is_empty():
+			use_anim   = "alert"
+			sheet_path = rd.alert_sheet
+			frames2    = rd.alert_frames
+			fps2       = rd.alert_anim_fps
+		elif not rd.idle_sheet.is_empty():
+			use_anim   = "idle"
+			sheet_path = rd.idle_sheet
+			frames2    = rd.idle_frames
+			fps2       = rd.idle_anim_fps
+		else:
+			continue
+
+		var tex2 := load(sheet_path) as Texture2D
+		if not tex2:
+			continue
+
+		var sf := SpriteFrames.new()
+		sf.add_animation(use_anim)
+		sf.set_animation_speed(use_anim, fps2)
+		sf.set_animation_loop(use_anim, true)
+		var frame_w := tex2.get_width() / frames2
+		var frame_h := tex2.get_height()
+		for k in range(frames2):
+			var at := AtlasTexture.new()
+			at.atlas  = tex2
+			at.region = Rect2(k * frame_w, 0, frame_w, frame_h)
+			sf.add_frame(use_anim, at)
+
+		var root := Node2D.new()
+		root.position = Vector2(
+			(col - 1) * cell_w + cell_w * 0.5,
+			(row - 1) * cell_h + cell_h * 0.5
+		)
+		add_child(root)
+
+		var sprite := AnimatedSprite2D.new()
+		sprite.sprite_frames = sf
+		sprite.animation     = use_anim
+		sprite.scale         = Vector2(rd.idle_scale, rd.idle_scale)
 		sprite.play(use_anim)
 		root.add_child(sprite)
 

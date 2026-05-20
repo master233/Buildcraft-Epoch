@@ -359,6 +359,7 @@ func _on_expedition_btn_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		GlobalConfig.set_runtime("scene_mode", "battle")
 		GlobalConfig.set_runtime("formation_id", _formation_id)
+		GlobalConfig.set_runtime("level_id", "10101")
 		var scene := load(BATTLE_SCENE_PATH) as PackedScene
 		SceneTransition.change_to(scene)
 
