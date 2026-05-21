@@ -1,27 +1,42 @@
 extends Node2D
 
-const MAIN_SCENE_PATH    := "res://scenes/Main.tscn"
-const ROLES_TABLE_PATH   := "res://asserts/table/roles.txt"
+const MAIN_SCENE_PATH       := "res://scenes/Main.tscn"
+const ROLES_TABLE_PATH      := "res://asserts/table/roles.txt"
+const ROLE_ATTRS_TABLE_PATH := "res://asserts/table/role_attrs.txt"
 const FORMATIONS_TABLE_PATH := "res://asserts/table/formations.txt"
-const LEVELS_TABLE_PATH  := "res://asserts/table/levels.txt"
-const GRID_ROWS          := 7
-const GRID_COLS          := 12
-
-const ROLE_MAX_HP := 100
-const ROLE_MAX_MP := 60
+const LEVELS_TABLE_PATH     := "res://asserts/table/levels.txt"
+const GRID_ROWS := 7
+const GRID_COLS := 12
 
 # 血条显示参数（相对角色中心）
-const BAR_W      := 86.4
-const BAR_H      := 9.0
-const HP_OFFSET  := Vector2(-43.2, -68.0)
-const MP_OFFSET  := Vector2(-43.2, -57.0)
+const BAR_W     := 86.4
+const BAR_H     := 9.0
+const HP_OFFSET := Vector2(-43.2, -68.0)
+const MP_OFFSET := Vector2(-43.2, -57.0)
+
+# 战斗参数
+const ACTION_INTERVAL := 0.15  # 单位行动之间的间隔（秒）
+const MOVE_IN_TIME    := 0.25  # 冲到目标前的耗时
+const MOVE_OUT_TIME   := 0.25  # 退回原位的耗时
+const APPROACH_OFFSET := 70.0  # 攻击者距目标的横向偏移
 
 # 阵型选择模式
 var _scene_mode: String = ""
-var _formations: Array = []          # [{id, name, positions:[Vector2(row,col)]}]
+var _formations: Array = []
 var _current_formation_idx: int = 0
-var _formation_role_nodes: Array = [] # 阵型预览模式下放置的角色根节点
+var _formation_role_nodes: Array = []
 var _formation_name_lbl: Label = null
+
+# 战斗状态
+var _battle_units: Array = []   # Array of BattleUnit（玩家+敌方）
+var _battle_over: bool = false
+var _action_timer: float = 0.0
+var _round_queue: Array = []    # 当前回合剩余待行动单位（按 spd 降序）
+var _round_number: int = 0
+var _round_label: Label = null
+var _acting: bool = false       # 正在演出某单位行动序列
+
+# ─────────────────────────────────────────────────────────────────────────────
 
 func _ready() -> void:
 	call_deferred("_build_ui")
@@ -33,9 +48,9 @@ func _build_ui() -> void:
 	bg.texture = load("res://asserts/image/backgroud/bg_battle.jpg")
 	var tex: Texture2D = bg.texture
 	var scale_f: float = max(vp.x / float(tex.get_width()), vp.y / float(tex.get_height()))
-	bg.scale = Vector2(scale_f, scale_f)
+	bg.scale    = Vector2(scale_f, scale_f)
 	bg.position = vp / 2.0
-	bg.z_index = -10
+	bg.z_index  = -10
 	add_child(bg)
 
 	_scene_mode = String(GlobalConfig.get_runtime("scene_mode"))
@@ -48,12 +63,214 @@ func _build_ui() -> void:
 		var ui := CanvasLayer.new()
 		ui.layer = 10
 		add_child(ui)
+		_build_round_label(ui, vp)
 		var exit_btn := _make_button("退出", Vector2(vp.x - 120, 16), Vector2(104, 44))
 		ui.add_child(exit_btn.panel)
 		ui.add_child(exit_btn.label)
 		exit_btn.label.gui_input.connect(_on_exit_input)
 
-# ── 阵型选择模式 ──────────────────────────────────────────────────────────────
+func _build_round_label(ui: CanvasLayer, vp: Vector2) -> void:
+	var lbl_w := 240.0
+	var lbl_h := 50.0
+	var lbl := Label.new()
+	lbl.text = "第 1 回合"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.size     = Vector2(lbl_w, lbl_h)
+	lbl.position = Vector2((vp.x - lbl_w) * 0.5, 12)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ls := LabelSettings.new()
+	ls.font          = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size     = 30
+	ls.font_color    = Color(1.0, 0.92, 0.6)
+	ls.outline_size  = 4
+	ls.outline_color = Color(0, 0, 0, 1.0)
+	ls.shadow_size   = 3
+	ls.shadow_color  = Color(0, 0, 0, 0.6)
+	lbl.label_settings = ls
+	ui.add_child(lbl)
+	_round_label = lbl
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 战斗主循环
+# ─────────────────────────────────────────────────────────────────────────────
+
+func _process(delta: float) -> void:
+	if _battle_over or _battle_units.is_empty() or _scene_mode == "formation":
+		return
+	if _acting:
+		return
+
+	_action_timer += delta
+	if _action_timer < ACTION_INTERVAL:
+		return
+	_action_timer = 0.0
+
+	# 当前回合行动队列空了，开新回合
+	if _round_queue.is_empty():
+		_start_new_round()
+		if _round_queue.is_empty():
+			return
+
+	# 一次 tick 只启动一个单位的行动序列
+	while not _round_queue.is_empty():
+		var unit: BattleUnit = _round_queue.pop_front()
+		if unit.is_dead:
+			continue
+		_perform_action(unit)
+		return
+
+func _perform_action(attacker: BattleUnit) -> void:
+	_acting = true
+
+	# 找对方阵营存活的随机目标
+	var targets: Array = []
+	for u in _battle_units:
+		var candidate := u as BattleUnit
+		if not candidate.is_dead and candidate.is_enemy != attacker.is_enemy:
+			targets.append(candidate)
+	if targets.is_empty():
+		_acting = false
+		return
+	var target := targets[randi() % targets.size()] as BattleUnit
+
+	var atk_root: Node2D = attacker.root
+	if not is_instance_valid(atk_root) or not is_instance_valid(target.root):
+		_acting = false
+		return
+
+	var origin: Vector2 = atk_root.position
+	# 玩家攻击者从左来 → 站到目标左侧；敌人攻击者从右来 → 站到目标右侧
+	var off_x: float = -APPROACH_OFFSET if not attacker.is_enemy else APPROACH_OFFSET
+	var dest: Vector2 = target.root.position + Vector2(off_x, 0)
+
+	# 1) 冲到目标前
+	var tw_in := create_tween()
+	tw_in.tween_property(atk_root, "position", dest, MOVE_IN_TIME) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	await tw_in.finished
+
+	# 2) 应用伤害 + 播攻击动画
+	_apply_damage(attacker, target)
+	if is_instance_valid(attacker.sprite):
+		var sf: SpriteFrames = attacker.sprite.sprite_frames
+		if sf and sf.has_animation("attack"):
+			attacker.sprite.play("attack")
+			await attacker.sprite.animation_finished
+			if is_instance_valid(attacker.sprite):
+				var back := "alert" if sf.has_animation("alert") else "idle"
+				if sf.has_animation(back):
+					attacker.sprite.play(back)
+		else:
+			await get_tree().create_timer(0.3).timeout
+
+	# 3) 退回原位
+	if is_instance_valid(atk_root):
+		var tw_out := create_tween()
+		tw_out.tween_property(atk_root, "position", origin, MOVE_OUT_TIME) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		await tw_out.finished
+
+	_check_battle_over()
+	_acting = false
+
+func _apply_damage(attacker: BattleUnit, target: BattleUnit) -> void:
+	var is_crit := (randi() % 10000) < attacker.crit
+	var dmg_base: int = max(1, attacker.atk - target.def)
+	var dmg := int(dmg_base * (1.5 if is_crit else 1.0))
+	if (randi() % 10000) < target.dodge:
+		dmg = 0
+	target.cur_hp = max(0, target.cur_hp - dmg)
+	target.status_bar.update_hp(target.cur_hp)
+	if target.cur_hp <= 0:
+		target.is_dead = true
+		target.play_anim("dead")
+
+func _start_new_round() -> void:
+	var alive: Array = []
+	for u in _battle_units:
+		var unit := u as BattleUnit
+		if not unit.is_dead:
+			alive.append(unit)
+	# 按出手速度从高到低排序
+	alive.sort_custom(func(a, b): return a.spd > b.spd)
+	_round_queue = alive
+	_round_number += 1
+	if is_instance_valid(_round_label):
+		_round_label.text = "第 %d 回合" % _round_number
+
+func _check_battle_over() -> bool:
+	var players_alive := false
+	var enemies_alive := false
+	for u in _battle_units:
+		var unit := u as BattleUnit
+		if unit.is_dead:
+			continue
+		if unit.is_enemy:
+			enemies_alive = true
+		else:
+			players_alive = true
+
+	if not enemies_alive:
+		_end_battle(true)
+		return true
+	if not players_alive:
+		_end_battle(false)
+		return true
+	return false
+
+func _end_battle(victory: bool) -> void:
+	_battle_over = true
+	var vp := get_viewport_rect().size
+	var ui := CanvasLayer.new()
+	ui.layer = 20
+	add_child(ui)
+
+	var title := "胜利！" if victory else "战败..."
+	var title_color := Color(1.0, 0.9, 0.2) if victory else Color(1.0, 0.3, 0.3)
+
+	var panel_w := 420.0
+	var panel_h := 200.0
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.05, 0.08, 0.18, 0.95)
+	style.set_corner_radius_all(16)
+	style.border_width_top    = 2
+	style.border_width_bottom = 2
+	style.border_width_left   = 2
+	style.border_width_right  = 2
+	style.border_color = title_color
+	style.shadow_color = Color(0, 0, 0, 0.7)
+	style.shadow_size  = 12
+
+	var panel := Panel.new()
+	panel.size     = Vector2(panel_w, panel_h)
+	panel.position = (vp - Vector2(panel_w, panel_h)) * 0.5
+	panel.add_theme_stylebox_override("panel", style)
+	ui.add_child(panel)
+
+	var title_lbl := Label.new()
+	title_lbl.text = title
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	title_lbl.size     = Vector2(panel_w, 90.0)
+	title_lbl.position = panel.position
+	var tls := LabelSettings.new()
+	tls.font       = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	tls.font_size  = 52
+	tls.font_color = title_color
+	tls.outline_size  = 4
+	tls.outline_color = Color(0, 0, 0, 1.0)
+	title_lbl.label_settings = tls
+	ui.add_child(title_lbl)
+
+	var back_btn := _make_button("返回", panel.position + Vector2((panel_w - 120) * 0.5, 110.0), Vector2(120, 52))
+	ui.add_child(back_btn.panel)
+	ui.add_child(back_btn.label)
+	back_btn.label.gui_input.connect(_on_exit_input)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 阵型选择模式
+# ─────────────────────────────────────────────────────────────────────────────
 
 func _build_formation_mode(vp: Vector2) -> void:
 	_formations = _load_formations_table()
@@ -84,8 +301,7 @@ func _place_formation_roles(vp: Vector2, fidx: int) -> void:
 	var cell_h := vp.y / GRID_ROWS
 
 	var roles_data := _load_roles_table()
-	# 出战队伍 ID 列表（从 runtime 取，没有则读存档）
-	var team_ids := _get_team_ids()
+	var team_ids   := _get_team_ids()
 
 	for i in mini(team_ids.size(), positions.size()):
 		var rc: Vector2 = positions[i]
@@ -108,7 +324,6 @@ func _place_formation_roles(vp: Vector2, fidx: int) -> void:
 		add_child(root)
 		_formation_role_nodes.append(root)
 
-		# 优先用警戒动画，没有则回退 idle
 		var use_anim: String
 		var sheet_path: String
 		var frames: int
@@ -151,7 +366,6 @@ func _build_formation_overlay(vp: Vector2) -> void:
 	ui.layer = 10
 	add_child(ui)
 
-	# 顶部选择条背景
 	var bar_w := 500.0
 	var bar_h := 58.0
 	var bar_x := (vp.x - bar_w) * 0.5
@@ -175,13 +389,11 @@ func _build_formation_overlay(vp: Vector2) -> void:
 	bar_panel.add_theme_stylebox_override("panel", bar_style)
 	ui.add_child(bar_panel)
 
-	# 左箭头按钮
 	var prev_btn := _make_arrow_button("<", Vector2(bar_x + 10, bar_y + 5), Vector2(44, 48))
 	ui.add_child(prev_btn.panel)
 	ui.add_child(prev_btn.label)
 	prev_btn.label.gui_input.connect(_on_formation_prev)
 
-	# 阵型名称
 	_formation_name_lbl = Label.new()
 	_formation_name_lbl.text = _formations[_current_formation_idx]["name"] if _formations.size() > 0 else ""
 	_formation_name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -197,13 +409,11 @@ func _build_formation_overlay(vp: Vector2) -> void:
 	_formation_name_lbl.label_settings = nls
 	ui.add_child(_formation_name_lbl)
 
-	# 右箭头按钮
 	var next_btn := _make_arrow_button(">", Vector2(bar_x + bar_w - 54, bar_y + 5), Vector2(44, 48))
 	ui.add_child(next_btn.panel)
 	ui.add_child(next_btn.label)
 	next_btn.label.gui_input.connect(_on_formation_next)
 
-	# 底部 确认 / 取消 按钮
 	var confirm_btn := _make_button("✓ 确认", Vector2(vp.x * 0.5 - 135, vp.y - 74), Vector2(120, 52))
 	ui.add_child(confirm_btn.panel)
 	ui.add_child(confirm_btn.label)
@@ -248,70 +458,225 @@ func _go_back_main() -> void:
 	var main := load(MAIN_SCENE_PATH) as PackedScene
 	SceneTransition.change_to(main)
 
-# ── 解析 formations.txt ───────────────────────────────────────────────────────
+# ─────────────────────────────────────────────────────────────────────────────
+# 放置角色并构建 BattleUnit
+# ─────────────────────────────────────────────────────────────────────────────
 
-func _load_formations_table() -> Array:
-	var result: Array = []
-	var file := FileAccess.open(FORMATIONS_TABLE_PATH, FileAccess.READ)
-	if not file:
-		return result
-	var text := file.get_as_text()
-	file.close()
-	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
-		text = text.substr(1)
-	var raw := text.split("\n", false)
-	# 第一行是表头: id name pos1 pos2 pos3 pos4 pos5
-	for i in range(1, raw.size()):
-		var line: String = (raw[i] as String).strip_edges()
-		if line.is_empty() or line.begins_with("#"):
+func _place_battle_roles(vp: Vector2) -> void:
+	var cell_w := vp.x / GRID_COLS
+	var cell_h := vp.y / GRID_ROWS
+
+	var roles_data := _load_roles_table()
+	var attrs_data := _load_attrs_table()
+
+	var formation_id := int(GlobalConfig.get_runtime("formation_id"))
+	if formation_id <= 0:
+		formation_id = 1
+
+	var formations := _load_formations_table()
+	var formation_positions: Array = []
+	for f in formations:
+		if int(f["id"]) == formation_id:
+			formation_positions = f["positions"]
+			break
+
+	var team_ids := _get_team_ids()
+	var hp_tex   := load("res://asserts/image/ui/hp_bar.png") as Texture2D
+	var mp_tex   := load("res://asserts/image/ui/mp_bar.png") as Texture2D
+	var font     := load("res://asserts/fonts/ZCOOLKuaiLe.ttf") as Font
+
+	for i in mini(team_ids.size(), formation_positions.size()):
+		var rc: Vector2 = formation_positions[i]
+		if rc == Vector2.ZERO:
 			continue
-		var parts := line.split("\t")
-		if parts.size() < 3 or not (parts[0] as String).is_valid_int():
+		var row := int(rc.x)
+		var col := int(rc.y)
+		var rid: String = team_ids[i]
+		if not roles_data.has(rid):
 			continue
-		var positions: Array = []
-		for pi in range(2, parts.size()):
-			var pstr: String = (parts[pi] as String).strip_edges()
-			if pstr.is_empty():
-				continue
-			var coords := pstr.split(",")
-			if coords.size() >= 2:
-				var r := int((coords[0] as String).strip_edges())
-				var c := int((coords[1] as String).strip_edges())
-				if r == 0 and c == 0:
-					continue
-				positions.append(Vector2(r, c))
-		result.append({
-			"id":        int(parts[0]),
-			"name":      String(parts[1]),
-			"positions": positions,
-		})
-	return result
 
-# ── 获取出战队伍 ID（阵型预览模式下用） ───────────────────────────────────────
+		var rd: Dictionary = roles_data[rid]
+		if rd.idle_sheet.is_empty() and rd.alert_sheet.is_empty():
+			continue
 
-func _get_team_ids() -> Array:
-	# 从存档读出战队伍
-	var save_path := "user://savegame.json"
-	if FileAccess.file_exists(save_path):
-		var file := FileAccess.open(save_path, FileAccess.READ)
-		if file:
-			var parsed = JSON.parse_string(file.get_as_text())
-			file.close()
-			if parsed is Dictionary and parsed.has("team_ids") and parsed["team_ids"] is Array:
-				var arr: Array[String] = []
-				for rid in (parsed["team_ids"] as Array):
-					arr.append(String(rid))
-				return arr
-	# 回退：读 global_config 默认
-	var defaults := GlobalConfig.get_str("default_owned_roles", "")
-	var result: Array[String] = []
-	for piece in defaults.split(","):
-		var s: String = (piece as String).strip_edges()
-		if not s.is_empty():
-			result.append(s)
-	return result
+		var root := Node2D.new()
+		root.position = Vector2(
+			(col - 1) * cell_w + cell_w * 0.5,
+			(row - 1) * cell_h + cell_h * 0.5
+		)
+		add_child(root)
 
-# ── 解析 roles.txt ────────────────────────────────────────────────────────────
+		var sprite := _build_animated_sprite(rd)
+		root.add_child(sprite)
+
+		var attrs := _calc_attrs(rid, rd, attrs_data)
+		var bar := RoleStatusBar.new(
+			attrs.hp, attrs.hp,
+			hp_tex, mp_tex, font,
+			BAR_W, BAR_H, HP_OFFSET, MP_OFFSET
+		)
+		root.add_child(bar)
+
+		var unit := BattleUnit.new()
+		unit.rid        = rid
+		unit.is_enemy   = false
+		unit.cur_hp     = attrs.hp
+		unit.max_hp     = attrs.hp
+		unit.atk        = attrs.atk
+		unit.def        = attrs.def
+		unit.spd        = attrs.spd
+		unit.crit       = attrs.crit
+		unit.dodge      = attrs.dodge
+		unit.sprite     = sprite
+		unit.status_bar = bar
+		unit.root       = root
+		unit.rd         = rd
+		_battle_units.append(unit)
+
+func _place_enemy_roles(vp: Vector2) -> void:
+	var level_id: String = String(GlobalConfig.get_runtime("level_id"))
+	if level_id.is_empty():
+		return
+	var levels_data := _load_levels_table()
+	if not levels_data.has(level_id):
+		return
+	var level: Dictionary = levels_data[level_id]
+	var monster_ids: Array = level["monster_ids"]
+	if monster_ids.is_empty():
+		return
+
+	var formations := _load_formations_table()
+	var formation_positions: Array = []
+	for f in formations:
+		if int(f["id"]) == int(level["formation_id"]):
+			formation_positions = f["positions"]
+			break
+	if formation_positions.is_empty():
+		return
+
+	var roles_data := _load_roles_table()
+	var attrs_data := _load_attrs_table()
+	var cell_w := vp.x / GRID_COLS
+	var cell_h := vp.y / GRID_ROWS
+	var hp_tex := load("res://asserts/image/ui/hp_bar.png") as Texture2D
+	var mp_tex := load("res://asserts/image/ui/mp_bar.png") as Texture2D
+	var font   := load("res://asserts/fonts/ZCOOLKuaiLe.ttf") as Font
+
+	for i in mini(monster_ids.size(), formation_positions.size()):
+		var rc: Vector2 = formation_positions[i]
+		if rc == Vector2.ZERO:
+			continue
+		var row := int(rc.x)
+		var col := mirror_col(int(rc.y))
+		var rid: String = monster_ids[i]
+		if not roles_data.has(rid):
+			continue
+		var rd: Dictionary = roles_data[rid]
+
+		var root := Node2D.new()
+		root.position = Vector2(
+			(col - 1) * cell_w + cell_w * 0.5,
+			(row - 1) * cell_h + cell_h * 0.5
+		)
+		add_child(root)
+
+		var sprite := _build_animated_sprite(rd)
+		root.add_child(sprite)
+
+		var attrs := _calc_attrs(rid, rd, attrs_data)
+		var bar := RoleStatusBar.new(
+			attrs.hp, attrs.hp,
+			hp_tex, mp_tex, font,
+			BAR_W, BAR_H, HP_OFFSET, MP_OFFSET
+		)
+		root.add_child(bar)
+
+		var unit := BattleUnit.new()
+		unit.rid        = rid
+		unit.is_enemy   = true
+		unit.cur_hp     = attrs.hp
+		unit.max_hp     = attrs.hp
+		unit.atk        = attrs.atk
+		unit.def        = attrs.def
+		unit.spd        = attrs.spd
+		unit.crit       = attrs.crit
+		unit.dodge      = attrs.dodge
+		unit.sprite     = sprite
+		unit.status_bar = bar
+		unit.root       = root
+		unit.rd         = rd
+		_battle_units.append(unit)
+
+# 构建带 idle/alert/attack/dead 四组动画的 AnimatedSprite2D
+func _build_animated_sprite(rd: Dictionary) -> AnimatedSprite2D:
+	var sf := SpriteFrames.new()
+
+	var anim_defs := [
+		["idle",   rd.idle_sheet,   rd.idle_frames,   rd.idle_anim_fps],
+		["alert",  rd.alert_sheet,  rd.alert_frames,  rd.alert_anim_fps],
+		["attack", rd.attack_sheet, rd.attack_frames, rd.attack_anim_fps],
+		["dead",   rd.dead_sheet,   rd.dead_frames,   rd.dead_anim_fps],
+	]
+
+	var first_valid_anim := "idle"
+	for def in anim_defs:
+		var anim_name: String = def[0]
+		var path: String      = def[1]
+		var frames: int       = def[2]
+		var fps: float        = def[3]
+		if path.is_empty():
+			continue
+		var tex := load(path) as Texture2D
+		if not tex:
+			continue
+		if not sf.has_animation(anim_name):
+			sf.add_animation(anim_name)
+		sf.set_animation_speed(anim_name, fps)
+		# idle/alert 循环，attack/dead 只播一次
+		sf.set_animation_loop(anim_name, anim_name == "idle" or anim_name == "alert")
+		var fw := tex.get_width() / frames
+		var fh := tex.get_height()
+		for k in range(frames):
+			var at := AtlasTexture.new()
+			at.atlas  = tex
+			at.region = Rect2(k * fw, 0, fw, fh)
+			sf.add_frame(anim_name, at)
+		if first_valid_anim == "idle" and anim_name == "alert":
+			first_valid_anim = "alert"
+
+	if not sf.has_animation("idle"):
+		sf.add_animation("idle")
+
+	var sprite := AnimatedSprite2D.new()
+	sprite.sprite_frames = sf
+	sprite.scale         = Vector2(rd.idle_scale, rd.idle_scale)
+	sprite.flip_h        = bool(rd.get("flip_h", false))
+	sprite.animation     = first_valid_anim
+	sprite.play(first_valid_anim)
+	return sprite
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 属性计算：init + (lv-1)*lv_bonus + star*star_bonus
+# ─────────────────────────────────────────────────────────────────────────────
+
+func _calc_attrs(rid: String, rd: Dictionary, attrs_data: Dictionary) -> Dictionary:
+	var lv   := int(rd.get("init_level", 1))
+	var star := int(rd.get("init_star",  1))
+	if not attrs_data.has(rid):
+		return {hp=500, atk=80, def=30, spd=80, crit=500, dodge=300}
+	var a: Dictionary = attrs_data[rid]
+	return {
+		"hp":    a.init_hp    + (lv - 1) * a.lv_hp    + star * a.star_hp,
+		"atk":   a.init_atk   + (lv - 1) * a.lv_atk   + star * a.star_atk,
+		"def":   a.init_def   + (lv - 1) * a.lv_def   + star * a.star_def,
+		"spd":   a.init_speed + (lv - 1) * a.lv_speed + star * a.star_speed,
+		"crit":  a.init_crit  + (lv - 1) * a.lv_crit  + star * a.star_crit,
+		"dodge": a.init_dodge + (lv - 1) * a.lv_dodge + star * a.star_dodge,
+	}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 数据加载
+# ─────────────────────────────────────────────────────────────────────────────
 
 func _load_roles_table() -> Dictionary:
 	var result := {}
@@ -340,114 +705,104 @@ func _load_roles_table() -> Dictionary:
 		if rid.is_empty():
 			continue
 		result[rid] = {
-			"idle_sheet":     String(entry.get("idle_sheet", "")),
-			"idle_frames":    int(entry.get("idle_frames", "1")),
-			"idle_scale":     float(entry.get("idle_scale", "0.27")),
-			"idle_anim_fps":  float(entry.get("idle_anim_fps", "6.0")),
-			"alert_sheet":    String(entry.get("alert_sheet", "")),
-			"alert_frames":   int(entry.get("alert_frames", "1")),
-			"alert_anim_fps": float(entry.get("alert_anim_fps", "6.0")),
-			"attack_sheet":   String(entry.get("attack_sheet", "")),
-			"attack_frames":  int(entry.get("attack_frames", "1")),
-			"attack_anim_fps":float(entry.get("attack_anim_fps", "12.0")),
-			"dead_sheet":     String(entry.get("dead_sheet", "")),
-			"dead_frames":    int(entry.get("dead_frames", "1")),
-			"dead_anim_fps":  float(entry.get("dead_anim_fps", "12.0")),
+			"idle_sheet":      String(entry.get("idle_sheet",      "")),
+			"idle_frames":     int(entry.get("idle_frames",     "1")),
+			"idle_scale":      float(entry.get("idle_scale",     "0.27")),
+			"idle_anim_fps":   float(entry.get("idle_anim_fps",  "6.0")),
+			"alert_sheet":     String(entry.get("alert_sheet",    "")),
+			"alert_frames":    int(entry.get("alert_frames",    "1")),
+			"alert_anim_fps":  float(entry.get("alert_anim_fps", "6.0")),
+			"attack_sheet":    String(entry.get("attack_sheet",   "")),
+			"attack_frames":   int(entry.get("attack_frames",   "1")),
+			"attack_anim_fps": float(entry.get("attack_anim_fps","12.0")),
+			"dead_sheet":      String(entry.get("dead_sheet",     "")),
+			"dead_frames":     int(entry.get("dead_frames",     "1")),
+			"dead_anim_fps":   float(entry.get("dead_anim_fps",  "12.0")),
+			"init_level":      int(entry.get("init_level",      "1")),
+			"init_star":       int(entry.get("init_star",       "1")),
+			"flip_h":          int(entry.get("flip_h",          "0")) != 0,
 		}
 	return result
 
-# ── 正常出战：放置战场角色（读阵型配置） ─────────────────────────────────────
-
-func _place_battle_roles(vp: Vector2) -> void:
-	var cell_w := vp.x / GRID_COLS
-	var cell_h := vp.y / GRID_ROWS
-
-	var roles_data    := _load_roles_table()
-	var formation_id  := int(GlobalConfig.get_runtime("formation_id"))
-	if formation_id <= 0:
-		formation_id = 1
-
-	var formations    := _load_formations_table()
-	var formation_positions: Array = []
-	for f in formations:
-		if int(f["id"]) == formation_id:
-			formation_positions = f["positions"]
-			break
-
-	var team_ids := _get_team_ids()
-
-	var hp_tex := load("res://asserts/image/ui/hp_bar.png") as Texture2D
-	var mp_tex := load("res://asserts/image/ui/mp_bar.png") as Texture2D
-	var font   := load("res://asserts/fonts/ZCOOLKuaiLe.ttf") as Font
-
-	for i in mini(team_ids.size(), formation_positions.size()):
-		var rc: Vector2 = formation_positions[i]
-		if rc == Vector2.ZERO:
+func _load_attrs_table() -> Dictionary:
+	var result := {}
+	var file := FileAccess.open(ROLE_ATTRS_TABLE_PATH, FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return result
+	var headers := (raw[0] as String).strip_edges().split("\t")
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
 			continue
-		var row := int(rc.x)
-		var col := int(rc.y)
-		var rid: String = team_ids[i]
-		if not roles_data.has(rid):
+		var parts := line.split("\t")
+		if parts.size() < headers.size():
 			continue
-
-		var rd: Dictionary = roles_data[rid]
-		if rd.idle_sheet.is_empty() and rd.alert_sheet.is_empty():
+		var entry := {}
+		for j in headers.size():
+			entry[headers[j]] = parts[j]
+		var rid: String = String(entry.get("role_id", ""))
+		if rid.is_empty():
 			continue
+		result[rid] = {
+			"init_atk":   int(entry.get("init_atk",   "50")),
+			"init_def":   int(entry.get("init_def",   "20")),
+			"init_hp":    int(entry.get("init_hp",    "500")),
+			"init_speed": int(entry.get("init_speed", "80")),
+			"init_crit":  int(entry.get("init_crit",  "500")),
+			"init_dodge": int(entry.get("init_dodge", "300")),
+			"lv_atk":     int(entry.get("lv_atk",     "5")),
+			"lv_def":     int(entry.get("lv_def",     "2")),
+			"lv_hp":      int(entry.get("lv_hp",      "50")),
+			"lv_speed":   int(entry.get("lv_speed",   "2")),
+			"lv_crit":    int(entry.get("lv_crit",    "50")),
+			"lv_dodge":   int(entry.get("lv_dodge",   "50")),
+			"star_atk":   int(entry.get("star_atk",   "20")),
+			"star_def":   int(entry.get("star_def",   "10")),
+			"star_hp":    int(entry.get("star_hp",    "200")),
+			"star_speed": int(entry.get("star_speed", "10")),
+			"star_crit":  int(entry.get("star_crit",  "200")),
+			"star_dodge": int(entry.get("star_dodge", "100")),
+		}
+	return result
 
-		var sc: float = rd.idle_scale
-		var use_anim:   String
-		var sheet_path: String
-		var frames2:    int
-		var fps2:       float
-		if rd.alert_sheet != "":
-			use_anim   = "alert"
-			sheet_path = rd.alert_sheet
-			frames2    = rd.alert_frames
-			fps2       = rd.alert_anim_fps
-		else:
-			use_anim   = "idle"
-			sheet_path = rd.idle_sheet
-			frames2    = rd.idle_frames
-			fps2       = rd.idle_anim_fps
-
-		var tex2 := load(sheet_path) as Texture2D
-		if not tex2:
+func _load_formations_table() -> Array:
+	var result: Array = []
+	var file := FileAccess.open(FORMATIONS_TABLE_PATH, FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
 			continue
-
-		var sf := SpriteFrames.new()
-		sf.add_animation(use_anim)
-		sf.set_animation_speed(use_anim, fps2)
-		sf.set_animation_loop(use_anim, true)
-		var frame_w := tex2.get_width() / frames2
-		var frame_h := tex2.get_height()
-		for k in range(frames2):
-			var at := AtlasTexture.new()
-			at.atlas  = tex2
-			at.region = Rect2(k * frame_w, 0, frame_w, frame_h)
-			sf.add_frame(use_anim, at)
-
-		var root := Node2D.new()
-		root.position = Vector2(
-			(col - 1) * cell_w + cell_w * 0.5,
-			(row - 1) * cell_h + cell_h * 0.5
-		)
-		add_child(root)
-
-		var sprite := AnimatedSprite2D.new()
-		sprite.sprite_frames = sf
-		sprite.animation     = use_anim
-		sprite.scale         = Vector2(sc, sc)
-		sprite.play(use_anim)
-		root.add_child(sprite)
-
-		var bar := RoleStatusBar.new(
-			ROLE_MAX_HP, ROLE_MAX_MP,
-			hp_tex, mp_tex, font,
-			BAR_W, BAR_H, HP_OFFSET, MP_OFFSET
-		)
-		root.add_child(bar)
-
-# ── 解析 levels.txt ───────────────────────────────────────────────────────────
+		var parts := line.split("\t")
+		if parts.size() < 3 or not (parts[0] as String).is_valid_int():
+			continue
+		var positions: Array = []
+		for pi in range(2, parts.size()):
+			var pstr: String = (parts[pi] as String).strip_edges()
+			if pstr.is_empty():
+				continue
+			var coords := pstr.split(",")
+			if coords.size() >= 2:
+				var r := int((coords[0] as String).strip_edges())
+				var c := int((coords[1] as String).strip_edges())
+				if r == 0 and c == 0:
+					continue
+				positions.append(Vector2(r, c))
+		result.append({"id": int(parts[0]), "name": String(parts[1]), "positions": positions})
+	return result
 
 func _load_levels_table() -> Dictionary:
 	var result := {}
@@ -487,148 +842,37 @@ func _load_levels_table() -> Dictionary:
 		}
 	return result
 
-# ── 放置敌方怪物（右侧镜像阵型） ─────────────────────────────────────────────
+func _get_team_ids() -> Array:
+	var save_path := "user://savegame.json"
+	if FileAccess.file_exists(save_path):
+		var file := FileAccess.open(save_path, FileAccess.READ)
+		if file:
+			var parsed = JSON.parse_string(file.get_as_text())
+			file.close()
+			if parsed is Dictionary and parsed.has("team_ids") and parsed["team_ids"] is Array:
+				var arr: Array[String] = []
+				for rid in (parsed["team_ids"] as Array):
+					arr.append(String(rid))
+				return arr
+	var defaults := GlobalConfig.get_str("default_owned_roles", "")
+	var result: Array[String] = []
+	for piece in defaults.split(","):
+		var s: String = (piece as String).strip_edges()
+		if not s.is_empty():
+			result.append(s)
+	return result
 
-func _place_enemy_roles(vp: Vector2) -> void:
-	var level_id: String = String(GlobalConfig.get_runtime("level_id"))
-	if level_id.is_empty():
-		return
-	var levels_data := _load_levels_table()
-	if not levels_data.has(level_id):
-		return
-	var level: Dictionary = levels_data[level_id]
-	var monster_ids: Array = level["monster_ids"]
-	if monster_ids.is_empty():
-		return
+# ─────────────────────────────────────────────────────────────────────────────
+# 工具
+# ─────────────────────────────────────────────────────────────────────────────
 
-	var formations := _load_formations_table()
-	var formation_positions: Array = []
-	for f in formations:
-		if int(f["id"]) == int(level["formation_id"]):
-			formation_positions = f["positions"]
-			break
-	if formation_positions.is_empty():
-		return
-
-	var roles_data := _load_roles_table()
-	var cell_w := vp.x / GRID_COLS
-	var cell_h := vp.y / GRID_ROWS
-	var hp_tex := load("res://asserts/image/ui/hp_bar.png") as Texture2D
-	var mp_tex := load("res://asserts/image/ui/mp_bar.png") as Texture2D
-	var font   := load("res://asserts/fonts/ZCOOLKuaiLe.ttf") as Font
-
-	for i in mini(monster_ids.size(), formation_positions.size()):
-		var rc: Vector2 = formation_positions[i]
-		if rc == Vector2.ZERO:
-			continue
-		var row := int(rc.x)
-		var col := mirror_col(int(rc.y))
-		var rid: String = monster_ids[i]
-		if not roles_data.has(rid):
-			continue
-		var rd: Dictionary = roles_data[rid]
-
-		var use_anim: String
-		var sheet_path: String
-		var frames2: int
-		var fps2: float
-		if not rd.alert_sheet.is_empty():
-			use_anim   = "alert"
-			sheet_path = rd.alert_sheet
-			frames2    = rd.alert_frames
-			fps2       = rd.alert_anim_fps
-		elif not rd.idle_sheet.is_empty():
-			use_anim   = "idle"
-			sheet_path = rd.idle_sheet
-			frames2    = rd.idle_frames
-			fps2       = rd.idle_anim_fps
-		else:
-			continue
-
-		var tex2 := load(sheet_path) as Texture2D
-		if not tex2:
-			continue
-
-		var sf := SpriteFrames.new()
-		sf.add_animation(use_anim)
-		sf.set_animation_speed(use_anim, fps2)
-		sf.set_animation_loop(use_anim, true)
-		var frame_w := tex2.get_width() / frames2
-		var frame_h := tex2.get_height()
-		for k in range(frames2):
-			var at := AtlasTexture.new()
-			at.atlas  = tex2
-			at.region = Rect2(k * frame_w, 0, frame_w, frame_h)
-			sf.add_frame(use_anim, at)
-
-		var root := Node2D.new()
-		root.position = Vector2(
-			(col - 1) * cell_w + cell_w * 0.5,
-			(row - 1) * cell_h + cell_h * 0.5
-		)
-		add_child(root)
-
-		var sprite := AnimatedSprite2D.new()
-		sprite.sprite_frames = sf
-		sprite.animation     = use_anim
-		sprite.scale         = Vector2(rd.idle_scale, rd.idle_scale)
-		sprite.play(use_anim)
-		root.add_child(sprite)
-
-		var bar := RoleStatusBar.new(
-			ROLE_MAX_HP, ROLE_MAX_MP,
-			hp_tex, mp_tex, font,
-			BAR_W, BAR_H, HP_OFFSET, MP_OFFSET
-		)
-		root.add_child(bar)
-
-# ── 镜像工具（怪物右侧时用） ──────────────────────────────────────────────────
 static func mirror_col(col: int) -> int:
-	return GRID_COLS + 1 - col  # 13 - col
+	return GRID_COLS + 1 - col
 
-# ── 血条节点类 ────────────────────────────────────────────────────────────────
-
-class RoleStatusBar extends Node2D:
-	var cur_hp : int
-	var max_hp : int
-	var cur_mp : int
-	var max_mp : int
-	var hp_tex : Texture2D
-	var mp_tex : Texture2D
-	var font   : Font
-	var bar_w  : float
-	var bar_h  : float
-	var hp_off : Vector2
-	var mp_off : Vector2
-
-	func _init(mhp:int, mmp:int, htex:Texture2D, mtex:Texture2D,
-			   fnt:Font, bw:float, bh:float, hoff:Vector2, moff:Vector2) -> void:
-		cur_hp = mhp; max_hp = mhp
-		cur_mp = mmp; max_mp = mmp
-		hp_tex = htex; mp_tex = mtex
-		font = fnt
-		bar_w = bw; bar_h = bh
-		hp_off = hoff; mp_off = moff
-
-	func _draw() -> void:
-		_draw_bar(hp_off, cur_hp, max_hp, hp_tex)
-		_draw_bar(mp_off, cur_mp, max_mp, mp_tex)
-
-	func _draw_bar(off: Vector2, cur: int, mx: int, frame: Texture2D) -> void:
-		if frame:
-			draw_texture_rect(frame, Rect2(off, Vector2(bar_w, bar_h)), false)
-		var txt := "%d/%d" % [cur, mx]
-		var font_size := 8
-		var txt_size  := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
-		var txt_pos   := off + Vector2((bar_w - txt_size.x) * 0.5, bar_h * 0.5 + txt_size.y * 0.35)
-		for dx in [-1, 0, 1]:
-			for dy in [-1, 0, 1]:
-				if dx != 0 or dy != 0:
-					draw_string(font, txt_pos + Vector2(dx, dy), txt,
-						HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0, 0, 0, 0.9))
-		draw_string(font, txt_pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1, 1, 1, 1))
-
-# ── 工具：生成普通按钮 ────────────────────────────────────────────────────────
+func _on_exit_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		var main := load(MAIN_SCENE_PATH) as PackedScene
+		SceneTransition.change_to(main)
 
 func _make_button(text: String, pos: Vector2, size: Vector2) -> Dictionary:
 	var style := StyleBoxFlat.new()
@@ -668,8 +912,6 @@ func _make_button(text: String, pos: Vector2, size: Vector2) -> Dictionary:
 
 	return {"panel": panel, "label": lbl}
 
-# ── 工具：生成箭头按钮（纯文字，蓝色风格） ────────────────────────────────────
-
 func _make_arrow_button(text: String, pos: Vector2, size: Vector2) -> Dictionary:
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.12, 0.28, 0.58, 0.85)
@@ -703,7 +945,97 @@ func _make_arrow_button(text: String, pos: Vector2, size: Vector2) -> Dictionary
 
 	return {"panel": panel, "label": lbl}
 
-func _on_exit_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		var main := load(MAIN_SCENE_PATH) as PackedScene
-		SceneTransition.change_to(main)
+# ─────────────────────────────────────────────────────────────────────────────
+# 血条节点
+# ─────────────────────────────────────────────────────────────────────────────
+
+class RoleStatusBar extends Node2D:
+	var cur_hp : int
+	var max_hp : int
+	var cur_mp : int
+	var max_mp : int
+	var hp_tex : Texture2D
+	var mp_tex : Texture2D
+	var font   : Font
+	var bar_w  : float
+	var bar_h  : float
+	var hp_off : Vector2
+	var mp_off : Vector2
+
+	func _init(mhp:int, mmp:int, htex:Texture2D, mtex:Texture2D,
+			   fnt:Font, bw:float, bh:float, hoff:Vector2, moff:Vector2) -> void:
+		cur_hp = mhp; max_hp = mhp
+		cur_mp = mmp; max_mp = mmp
+		hp_tex = htex; mp_tex = mtex
+		font = fnt
+		bar_w = bw; bar_h = bh
+		hp_off = hoff; mp_off = moff
+
+	func update_hp(new_hp: int) -> void:
+		cur_hp = new_hp
+		queue_redraw()
+
+	func _draw() -> void:
+		_draw_bar(hp_off, cur_hp, max_hp, hp_tex)
+		_draw_bar(mp_off, cur_mp, max_mp, mp_tex)
+
+	func _draw_bar(off: Vector2, cur: int, mx: int, frame: Texture2D) -> void:
+		var ratio: float = 0.0 if mx <= 0 else clampf(float(cur) / float(mx), 0.0, 1.0)
+		# 空槽底色
+		draw_rect(Rect2(off, Vector2(bar_w, bar_h)), Color(0.08, 0.08, 0.10, 0.85), true)
+		# 按比例裁取 frame 左侧填充
+		if frame and ratio > 0.0:
+			var tex_size := frame.get_size()
+			var src_rect := Rect2(0, 0, tex_size.x * ratio, tex_size.y)
+			var dst_rect := Rect2(off, Vector2(bar_w * ratio, bar_h))
+			draw_texture_rect_region(frame, dst_rect, src_rect)
+		var txt := "%d/%d" % [cur, mx]
+		var font_size := 8
+		var txt_size  := font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+		var txt_pos   := off + Vector2((bar_w - txt_size.x) * 0.5, bar_h * 0.5 + txt_size.y * 0.35)
+		for dx in [-1, 0, 1]:
+			for dy in [-1, 0, 1]:
+				if dx != 0 or dy != 0:
+					draw_string(font, txt_pos + Vector2(dx, dy), txt,
+						HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0, 0, 0, 0.9))
+		draw_string(font, txt_pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1, 1, 1, 1))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 战斗单位数据
+# ─────────────────────────────────────────────────────────────────────────────
+
+class BattleUnit:
+	var rid:        String
+	var is_enemy:   bool = false
+	var is_dead:    bool = false
+	var cur_hp:     int  = 0
+	var max_hp:     int  = 0
+	var atk:        int  = 0
+	var def:        int  = 0
+	var spd:        int  = 0
+	var crit:       int  = 0   # 万分比
+	var dodge:      int  = 0   # 万分比
+	var sprite:     AnimatedSprite2D = null
+	var status_bar: RoleStatusBar   = null
+	var root:       Node2D = null
+	var rd:         Dictionary = {}
+
+	# 播动画；attack 结束后自动回 alert/idle
+	func play_anim(anim_name: String) -> void:
+		if not is_instance_valid(sprite):
+			return
+		var sf: SpriteFrames = sprite.sprite_frames
+		if not sf.has_animation(anim_name):
+			return
+		sprite.play(anim_name)
+		if anim_name == "attack":
+			if not sprite.animation_finished.is_connected(_on_attack_finished):
+				sprite.animation_finished.connect(_on_attack_finished, CONNECT_ONE_SHOT)
+
+	func _on_attack_finished() -> void:
+		if not is_instance_valid(sprite):
+			return
+		var sf: SpriteFrames = sprite.sprite_frames
+		var back := "alert" if sf.has_animation("alert") else "idle"
+		if sf.has_animation(back):
+			sprite.play(back)
