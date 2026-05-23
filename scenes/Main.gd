@@ -135,6 +135,17 @@ var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
 var _last_speech_slot_idx: int = -1
 
+# 聊天框
+var _chat_root: Control = null
+var _chat_toggle_panel: Panel = null
+var _chat_toggle_lbl: Label = null
+var _chat_msg_box: VBoxContainer = null
+var _chat_scroll: ScrollContainer = null
+var _chat_input: LineEdit = null
+var _chat_expanded: bool = false
+var _chat_rect := Rect2()
+var _chat_toggle_rect := Rect2()
+
 func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
 	bgm.volume_db = 0.0
@@ -200,6 +211,7 @@ func _setup() -> void:
 	_spawn_squirrel(500.0, 0.50)
 	_spawn_squirrel(820.0, 0.55)
 	_spawn_reset_button()
+	_spawn_chat_box()
 
 	# 从阵型选择场景返回时，读取玩家选中的阵型
 	var sel_id = GlobalConfig.get_runtime("selected_formation_id")
@@ -911,6 +923,11 @@ func _on_level_btn_pressed(level_id: String) -> void:
 	SceneTransition.change_to(scene)
 
 func _handle_click(pos: Vector2) -> void:
+	# 聊天框区域吞掉点击，避免触发建筑/面板逻辑
+	if _chat_toggle_rect.has_point(pos):
+		return
+	if _chat_expanded and _chat_rect.has_point(pos):
+		return
 	if _panel_visible:
 		if _upgrade_rect.has_point(pos) and not _upgrade_disabled:
 			_on_upgrade_pressed()
@@ -1496,3 +1513,220 @@ func _squirrel_wander(sq: AnimatedSprite2D, ground_y: float) -> void:
 			_squirrel_wander(sq, target_y)
 		)
 	)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 聊天框（右下角，可展开/收起）
+# ─────────────────────────────────────────────────────────────────────────────
+
+func _spawn_chat_box() -> void:
+	var ui := $UI
+	var vp := get_viewport_rect().size
+	var font := load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+
+	# 切换按钮（始终可见，位于右下角）
+	var toggle_w := 92.0
+	var toggle_h := 38.0
+	var toggle_x := vp.x - toggle_w - 12.0
+	var toggle_y := vp.y - toggle_h - 12.0
+	_chat_toggle_rect = Rect2(toggle_x, toggle_y, toggle_w, toggle_h)
+
+	var tstyle := StyleBoxFlat.new()
+	tstyle.bg_color = Color(0.10, 0.18, 0.32, 0.92)
+	tstyle.set_corner_radius_all(10)
+	tstyle.border_width_top    = 2
+	tstyle.border_width_right  = 2
+	tstyle.border_width_bottom = 3
+	tstyle.border_width_left   = 2
+	tstyle.border_color = Color(0.35, 0.65, 1.0, 0.95)
+	tstyle.shadow_color = Color(0, 0, 0, 0.55)
+	tstyle.shadow_size  = 6
+	tstyle.shadow_offset = Vector2(1, 3)
+
+	_chat_toggle_panel = Panel.new()
+	_chat_toggle_panel.size     = Vector2(toggle_w, toggle_h)
+	_chat_toggle_panel.position = Vector2(toggle_x, toggle_y)
+	_chat_toggle_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_chat_toggle_panel.add_theme_stylebox_override("panel", tstyle)
+	ui.add_child(_chat_toggle_panel)
+
+	_chat_toggle_lbl = Label.new()
+	_chat_toggle_lbl.text = "▲ 聊天"
+	_chat_toggle_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_chat_toggle_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	_chat_toggle_lbl.size = Vector2(toggle_w, toggle_h)
+	_chat_toggle_lbl.position = Vector2(toggle_x, toggle_y)
+	_chat_toggle_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+	var tls := LabelSettings.new()
+	tls.font = font
+	tls.font_size = 20
+	tls.font_color = Color(0.88, 0.96, 1.0)
+	tls.outline_size = 2
+	tls.outline_color = Color(0, 0, 0, 0.9)
+	_chat_toggle_lbl.label_settings = tls
+	ui.add_child(_chat_toggle_lbl)
+	_chat_toggle_lbl.gui_input.connect(_on_chat_toggle_input)
+
+	# 展开面板（在切换按钮上方）
+	var panel_w := 348.0
+	var panel_h := 300.0
+	var panel_x := vp.x - panel_w - 12.0
+	var panel_y := toggle_y - panel_h - 8.0
+	_chat_rect = Rect2(panel_x, panel_y, panel_w, panel_h)
+
+	_chat_root = Control.new()
+	_chat_root.size = Vector2(panel_w, panel_h)
+	_chat_root.position = Vector2(panel_x, panel_y)
+	_chat_root.mouse_filter = Control.MOUSE_FILTER_PASS
+	_chat_root.visible = false
+	ui.add_child(_chat_root)
+
+	var bg_style := StyleBoxFlat.new()
+	bg_style.bg_color = Color(0.05, 0.10, 0.20, 0.92)
+	bg_style.set_corner_radius_all(12)
+	bg_style.border_width_top    = 2
+	bg_style.border_width_right  = 2
+	bg_style.border_width_bottom = 2
+	bg_style.border_width_left   = 2
+	bg_style.border_color = Color(0.35, 0.65, 1.0, 0.85)
+	bg_style.shadow_color = Color(0, 0, 0, 0.6)
+	bg_style.shadow_size = 10
+
+	var bg := Panel.new()
+	bg.size = Vector2(panel_w, panel_h)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	bg.add_theme_stylebox_override("panel", bg_style)
+	_chat_root.add_child(bg)
+
+	# 标题
+	var hdr := Label.new()
+	hdr.text = "聊天"
+	hdr.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	hdr.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	hdr.position = Vector2(14, 8)
+	hdr.size = Vector2(panel_w - 28, 28)
+	hdr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var hls := LabelSettings.new()
+	hls.font = font
+	hls.font_size = 22
+	hls.font_color = Color(1.0, 0.92, 0.6)
+	hls.outline_size = 2
+	hls.outline_color = Color(0, 0, 0, 0.85)
+	hdr.label_settings = hls
+	_chat_root.add_child(hdr)
+
+	# 消息滚动区
+	_chat_scroll = ScrollContainer.new()
+	_chat_scroll.position = Vector2(12, 42)
+	_chat_scroll.size = Vector2(panel_w - 24, panel_h - 96)
+	_chat_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_chat_root.add_child(_chat_scroll)
+
+	_chat_msg_box = VBoxContainer.new()
+	_chat_msg_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_chat_msg_box.add_theme_constant_override("separation", 6)
+	_chat_scroll.add_child(_chat_msg_box)
+
+	# 输入行
+	var input_y := panel_h - 44.0
+	_chat_input = LineEdit.new()
+	_chat_input.position = Vector2(12, input_y)
+	_chat_input.size = Vector2(panel_w - 92, 32)
+	_chat_input.placeholder_text = "说点什么..."
+	_chat_input.add_theme_font_override("font", font)
+	_chat_input.add_theme_font_size_override("font_size", 18)
+	_chat_input.text_submitted.connect(_on_chat_input_submitted)
+	_chat_root.add_child(_chat_input)
+
+	var send_w := 64.0
+	var send_x := panel_w - send_w - 12.0
+	var send_style := StyleBoxFlat.new()
+	send_style.bg_color = Color(0.20, 0.45, 0.85, 0.95)
+	send_style.set_corner_radius_all(8)
+	send_style.border_width_top    = 2
+	send_style.border_width_right  = 2
+	send_style.border_width_bottom = 2
+	send_style.border_width_left   = 2
+	send_style.border_color = Color(0.55, 0.80, 1.0, 1.0)
+
+	var send_panel := Panel.new()
+	send_panel.size = Vector2(send_w, 32)
+	send_panel.position = Vector2(send_x, input_y)
+	send_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	send_panel.add_theme_stylebox_override("panel", send_style)
+	_chat_root.add_child(send_panel)
+
+	var send_lbl := Label.new()
+	send_lbl.text = "发送"
+	send_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	send_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	send_lbl.size = Vector2(send_w, 32)
+	send_lbl.position = Vector2(send_x, input_y)
+	send_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
+	var sls := LabelSettings.new()
+	sls.font = font
+	sls.font_size = 18
+	sls.font_color = Color(1.0, 1.0, 1.0)
+	sls.outline_size = 2
+	sls.outline_color = Color(0, 0, 0, 0.85)
+	send_lbl.label_settings = sls
+	_chat_root.add_child(send_lbl)
+	send_lbl.gui_input.connect(_on_chat_send_input)
+
+	# 初始消息
+	_chat_add_message("系统", "欢迎来到 Buildcraft Epoch！")
+	_chat_add_message("酒馆老板", "勇士们，先去出征看看你们的实力。")
+	_chat_add_message("矮人锤手", "啧，又有新人？")
+
+func _on_chat_toggle_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_set_chat_expanded(not _chat_expanded)
+
+func _set_chat_expanded(v: bool) -> void:
+	_chat_expanded = v
+	if _chat_root:
+		_chat_root.visible = v
+	if _chat_toggle_lbl:
+		_chat_toggle_lbl.text = ("▼ 聊天" if v else "▲ 聊天")
+
+func _on_chat_send_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		_chat_send_current()
+
+func _on_chat_input_submitted(_text: String) -> void:
+	_chat_send_current()
+
+func _chat_send_current() -> void:
+	if _chat_input == null:
+		return
+	var t := _chat_input.text.strip_edges()
+	if t.is_empty():
+		return
+	_chat_input.text = ""
+	_chat_add_message("玩家", t)
+
+func _chat_add_message(speaker: String, content: String) -> void:
+	if _chat_msg_box == null:
+		return
+	var lbl := Label.new()
+	lbl.text = "[%s] %s" % [speaker, content]
+	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var ls := LabelSettings.new()
+	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size = 17
+	if speaker == "玩家":
+		ls.font_color = Color(0.85, 1.0, 0.85)
+	elif speaker == "系统":
+		ls.font_color = Color(1.0, 0.85, 0.55)
+	else:
+		ls.font_color = Color(0.92, 0.92, 1.0)
+	ls.outline_size = 1
+	ls.outline_color = Color(0, 0, 0, 0.85)
+	lbl.label_settings = ls
+	_chat_msg_box.add_child(lbl)
+	# 滚到底部
+	await get_tree().process_frame
+	if _chat_scroll:
+		var v_bar := _chat_scroll.get_v_scroll_bar()
+		if v_bar:
+			_chat_scroll.scroll_vertical = int(v_bar.max_value)

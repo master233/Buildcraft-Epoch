@@ -1,6 +1,7 @@
 extends Node2D
 
 const MAIN_SCENE_PATH       := "res://scenes/Main.tscn"
+const BATTLE_SCENE_PATH     := "res://scenes/BattleScene.tscn"
 const ROLES_TABLE_PATH      := "res://asserts/table/roles.txt"
 const ROLE_ATTRS_TABLE_PATH := "res://asserts/table/role_attrs.txt"
 const FORMATIONS_TABLE_PATH := "res://asserts/table/formations.txt"
@@ -140,9 +141,13 @@ func _perform_action(attacker: BattleUnit) -> void:
 		return
 
 	var origin: Vector2 = atk_root.position
+	var origin_z: int = atk_root.z_index
 	# 玩家攻击者从左来 → 站到目标左侧；敌人攻击者从右来 → 站到目标右侧
 	var off_x: float = -APPROACH_OFFSET if not attacker.is_enemy else APPROACH_OFFSET
 	var dest: Vector2 = target.root.position + Vector2(off_x, 0)
+
+	# 攻击期间让攻击者图层置顶，避免被受击者遮挡（飘字 z=100 仍在最上）
+	atk_root.z_index = 10
 
 	# 1) 冲到目标前
 	var tw_in := create_tween()
@@ -174,6 +179,8 @@ func _perform_action(attacker: BattleUnit) -> void:
 		tw_out.tween_property(atk_root, "position", origin, MOVE_OUT_TIME) \
 			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		await tw_out.finished
+		if is_instance_valid(atk_root):
+			atk_root.z_index = origin_z
 
 	_check_battle_over()
 	_acting = false
@@ -200,7 +207,12 @@ func _spawn_damage_label(target: BattleUnit, dmg: int, is_miss: bool, is_crit: b
 	if not is_instance_valid(target.root):
 		return
 	var lbl := Label.new()
-	lbl.text = "MISS" if is_miss else str(dmg)
+	if is_miss:
+		lbl.text = "MISS"
+	elif is_crit:
+		lbl.text = str(dmg) + "!!"
+	else:
+		lbl.text = str(dmg)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	lbl.size = Vector2(140, 48)
@@ -212,7 +224,7 @@ func _spawn_damage_label(target: BattleUnit, dmg: int, is_miss: bool, is_crit: b
 	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	if is_crit:
 		ls.font_size  = 38
-		ls.font_color = Color(1.0, 0.95, 0.25)
+		ls.font_color = Color(1.0, 0.35, 0.35)
 	elif is_miss:
 		ls.font_size  = 24
 		ls.font_color = Color(0.85, 0.85, 0.85)
@@ -316,6 +328,22 @@ func _end_battle(victory: bool) -> void:
 	ui.add_child(back_btn.panel)
 	ui.add_child(back_btn.label)
 	back_btn.label.gui_input.connect(_on_exit_input)
+
+	if victory:
+		var next_id := _next_level_id_str()
+		if not next_id.is_empty():
+			# 有下一关：把"返回"挪到左半边，右边加"下一关"
+			var btn_w := 120.0
+			var btn_h := 52.0
+			var gap := 30.0
+			var x0 := panel.position.x + (panel_w - (btn_w * 2 + gap)) * 0.5
+			var y := panel.position.y + 110.0
+			back_btn.panel.position = Vector2(x0, y)
+			back_btn.label.position = Vector2(x0, y)
+			var next_btn := _make_button("下一关", Vector2(x0 + btn_w + gap, y), Vector2(btn_w, btn_h))
+			ui.add_child(next_btn.panel)
+			ui.add_child(next_btn.label)
+			next_btn.label.gui_input.connect(_on_next_level_input.bind(next_id))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 阵型选择模式
@@ -957,6 +985,34 @@ func _on_exit_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		var main := load(MAIN_SCENE_PATH) as PackedScene
 		SceneTransition.change_to(main)
+
+func _on_next_level_input(event: InputEvent, next_id: String) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		if next_id.is_empty():
+			return
+		GlobalConfig.set_runtime("scene_mode", "battle")
+		GlobalConfig.set_runtime("level_id", next_id)
+		var scene := load(BATTLE_SCENE_PATH) as PackedScene
+		SceneTransition.change_to(scene)
+
+func _next_level_id_str() -> String:
+	var cur_str: String = String(GlobalConfig.get_runtime("level_id"))
+	if not cur_str.is_valid_int():
+		return ""
+	var cur := int(cur_str)
+	var levels_data := _load_levels_table()
+	var ids: Array = []
+	for k in levels_data.keys():
+		var s := String(k)
+		if s.is_valid_int():
+			ids.append(int(s))
+	if ids.is_empty():
+		return ""
+	ids.sort()
+	for lid in ids:
+		if lid > cur:
+			return str(lid)
+	return ""
 
 func _make_button(text: String, pos: Vector2, size: Vector2) -> Dictionary:
 	var style := StyleBoxFlat.new()
