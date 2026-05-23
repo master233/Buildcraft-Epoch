@@ -17,6 +17,8 @@ const SQUIRREL_OBSTACLES := [[130.0, 410.0], [870.0, 1210.0]]
 const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
+const LEVELS_TABLE_PATH := "res://asserts/table/levels.txt"
+const FIRST_LEVEL_ID := 10101
 
 # 远征队伍由 _resolve_team_from_owned() 根据 owned 角色列表推导：
 # owned 取自存档，没存档或字段缺失时读 GlobalConfig.default_owned_roles；
@@ -99,6 +101,8 @@ const BUILDINGS := {
 var _wood: int = 200
 var _ore: int = 100
 var _gold: int = 0
+var _cleared_level: int = 0
+var _level_ids: Array = []
 var _reset_bg: Panel = null
 var _reset_lbl: Label = null
 var _reset_style: StyleBoxFlat = null
@@ -195,6 +199,7 @@ func _setup() -> void:
 	_load_role_lines()
 	_resolve_team_from_owned()
 	_place_expedition_team()
+	_load_level_ids()
 	_load_game()
 	_refresh_hud()
 	_build_animal_frames()
@@ -359,9 +364,39 @@ func _on_expedition_btn_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		GlobalConfig.set_runtime("scene_mode", "battle")
 		GlobalConfig.set_runtime("formation_id", _formation_id)
-		GlobalConfig.set_runtime("level_id", "10101")
+		GlobalConfig.set_runtime("level_id", _next_level_id())
 		var scene := load(BATTLE_SCENE_PATH) as PackedScene
 		SceneTransition.change_to(scene)
+
+func _next_level_id() -> String:
+	if _level_ids.is_empty():
+		return str(FIRST_LEVEL_ID)
+	for lid in _level_ids:
+		if int(lid) > _cleared_level:
+			return String(lid)
+	return String(_level_ids[_level_ids.size() - 1])
+
+func _load_level_ids() -> void:
+	_level_ids.clear()
+	var file := FileAccess.open(LEVELS_TABLE_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 1:
+			continue
+		var lid_str: String = (parts[0] as String).strip_edges()
+		if lid_str.is_valid_int():
+			_level_ids.append(lid_str)
+	_level_ids.sort_custom(func(a, b): return int(a) < int(b))
 
 func _on_formation_btn_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -376,6 +411,7 @@ func _reset_game() -> void:
 	_wood = 200
 	_ore = 100
 	_gold = 0
+	_cleared_level = 0
 	for key in _building_nodes:
 		_building_nodes[key]["level"] = 1
 		if BUILDINGS[key]["animated"]:
@@ -1203,7 +1239,7 @@ func _refresh_label(key: String) -> void:
 		btn.modulate = Color(0.7, 0.7, 0.7, 1.0) if maxed else Color.WHITE
 		btn.set_meta("disabled", maxed)
 func _save_game() -> void:
-	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
+	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "cleared_level": _cleared_level, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
 	for key in _building_nodes:
 		data["levels"][key] = _building_nodes[key]["level"]
 	for i in _team_slots.size():
@@ -1240,6 +1276,8 @@ func _load_game() -> void:
 		_gold = int(data["gold"])
 	if data.has("formation_id"):
 		_formation_id = int(data["formation_id"])
+	if data.has("cleared_level"):
+		_cleared_level = int(data["cleared_level"])
 	if data.has("levels") and data["levels"] is Dictionary:
 		var levels: Dictionary = data["levels"]
 		for key in levels:
