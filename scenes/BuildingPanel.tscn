@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://xjux03nisrql"]
 
-[ext_resource type="Texture2D" uid="uid://br2u7ya0v1mqw" path="res://asserts/image/building/building_board/building_click_board.png" id="1"]
+[ext_resource type="Texture2D" uid="uid://p4o80wo4qurm" path="res://asserts/image/building/building_board/building_click_board.png" id="1"]
 [ext_resource type="Texture2D" uid="uid://bfjf8csfde8re" path="res://asserts/image/ui/ui_upgrade.png" id="2"]
 [ext_resource type="Texture2D" uid="uid://cos5jlt04al0p" path="res://asserts/image/ui/ui_close.png" id="3"]
 [ext_resource type="FontFile" uid="uid://b6wyxgm7fm30n" path="res://asserts/fonts/ZCOOLKuaiLe.ttf" id="4"]
@@ -14,7 +14,7 @@ outline_color = Color(0.18, 0.08, 0.02, 1)
 
 [sub_resource type="LabelSettings" id="LabelSettings_info"]
 font = ExtResource("4")
-font_size = 18
+font_size = 22
 font_color = Color(0.22, 0.13, 0.06, 1)
 outline_size = 3
 outline_color = Color(1, 0.96, 0.85, 0.7)
@@ -38,9 +38,9 @@ stretch_mode = 5
 [node name="PanelNameLbl" type="Label" parent="." unique_id=1966261212]
 layout_mode = 0
 offset_left = 320.0
-offset_top = 30.0
+offset_top = 35.0
 offset_right = 960.0
-offset_bottom = 108.0
+offset_bottom = 113.0
 text = "建筑名称"
 label_settings = SubResource("LabelSettings_name")
 horizontal_alignment = 1
@@ -80,21 +80,21 @@ vertical_alignment = 1
 
 [node name="CloseBtn" type="TextureRect" parent="." unique_id=613083497]
 layout_mode = 0
-offset_left = 1090.0
-offset_top = 10.0
-offset_right = 1175.0
-offset_bottom = 90.0
+offset_left = 1080.0
+offset_top = 7.0
+offset_right = 1165.0
+offset_bottom = 87.0
 texture = ExtResource("3")
 expand_mode = 1
 stretch_mode = 5
 
 [node name="FunctionArea" type="Control" parent="." unique_id=2001000001]
+clip_contents = true
 anchors_preset = 0
 offset_left = 211.0
 offset_top = 242.0
 offset_right = 1067.0
 offset_bottom = 638.0
-clip_contents = true
 
 [node name="PanelExtraLbl" type="Label" parent="." unique_id=1016490544]
 layout_mode = 0
