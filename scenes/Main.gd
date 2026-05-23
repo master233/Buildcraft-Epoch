@@ -5,12 +5,22 @@ extends Node2D
 @onready var _ore_lbl: Label = $UI/OreLbl
 @onready var _gold_lbl: Label = $UI/GoldLbl
 @onready var _panel_dim: ColorRect = $UI/PanelDim
-@onready var _panel_bg: TextureRect = $UI/PanelBg
-@onready var _panel_name_lbl: Label = $UI/PanelNameLbl
-@onready var _panel_info_lbl: Label = $UI/PanelInfoLbl
-@onready var _upgrade_btn: TextureRect = $UI/UpgradeBtn
-@onready var _upgrade_lbl: Label = $UI/UpgradeLbl
-@onready var _close_btn: TextureRect = $UI/CloseBtn
+@onready var _panel_bg: TextureRect = $UI/BuildingPanel
+@onready var _panel_name_lbl: Label = $UI/BuildingPanel/PanelNameLbl
+@onready var _panel_info_lbl: Label = $UI/BuildingPanel/PanelInfoLbl
+@onready var _upgrade_btn: TextureRect = $UI/BuildingPanel/UpgradeBtn
+@onready var _upgrade_lbl: Label = $UI/BuildingPanel/UpgradeLbl
+@onready var _close_btn: TextureRect = $UI/BuildingPanel/CloseBtn
+@onready var _panel_extra_lbl: Label = $UI/BuildingPanel/PanelExtraLbl if $UI/BuildingPanel.has_node("PanelExtraLbl") else null
+@onready var _panel_info_bg: ColorRect = $UI/BuildingPanel/PanelInfoBg if $UI/BuildingPanel.has_node("PanelInfoBg") else null
+@onready var _panel_extra_bg: ColorRect = $UI/BuildingPanel/PanelExtraBg if $UI/BuildingPanel.has_node("PanelExtraBg") else null
+@onready var _function_area: Control = $UI/BuildingPanel/FunctionArea
+
+const BUILDING_FUNCTION_SCENES := {
+	"tower": "res://scenes/building_panels/TowerPanel.tscn",
+}
+
+var _function_panel_node: Node = null
 
 const BUILDING_SCALE := 0.8
 const SQUIRREL_OBSTACLES := [[130.0, 410.0], [870.0, 1210.0]]
@@ -29,22 +39,12 @@ var _expedition_team_ids: Array[String] = []
 const ROLES_TABLE_PATH := "res://asserts/table/roles.txt"
 const TEAM_LAYOUT_PATH := "res://asserts/table/team_layout.txt"
 const ROLE_LINES_PATH := "res://asserts/table/role_lines.txt"
-const BUILDING_BTN_PATHS := {
-	"upgrade":    "res://asserts/image/building/building_button/btn_upgrade.png",
-	"tower":      "res://asserts/image/building/building_button/btn_tower.png",
-	"lumberyard": "res://asserts/image/building/building_button/btn_lumberyard.png",
-	"tavern":     "res://asserts/image/building/building_button/btn_tavern.png",
-	"home":       "res://asserts/image/building/building_button/btn_home.png",
-	"research":   "res://asserts/image/building/building_button/btn_research.png",
-	"mine":       "res://asserts/image/building/building_button/btn_mine.png",
-}
-const BUILDING_BTN_MAP := {"home": "home", "tower": "tower", "lumberyard": "lumberyard", "tavern": "tavern", "research": "research", "mine": "mine"}
 const SPEECH_TICK_INTERVAL := 6.0
 const SPEECH_DURATION := 3.0
 
-var _panel_rect    := Rect2(440, 200, 400, 380)
-var _upgrade_rect  := Rect2(490, 465, 300, 110)
-var _close_rect    := Rect2(775, 200, 60, 60)
+var _panel_rect    := Rect2(0, 0, 1280, 720)
+var _upgrade_rect  := Rect2(360, 93, 560, 150)
+var _close_rect    := Rect2(1090, 10, 85, 80)
 var _reset_rect    := Rect2(0, 0, 160, 36)
 
 const BUILDINGS := {
@@ -107,16 +107,9 @@ var _reset_bg: Panel = null
 var _reset_lbl: Label = null
 var _reset_style: StyleBoxFlat = null
 var _reset_hovering: bool = false
-var _expedition_btn_bg: Panel = null
-var _expedition_btn_lbl: Label = null
-var _expedition_btn_rect := Rect2(0, 0, 120, 48)
 
-const FORMATION_BTN_W := 130.0
 var _formation_id: int = 1
 var _formation_name: String = "标准阵"
-var _formation_btn_bg: Panel = null
-var _formation_btn_lbl: Label = null
-var _formation_btn_rect := Rect2(0, 0, FORMATION_BTN_W, 48)
 var _panel_movable: Array = []
 var _panel_offsets: Array[Vector2] = []
 var _building_nodes: Dictionary = {}
@@ -146,18 +139,14 @@ func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
 	bgm.volume_db = 0.0
 	bgm.play()
-	_panel_nodes = [_panel_dim, _panel_bg, _panel_name_lbl,
-					_panel_info_lbl, _upgrade_btn, _upgrade_lbl, _close_btn]
+	_panel_nodes = []
 	call_deferred("_setup")
 
 func _setup() -> void:
 	var vp := get_viewport_rect().size
 	var half_vp := vp / 2.0
-	_panel_movable = [_panel_bg, _panel_name_lbl,
-					  _panel_info_lbl, _upgrade_btn, _upgrade_lbl, _close_btn]
-	var base := _panel_rect.position
-	for node in _panel_movable:
-		_panel_offsets.append((node as Control).position - base)
+	_panel_movable = []
+	_panel_offsets = []
 
 	# 背景：稍微放大留出漂移空间
 	var bg := Sprite2D.new()
@@ -211,7 +200,6 @@ func _setup() -> void:
 	_spawn_squirrel(500.0, 0.50)
 	_spawn_squirrel(820.0, 0.55)
 	_spawn_reset_button()
-	_spawn_expedition_button()
 
 	# 从阵型选择场景返回时，读取玩家选中的阵型
 	var sel_id = GlobalConfig.get_runtime("selected_formation_id")
@@ -225,7 +213,7 @@ func _setup() -> void:
 func _spawn_reset_button() -> void:
 	var ui := $UI
 	var vp := get_viewport_rect().size
-	_reset_rect = Rect2(vp.x - 178, 12, 164, 42)
+	_reset_rect = Rect2(vp.x - 114, 12, 100, 36)
 
 	_reset_style = StyleBoxFlat.new()
 	_reset_style.bg_color = Color(0.42, 0.07, 0.07)
@@ -247,7 +235,7 @@ func _spawn_reset_button() -> void:
 	ui.add_child(_reset_bg)
 
 	_reset_lbl = Label.new()
-	_reset_lbl.text = "重置游戏数据"
+	_reset_lbl.text = "重置游戏"
 	_reset_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_reset_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	_reset_lbl.size     = _reset_rect.size
@@ -266,107 +254,13 @@ func _spawn_reset_button() -> void:
 
 const BATTLE_SCENE_PATH := "res://scenes/BattleScene.tscn"
 
-func _spawn_expedition_button() -> void:
-	var ui := $UI
-	var vp := get_viewport_rect().size
-	var btn_y := 670.0
-	var gap := 10.0
-	var total_w := _expedition_btn_rect.size.x + gap + FORMATION_BTN_W
-	var start_x := vp.x * 0.5 - total_w * 0.5
-
-	# 出征按钮
-	_expedition_btn_rect = Rect2(start_x, btn_y, _expedition_btn_rect.size.x, 48)
-	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.55, 0.32, 0.05, 0.92)
-	style.set_corner_radius_all(12)
-	style.border_width_top    = 2
-	style.border_width_right  = 2
-	style.border_width_bottom = 3
-	style.border_width_left   = 2
-	style.border_color  = Color(1.0, 0.78, 0.25, 1.0)
-	style.shadow_color  = Color(0, 0, 0, 0.6)
-	style.shadow_size   = 8
-	style.shadow_offset = Vector2(1, 3)
-
-	_expedition_btn_bg = Panel.new()
-	_expedition_btn_bg.size     = _expedition_btn_rect.size
-	_expedition_btn_bg.position = _expedition_btn_rect.position
-	_expedition_btn_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_expedition_btn_bg.add_theme_stylebox_override("panel", style)
-	ui.add_child(_expedition_btn_bg)
-
-	_expedition_btn_lbl = Label.new()
-	_expedition_btn_lbl.text = "出征"
-	_expedition_btn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_expedition_btn_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	_expedition_btn_lbl.size     = _expedition_btn_rect.size
-	_expedition_btn_lbl.position = _expedition_btn_rect.position
-	_expedition_btn_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
-	var ls := LabelSettings.new()
-	ls.font       = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
-	ls.font_size  = 26
-	ls.font_color = Color(1.0, 0.95, 0.6)
-	ls.outline_size  = 3
-	ls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
-	ls.shadow_size   = 3
-	ls.shadow_color  = Color(0, 0, 0, 0.5)
-	_expedition_btn_lbl.label_settings = ls
-	ui.add_child(_expedition_btn_lbl)
-	_expedition_btn_lbl.gui_input.connect(_on_expedition_btn_input)
-
-	# 阵型按钮（出征按钮右侧）
-	var form_x := start_x + _expedition_btn_rect.size.x + gap
-	_formation_btn_rect = Rect2(form_x, btn_y, FORMATION_BTN_W, 48)
-
-	var fstyle := StyleBoxFlat.new()
-	fstyle.bg_color = Color(0.08, 0.22, 0.45, 0.92)
-	fstyle.set_corner_radius_all(12)
-	fstyle.border_width_top    = 2
-	fstyle.border_width_right  = 2
-	fstyle.border_width_bottom = 3
-	fstyle.border_width_left   = 2
-	fstyle.border_color  = Color(0.35, 0.70, 1.0, 1.0)
-	fstyle.shadow_color  = Color(0, 0, 0, 0.6)
-	fstyle.shadow_size   = 8
-	fstyle.shadow_offset = Vector2(1, 3)
-
-	_formation_btn_bg = Panel.new()
-	_formation_btn_bg.size     = _formation_btn_rect.size
-	_formation_btn_bg.position = _formation_btn_rect.position
-	_formation_btn_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_formation_btn_bg.add_theme_stylebox_override("panel", fstyle)
-	ui.add_child(_formation_btn_bg)
-
-	_formation_btn_lbl = Label.new()
-	_formation_btn_lbl.text = _formation_name
-	_formation_btn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_formation_btn_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	_formation_btn_lbl.size     = _formation_btn_rect.size
-	_formation_btn_lbl.position = _formation_btn_rect.position
-	_formation_btn_lbl.mouse_filter = Control.MOUSE_FILTER_STOP
-	var fls := LabelSettings.new()
-	fls.font       = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
-	fls.font_size  = 22
-	fls.font_color = Color(0.75, 0.92, 1.0)
-	fls.outline_size  = 3
-	fls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
-	fls.shadow_size   = 3
-	fls.shadow_color  = Color(0, 0, 0, 0.5)
-	_formation_btn_lbl.label_settings = fls
-	ui.add_child(_formation_btn_lbl)
-	_formation_btn_lbl.gui_input.connect(_on_formation_btn_input)
-
 func _refresh_formation_btn() -> void:
-	if _formation_btn_lbl and is_instance_valid(_formation_btn_lbl):
-		_formation_btn_lbl.text = _formation_name
-
-func _on_expedition_btn_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		GlobalConfig.set_runtime("scene_mode", "battle")
-		GlobalConfig.set_runtime("formation_id", _formation_id)
-		GlobalConfig.set_runtime("level_id", _next_level_id())
-		var scene := load(BATTLE_SCENE_PATH) as PackedScene
-		SceneTransition.change_to(scene)
+func _refresh_formation_btn() -> void:
+	# 从阵型场景返回后更新远征塔面板内的阵型按钮文字
+	if _function_panel_node and is_instance_valid(_function_panel_node):
+		var form_btn: Button = _function_panel_node.get_node_or_null("ActionRow/FormationBtn")
+		if form_btn:
+			form_btn.text = _formation_name
 
 func _next_level_id() -> String:
 	if _level_ids.is_empty():
@@ -397,13 +291,6 @@ func _load_level_ids() -> void:
 		if lid_str.is_valid_int():
 			_level_ids.append(lid_str)
 	_level_ids.sort_custom(func(a, b): return int(a) < int(b))
-
-func _on_formation_btn_input(event: InputEvent) -> void:
-	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-		GlobalConfig.set_runtime("scene_mode", "formation")
-		GlobalConfig.set_runtime("formation_id", _formation_id)
-		var scene := load(BATTLE_SCENE_PATH) as PackedScene
-		SceneTransition.change_to(scene)
 
 func _reset_game() -> void:
 	if FileAccess.file_exists(SAVE_PATH):
@@ -529,35 +416,7 @@ func _place_buildings() -> void:
 		label.size = Vector2(180, 28)
 		label.position = Vector2(-90.0, label_y_offset)
 
-		# 建筑按钮：升级和功能按钮显示在名字上方
-		var up_sprite: Sprite2D = null
-		var fn_sprite: Sprite2D = null
-		var btn_size := 36.0
-		var btn_gap := 6.0
-		var btn_y := label_y_offset - btn_size - 4.0
-		# 升级按钮
-		var up_tex: Texture2D = load(BUILDING_BTN_PATHS["upgrade"])
-		if up_tex:
-			var up_scale := btn_size / up_tex.get_height()
-			up_sprite = Sprite2D.new()
-			up_sprite.texture = up_tex
-			up_sprite.scale = Vector2(up_scale, up_scale)
-			up_sprite.set_meta("base_scale", Vector2(up_scale, up_scale))
-			up_sprite.position = Vector2(-btn_size * 0.5 - btn_gap * 0.5, btn_y + btn_size * 0.5)
-			container.add_child(up_sprite)
-		# 功能按钮
-		var func_name: String = BUILDING_BTN_MAP.get(key, "")
-		if not func_name.is_empty():
-			var fn_tex: Texture2D = load(BUILDING_BTN_PATHS[func_name])
-			if fn_tex:
-				var fn_scale := btn_size / fn_tex.get_height()
-				fn_sprite = Sprite2D.new()
-				fn_sprite.texture = fn_tex
-				fn_sprite.scale = Vector2(fn_scale, fn_scale)
-				fn_sprite.position = Vector2(btn_size * 0.5 + btn_gap * 0.5, btn_y + btn_size * 0.5)
-				container.add_child(fn_sprite)
-
-		_building_nodes[key] = {"level": 1, "sprite": display_node, "label": label, "upgrade_btn": up_sprite, "func_btn": fn_sprite}
+		_building_nodes[key] = {"level": 1, "sprite": display_node, "label": label}
 		_refresh_label(key)
 
 func _place_expedition_team() -> void:
@@ -989,22 +848,70 @@ func _show_speech_bubble(slot_idx: int) -> void:
 	)
 
 func _set_panel_visible(v: bool) -> void:
-	var a := 1.0 if v else 0.0
-	for node in _panel_nodes:
-		node.modulate.a = a
+	_panel_bg.visible = v
+	_panel_dim.modulate.a = 1.0 if v else 0.0
 	_panel_visible = v
+	if not v:
+		_unload_function_panel()
+	if _reset_bg and is_instance_valid(_reset_bg):
+		_reset_bg.visible = not v
+	if _reset_lbl and is_instance_valid(_reset_lbl):
+		_reset_lbl.visible = not v
+
+func _load_function_panel(key: String) -> void:
+	_unload_function_panel()
+	if not BUILDING_FUNCTION_SCENES.has(key):
+		return
+	var scene: PackedScene = load(BUILDING_FUNCTION_SCENES[key])
+	if scene == null:
+		return
+	_function_panel_node = scene.instantiate()
+	_function_area.add_child(_function_panel_node)
+	if _function_panel_node is Control:
+		(_function_panel_node as Control).set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# 连接关卡按钮（远征塔）
+	if key == "tower":
+		_connect_tower_buttons()
+
+func _unload_function_panel() -> void:
+	if _function_panel_node and is_instance_valid(_function_panel_node):
+		_function_panel_node.queue_free()
+	_function_panel_node = null
+
+func _connect_tower_buttons() -> void:
+	var list = _function_panel_node.get_node_or_null("LevelList")
+	if list:
+		for btn in list.get_children():
+			if btn is Button and not btn.disabled:
+				var level_id: String = btn.name.substr(6)
+				btn.pressed.connect(_on_level_btn_pressed.bind(level_id))
+	var exp_btn: Button = _function_panel_node.get_node_or_null("ActionRow/ExpeditionBtn")
+	if exp_btn:
+		exp_btn.pressed.connect(func() -> void:
+			GlobalConfig.set_runtime("scene_mode", "battle")
+			GlobalConfig.set_runtime("formation_id", _formation_id)
+			GlobalConfig.set_runtime("level_id", "10101")
+			var scene := load(BATTLE_SCENE_PATH) as PackedScene
+			SceneTransition.change_to(scene)
+		)
+	var form_btn: Button = _function_panel_node.get_node_or_null("ActionRow/FormationBtn")
+	if form_btn:
+		form_btn.text = _formation_name
+		form_btn.pressed.connect(func() -> void:
+			GlobalConfig.set_runtime("scene_mode", "formation")
+			GlobalConfig.set_runtime("formation_id", _formation_id)
+			var scene := load(BATTLE_SCENE_PATH) as PackedScene
+			SceneTransition.change_to(scene)
+		)
+
+func _on_level_btn_pressed(level_id: String) -> void:
+	GlobalConfig.set_runtime("scene_mode", "battle")
+	GlobalConfig.set_runtime("formation_id", _formation_id)
+	GlobalConfig.set_runtime("level_id", level_id)
+	var scene := load(BATTLE_SCENE_PATH) as PackedScene
+	SceneTransition.change_to(scene)
 
 func _handle_click(pos: Vector2) -> void:
-	if _reset_rect.has_point(pos):
-		_reset_bg.pivot_offset = _reset_bg.size / 2
-		_reset_lbl.pivot_offset = _reset_lbl.size / 2
-		var tw := create_tween()
-		tw.tween_property(_reset_bg,  "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.parallel().tween_property(_reset_lbl, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.tween_property(_reset_bg,  "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
-		tw.parallel().tween_property(_reset_lbl, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
-		_reset_game()
-		return
 	if _panel_visible:
 		if _upgrade_rect.has_point(pos) and not _upgrade_disabled:
 			_on_upgrade_pressed()
@@ -1019,6 +926,17 @@ func _handle_click(pos: Vector2) -> void:
 		_panel_key = ""
 		return
 
+	if _reset_rect.has_point(pos):
+		_reset_bg.pivot_offset = _reset_bg.size / 2
+		_reset_lbl.pivot_offset = _reset_lbl.size / 2
+		var tw := create_tween()
+		tw.tween_property(_reset_bg,  "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(_reset_lbl, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(_reset_bg,  "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(_reset_lbl, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		_reset_game()
+		return
+
 	# 检测角色点击
 	for i in _team_slots.size():
 		var entry = _team_slots[i]
@@ -1027,24 +945,14 @@ func _handle_click(pos: Vector2) -> void:
 			_switch_role_action(i)
 			return
 
-		for key in _building_nodes:
-			var btn = _building_nodes[key].get("upgrade_btn")
-			if btn and is_instance_valid(btn):
-				var btn_pos: Vector2 = BUILDINGS[key]["pos"] + btn.position
-				if pos.distance_to(btn_pos) < 24.0:
-					var is_disabled: bool = btn.get_meta("disabled", false)
-					if not is_disabled:
-						# 点击动画
-						var base_s: Vector2 = btn.get_meta("base_scale", btn.scale)
-						var tw := create_tween()
-						tw.tween_property(btn, "scale", base_s * 0.75, 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-						tw.tween_property(btn, "scale", base_s, 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
-					# 打开升级面板
-					_panel_key = key
-					_refresh_panel()
-					_reposition_panel(key)
-					_set_panel_visible(true)
-					return
+	for key in _building_nodes:
+		if pos.distance_to(BUILDINGS[key]["pos"]) < 80.0:
+			_panel_key = key
+			_refresh_panel()
+			_reposition_panel(key)
+			_load_function_panel(key)
+			_set_panel_visible(true)
+			return
 func _switch_role_action(idx: int) -> void:
 	if idx < 0 or idx >= _team_slots.size():
 		return
@@ -1067,23 +975,10 @@ func _switch_role_action(idx: int) -> void:
 	entry["current_action"] = next_action
 	sprite.play(next_action)
 
-func _reposition_panel(key: String) -> void:
-	var vp   := get_viewport_rect().size
-	var bpos: Vector2 = BUILDINGS[key]["pos"]
-	var pw   := _panel_rect.size.x
-	var ph   := _panel_rect.size.y
-	var gap  := 80.0
-	var px   := bpos.x + gap
-	if px + pw > vp.x - 10.0:
-		px = bpos.x - gap - pw
-	px = clampf(px, 10.0, vp.x - pw - 10.0)
-	var py := clampf(bpos.y - ph * 0.5, 10.0, vp.y - ph - 10.0)
-	var tl := Vector2(px, py)
-	_panel_rect    = Rect2(tl, Vector2(pw, ph))
-	_upgrade_rect  = Rect2(tl + Vector2(50, 250), Vector2(300, 110))
-	_close_rect    = Rect2(tl + Vector2(335, 20), Vector2(60, 60))
-	for i in _panel_movable.size():
-		(_panel_movable[i] as Control).position = tl + _panel_offsets[i]
+func _reposition_panel(_key: String) -> void:
+	_panel_rect   = Rect2(0, 0, 1280, 720)
+	_upgrade_rect = Rect2(360, 93, 560, 150)
+	_close_rect   = Rect2(1090, 10, 85, 80)
 
 func _refresh_panel() -> void:
 	if _panel_key == "":
@@ -1097,22 +992,26 @@ func _refresh_panel() -> void:
 	var prod_info := ""
 	if produces != "":
 		var res_name := "木材" if produces == "wood" else "矿石"
-		prod_info = "\n当前产量：%d %s / %d 秒" % [PRODUCE_RATES[lv - 1], res_name, int(PRODUCE_INTERVAL)]
+		prod_info = "当前产量：%d %s / %d 秒" % [PRODUCE_RATES[lv - 1], res_name, int(PRODUCE_INTERVAL)]
 		if lv < 3:
 			prod_info += "\n下一级产量：%d %s / %d 秒" % [PRODUCE_RATES[lv], res_name, int(PRODUCE_INTERVAL)]
+	_panel_info_lbl.text = desc
+	var extra_text := ""
 	if lv >= 3:
-		_panel_info_lbl.text = "%s%s\n\n已达最高等级" % [desc, prod_info]
+		extra_text = prod_info + ("\n\n" if prod_info != "" else "") + "已达最高等级"
 		_upgrade_disabled = true
 	else:
 		var cost = cfg["upgrade_cost"][lv - 1]
 		var home_lv: int = _building_nodes["home"]["level"]
 		if _panel_key != "home" and lv >= home_lv:
-			_panel_info_lbl.text = "%s%s\n\n需先升级主基地至 Lv.%d" % [desc, prod_info, lv + 1]
+			extra_text = prod_info + ("\n\n" if prod_info != "" else "") + "需先升级主基地至 Lv.%d" % (lv + 1)
 			_upgrade_disabled = true
 		else:
 			var ok: bool = _wood >= int(cost["wood"]) and _ore >= int(cost["ore"])
-			_panel_info_lbl.text = "%s%s\n\n升级消耗：木材 %d  矿石 %d" % [desc, prod_info, int(cost["wood"]), int(cost["ore"])]
+			extra_text = prod_info + ("\n\n" if prod_info != "" else "") + "升级消耗：木材 %d  矿石 %d" % [int(cost["wood"]), int(cost["ore"])]
 			_upgrade_disabled = not ok
+	if _panel_extra_lbl and is_instance_valid(_panel_extra_lbl):
+		_panel_extra_lbl.text = extra_text
 	var a: float = _upgrade_btn.modulate.a
 	var tint: Color = Color(0.55, 0.55, 0.55, a) if _upgrade_disabled else Color(1, 1, 1, a)
 	_upgrade_btn.modulate = tint
@@ -1231,13 +1130,6 @@ func _refresh_hud() -> void:
 func _refresh_label(key: String) -> void:
 	var state = _building_nodes[key]
 	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
-	# 满级时升级按钮置灰
-	var btn = state.get("upgrade_btn")
-	if btn and is_instance_valid(btn):
-		var lv: int = state["level"]
-		var maxed: bool = lv >= 3 or (_building_nodes.has("home") and key != "home" and lv >= int(_building_nodes["home"]["level"]))
-		btn.modulate = Color(0.7, 0.7, 0.7, 1.0) if maxed else Color.WHITE
-		btn.set_meta("disabled", maxed)
 func _save_game() -> void:
 	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "cleared_level": _cleared_level, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
 	for key in _building_nodes:
