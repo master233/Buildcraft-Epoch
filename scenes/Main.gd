@@ -255,7 +255,6 @@ func _spawn_reset_button() -> void:
 const BATTLE_SCENE_PATH := "res://scenes/BattleScene.tscn"
 
 func _refresh_formation_btn() -> void:
-func _refresh_formation_btn() -> void:
 	# 从阵型场景返回后更新远征塔面板内的阵型按钮文字
 	if _function_panel_node and is_instance_valid(_function_panel_node):
 		var form_btn: Button = _function_panel_node.get_node_or_null("ActionRow/FormationBtn")
