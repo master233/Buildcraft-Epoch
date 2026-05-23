@@ -146,6 +146,8 @@ var _chat_input: LineEdit = null
 var _chat_expanded: bool = false
 var _chat_rect := Rect2()
 var _chat_toggle_rect := Rect2()
+var _chat_preview_panel: Panel = null
+var _chat_preview_rtl: RichTextLabel = null
 
 # 聊天自动播放
 var _chat_messages: Array = []
@@ -1863,6 +1865,40 @@ func _spawn_chat_box() -> void:
 	ui.add_child(_chat_toggle_lbl)
 	_chat_toggle_lbl.gui_input.connect(_on_chat_toggle_input)
 
+	# 折叠时的最新消息预览（位于切换按钮左侧，单行）
+	var preview_w := 360.0
+	var preview_h := toggle_h
+	var preview_x := toggle_x - preview_w - 8.0
+	var preview_y := toggle_y
+	var pstyle := StyleBoxFlat.new()
+	pstyle.bg_color = Color(0.08, 0.14, 0.26, 0.85)
+	pstyle.set_corner_radius_all(8)
+	pstyle.border_width_top    = 2
+	pstyle.border_width_right  = 2
+	pstyle.border_width_bottom = 2
+	pstyle.border_width_left   = 2
+	pstyle.border_color = Color(0.30, 0.55, 0.95, 0.7)
+	_chat_preview_panel = Panel.new()
+	_chat_preview_panel.size = Vector2(preview_w, preview_h)
+	_chat_preview_panel.position = Vector2(preview_x, preview_y)
+	_chat_preview_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_chat_preview_panel.add_theme_stylebox_override("panel", pstyle)
+	ui.add_child(_chat_preview_panel)
+
+	_chat_preview_rtl = RichTextLabel.new()
+	_chat_preview_rtl.bbcode_enabled = true
+	_chat_preview_rtl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	_chat_preview_rtl.scroll_active = false
+	_chat_preview_rtl.clip_contents = true
+	_chat_preview_rtl.position = Vector2(preview_x + 10, preview_y + 6)
+	_chat_preview_rtl.size = Vector2(preview_w - 20, preview_h - 8)
+	_chat_preview_rtl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_chat_preview_rtl.add_theme_font_override("normal_font", font)
+	_chat_preview_rtl.add_theme_font_size_override("normal_font_size", 16)
+	_chat_preview_rtl.add_theme_constant_override("outline_size", 2)
+	_chat_preview_rtl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	ui.add_child(_chat_preview_rtl)
+
 	# 展开面板（在切换按钮上方）
 	var panel_w := 348.0
 	var panel_h := 300.0
@@ -1989,6 +2025,10 @@ func _set_chat_expanded(v: bool) -> void:
 		_chat_root.visible = v
 	if _chat_toggle_lbl:
 		_chat_toggle_lbl.text = ("▼ 聊天" if v else "▲ 聊天")
+	if _chat_preview_panel:
+		_chat_preview_panel.visible = not v
+	if _chat_preview_rtl:
+		_chat_preview_rtl.visible = not v
 
 func _on_chat_send_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -2023,6 +2063,9 @@ func _chat_add_message(speaker: String, content: String) -> void:
 	var content_color := _chat_content_color(speaker)
 	rtl.text = "[color=%s][%s][/color][color=#cfcfcf]: [/color][color=%s]%s[/color]" % [name_color, speaker, content_color, content]
 	_chat_msg_box.add_child(rtl)
+	# 同步更新折叠预览（仅显示最新一条）
+	if _chat_preview_rtl != null:
+		_chat_preview_rtl.text = "[color=%s][%s][/color][color=#cfcfcf]: [/color][color=%s]%s[/color]" % [name_color, speaker, content_color, content]
 	# 滚到底部
 	await get_tree().process_frame
 	if _chat_scroll:
@@ -2063,8 +2106,10 @@ func _load_chat_table() -> void:
 	f.close()
 
 func _tick_chat(delta: float) -> void:
-	if _chat_messages.is_empty() or _chat_index >= _chat_messages.size():
+	if _chat_messages.is_empty():
 		return
+	if _chat_index < 0 or _chat_index >= _chat_messages.size():
+		_chat_index = 0
 	_chat_play_timer += delta
 	if _chat_play_timer < _chat_next_delay:
 		return
@@ -2072,5 +2117,5 @@ func _tick_chat(delta: float) -> void:
 	_chat_next_delay = randf_range(0.5, 3.0)
 	var m: Dictionary = _chat_messages[_chat_index]
 	_chat_add_message(m["speaker"], m["content"])
-	_chat_index += 1
+	_chat_index = (_chat_index + 1) % _chat_messages.size()
 	_save_game()
