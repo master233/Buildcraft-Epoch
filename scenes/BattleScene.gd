@@ -11,7 +11,7 @@ const GRID_COLS := 12
 
 # 血条显示参数（相对角色中心）
 const BAR_W     := 86.4
-const BAR_H     := 9.0
+const BAR_H     := 15.0
 const HP_OFFSET := Vector2(-43.2, -68.0)
 const MP_OFFSET := Vector2(-43.2, -57.0)
 
@@ -1113,17 +1113,37 @@ class RoleStatusBar extends Node2D:
 
 	func _draw() -> void:
 		var ratio: float = 0.0 if max_hp <= 0 else clampf(float(cur_hp) / float(max_hp), 0.0, 1.0)
-		# 底色：完整宽度的蓝色 mp 贴图
-		if bg_tex:
-			var bg_size := bg_tex.get_size()
-			draw_texture_rect_region(bg_tex, Rect2(bar_off, Vector2(bar_w, bar_h)),
-				Rect2(0, 0, bg_size.x, bg_size.y))
-		# 前景：按 hp 比例的红色 hp 贴图（左侧填充）
-		if hp_tex and ratio > 0.0:
-			var hp_size := hp_tex.get_size()
-			var src_rect := Rect2(0, 0, hp_size.x * ratio, hp_size.y)
-			var dst_rect := Rect2(bar_off, Vector2(bar_w * ratio, bar_h))
-			draw_texture_rect_region(hp_tex, dst_rect, src_rect)
+		var r := int(bar_h * 0.5)  # 半圆端头
+
+		# 底色：灰色圆角
+		var bg_style := StyleBoxFlat.new()
+		bg_style.bg_color = Color(0.35, 0.35, 0.35, 0.9)
+		bg_style.set_corner_radius_all(r)
+		draw_style_box(bg_style, Rect2(bar_off, Vector2(bar_w, bar_h)))
+
+		# 前景：红色，左端圆角，右端仅满血时圆角
+		if ratio > 0.0:
+			var fg_style := StyleBoxFlat.new()
+			fg_style.bg_color = Color(0.68, 0.08, 0.08, 1.0)
+			fg_style.set_corner_radius_all(0)
+			fg_style.set_corner_radius(0, r)  # CORNER_TOP_LEFT
+			fg_style.set_corner_radius(3, r)  # CORNER_BOTTOM_LEFT
+			if ratio >= 0.99:
+				fg_style.set_corner_radius(1, r)  # CORNER_TOP_RIGHT
+				fg_style.set_corner_radius(2, r)  # CORNER_BOTTOM_RIGHT
+			draw_style_box(fg_style, Rect2(bar_off, Vector2(bar_w * ratio, bar_h)))
+
+		# 边框：圆角，宽度 2px
+		var border_style := StyleBoxFlat.new()
+		border_style.draw_center = false
+		border_style.set_corner_radius_all(r)
+		border_style.border_width_top    = 2
+		border_style.border_width_bottom = 2
+		border_style.border_width_left   = 2
+		border_style.border_width_right  = 2
+		border_style.border_color = Color(0.85, 0.68, 0.15, 1.0)
+		draw_style_box(border_style, Rect2(bar_off, Vector2(bar_w, bar_h)))
+
 		# 数值文本
 		var txt := "%d/%d" % [cur_hp, max_hp]
 		var font_size := 8
