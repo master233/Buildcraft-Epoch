@@ -10,6 +10,8 @@ outline_size = 2
 outline_color = Color(1, 0.96, 0.85, 0.5)
 
 [node name="TowerPanel" type="Control" unique_id=1354326135]
+layout_mode = 3
+anchors_preset = 0
 offset_right = 856.0
 offset_bottom = 396.0
 
@@ -18,51 +20,68 @@ layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_bottom = 40.0
-text = "— 可出征关卡 —"
+grow_horizontal = 2
+text = " 出征关卡 "
 label_settings = SubResource("LabelSettings_body")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="LevelList" type="VBoxContainer" parent="." unique_id=715016977]
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_left = 30.0
-offset_top = 41.0
-offset_right = -30.0
-offset_bottom = 280.0
+[node name="LevelTrack" type="HBoxContainer" parent="." unique_id=715016977]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 42.0
+offset_right = 846.0
+offset_bottom = 192.0
+alignment = 1
 
-[node name="Level_10101" type="Button" parent="LevelList" unique_id=698519641]
-custom_minimum_size = Vector2(0, 52)
-layout_mode = 2
-text = "第一章 第1关  —  哥布林猎人的领地"
+[node name="InfoRow" type="HBoxContainer" parent="." unique_id=1200000001]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 198.0
+offset_right = 846.0
+offset_bottom = 325.0
 
-[node name="Level_10102" type="Button" parent="LevelList" unique_id=1095366913]
-custom_minimum_size = Vector2(0, 52)
+[node name="MonsterBox" type="VBoxContainer" parent="InfoRow" unique_id=1200000002]
 layout_mode = 2
-disabled = true
-text = "第一章 第2关  —  即将开放"
+size_flags_horizontal = 3
 
-[node name="Level_10103" type="Button" parent="LevelList" unique_id=1086429722]
-custom_minimum_size = Vector2(0, 52)
+[node name="MonsterTitle" type="Label" parent="InfoRow/MonsterBox" unique_id=1200000003]
 layout_mode = 2
-disabled = true
-text = "第一章 第3关  —  即将开放"
+text = "出战怪物"
+label_settings = SubResource("LabelSettings_body")
+
+[node name="MonsterSprites" type="HBoxContainer" parent="InfoRow/MonsterBox" unique_id=1200000008]
+layout_mode = 2
+custom_minimum_size = Vector2(0, 72)
+
+[node name="RewardBox" type="VBoxContainer" parent="InfoRow" unique_id=1200000005]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="RewardTitle" type="Label" parent="InfoRow/RewardBox" unique_id=1200000006]
+layout_mode = 2
+text = "关卡奖励"
+label_settings = SubResource("LabelSettings_body")
+
+[node name="RewardContent" type="Label" parent="InfoRow/RewardBox" unique_id=1200000007]
+layout_mode = 2
+autowrap_mode = 2
+label_settings = SubResource("LabelSettings_body")
 
 [node name="ActionRow" type="HBoxContainer" parent="." unique_id=1117061361]
 layout_mode = 0
 offset_left = 178.0
-offset_top = 295.0
+offset_top = 333.0
 offset_right = 678.0
-offset_bottom = 355.0
+offset_bottom = 378.0
 alignment = 1
 
 [node name="ExpeditionBtn" type="Button" parent="ActionRow" unique_id=769771517]
-custom_minimum_size = Vector2(160, 52)
+custom_minimum_size = Vector2(120, 40)
 layout_mode = 2
 text = "出 征"
 
 [node name="FormationBtn" type="Button" parent="ActionRow" unique_id=138983820]
-custom_minimum_size = Vector2(160, 52)
+custom_minimum_size = Vector2(120, 40)
 layout_mode = 2
 text = "标准阵"

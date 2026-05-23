@@ -860,7 +860,6 @@ func _show_speech_bubble(slot_idx: int) -> void:
 
 func _set_panel_visible(v: bool) -> void:
 	_panel_bg.visible = v
-	_panel_dim.modulate.a = 1.0 if v else 0.0
 	_panel_visible = v
 	if not v:
 		_unload_function_panel()
@@ -890,23 +889,24 @@ func _unload_function_panel() -> void:
 	_function_panel_node = null
 
 func _connect_tower_buttons() -> void:
-	var list = _function_panel_node.get_node_or_null("LevelList")
-	if list:
-		for btn in list.get_children():
-			if btn is Button and not btn.disabled:
-				var level_id: String = btn.name.substr(6)
-				btn.pressed.connect(_on_level_btn_pressed.bind(level_id))
+	_build_level_track()
+	_refresh_level_info()
 	var exp_btn: Button = _function_panel_node.get_node_or_null("ActionRow/ExpeditionBtn")
 	if exp_btn:
+		_style_tower_btn(exp_btn, Color(0.55, 0.22, 0.06), Color(0.90, 0.45, 0.15), Color(1.0, 0.88, 0.55))
 		exp_btn.pressed.connect(func() -> void:
 			GlobalConfig.set_runtime("scene_mode", "battle")
 			GlobalConfig.set_runtime("formation_id", _formation_id)
-			GlobalConfig.set_runtime("level_id", "10101")
+			GlobalConfig.set_runtime("level_id", _next_level_id())
 			var scene := load(BATTLE_SCENE_PATH) as PackedScene
 			SceneTransition.change_to(scene)
 		)
 	var form_btn: Button = _function_panel_node.get_node_or_null("ActionRow/FormationBtn")
 	if form_btn:
+		_style_tower_btn(form_btn, Color(0.10, 0.28, 0.48), Color(0.25, 0.55, 0.85), Color(0.75, 0.92, 1.0))
+		var action_row := _function_panel_node.get_node_or_null("ActionRow") as HBoxContainer
+		if action_row:
+			action_row.add_theme_constant_override("separation", 40)
 		form_btn.text = _formation_name
 		form_btn.pressed.connect(func() -> void:
 			GlobalConfig.set_runtime("scene_mode", "formation")
@@ -914,6 +914,292 @@ func _connect_tower_buttons() -> void:
 			var scene := load(BATTLE_SCENE_PATH) as PackedScene
 			SceneTransition.change_to(scene)
 		)
+
+func _style_tower_btn(btn: Button, bg_color: Color, border_color: Color, text_color: Color) -> void:
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = bg_color
+	normal.set_corner_radius_all(12)
+	normal.border_width_top    = 2
+	normal.border_width_right  = 2
+	normal.border_width_bottom = 4
+	normal.border_width_left   = 2
+	normal.border_color = border_color
+	normal.shadow_color  = Color(0, 0, 0, 0.5)
+	normal.shadow_size   = 6
+	normal.shadow_offset = Vector2(0, 3)
+
+	var hover := StyleBoxFlat.new()
+	hover.bg_color = bg_color.lightened(0.15)
+	hover.set_corner_radius_all(12)
+	hover.border_width_top    = 2
+	hover.border_width_right  = 2
+	hover.border_width_bottom = 4
+	hover.border_width_left   = 2
+	hover.border_color = border_color.lightened(0.2)
+	hover.shadow_color  = Color(0, 0, 0, 0.5)
+	hover.shadow_size   = 8
+	hover.shadow_offset = Vector2(0, 3)
+
+	var pressed := StyleBoxFlat.new()
+	pressed.bg_color = bg_color.darkened(0.15)
+	pressed.set_corner_radius_all(12)
+	pressed.border_width_top    = 2
+	pressed.border_width_right  = 2
+	pressed.border_width_bottom = 2
+	pressed.border_width_left   = 2
+	pressed.border_color = border_color
+	pressed.shadow_color  = Color(0, 0, 0, 0.3)
+	pressed.shadow_size   = 3
+	pressed.shadow_offset = Vector2(0, 1)
+
+	btn.add_theme_stylebox_override("normal",   normal)
+	btn.add_theme_stylebox_override("hover",    hover)
+	btn.add_theme_stylebox_override("pressed",  pressed)
+	btn.add_theme_stylebox_override("focus",    normal)
+	btn.add_theme_font_override("font", font)
+	btn.add_theme_font_size_override("font_size", 22)
+	btn.add_theme_color_override("font_color",          text_color)
+	btn.add_theme_color_override("font_hover_color",    text_color.lightened(0.1))
+	btn.add_theme_color_override("font_pressed_color",  text_color.darkened(0.1))
+	btn.add_theme_color_override("font_outline_color",  Color(0, 0, 0, 0.8))
+	btn.add_theme_constant_override("outline_size", 3)
+
+const LEVEL_TRACK_NODE_H  := 120.0  # 节点图片显示高度
+const LEVEL_TRACK_LINE_H  := 60.0   # 连接线显示高度（同行垂直居中）
+const LEVEL_TRACK_SHOW    := 5      # 轨道显示几个节点
+const LEVEL_TRACK_CURRENT := 2      # 当前节点固定在第几位（0-based），后续不足时右移
+
+const LEVEL_NODE_IMG := {
+	"finished": "res://asserts/image/building/building_tower_panel/finished.png",
+	"current":  "res://asserts/image/building/building_tower_panel/current.png",
+	"locked":   "res://asserts/image/building/building_tower_panel/locked.png",
+	"line":     "res://asserts/image/building/building_tower_panel/line.png",
+}
+
+func _build_level_track() -> void:
+	var track: HBoxContainer = _function_panel_node.get_node_or_null("LevelTrack")
+	if track == null:
+		return
+	for c in track.get_children():
+		c.queue_free()
+
+	# 找出当前关卡在 _level_ids 中的索引（第一个 > _cleared_level 的）
+	var current_idx := _level_ids.size()  # 默认全部通关
+	for i in _level_ids.size():
+		if int(_level_ids[i]) > _cleared_level:
+			current_idx = i
+			break
+
+	# 计算窗口起始：让 current 出现在第 LEVEL_TRACK_CURRENT 位，但尾部不足时右移
+	var total := _level_ids.size()
+	var win_start := current_idx - LEVEL_TRACK_CURRENT
+	var win_end   := win_start + LEVEL_TRACK_SHOW
+	if win_end > total:
+		win_end   = total
+		win_start = win_end - LEVEL_TRACK_SHOW
+	win_start = maxi(win_start, 0)
+
+	var node_scale := LEVEL_TRACK_NODE_H / 528.0  # 原图高度 528
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+
+	for i in range(win_start, mini(win_start + LEVEL_TRACK_SHOW, total)):
+		var lid_int := int(_level_ids[i])
+		var img_key: String
+		if lid_int <= _cleared_level:
+			img_key = "finished"
+		elif i == current_idx:
+			img_key = "current"
+		else:
+			img_key = "locked"
+
+		var node_tex: Texture2D = load(LEVEL_NODE_IMG[img_key])
+		var nw := int(node_tex.get_width() * node_scale)
+
+		var is_current := (i == current_idx)
+
+		# 当前关卡用 Button（透明背景），其余用普通 Control
+		var wrapper: Control
+		if is_current:
+			var btn := Button.new()
+			var empty_style := StyleBoxEmpty.new()
+			btn.add_theme_stylebox_override("normal",  empty_style)
+			btn.add_theme_stylebox_override("hover",   empty_style)
+			btn.add_theme_stylebox_override("pressed", empty_style)
+			btn.add_theme_stylebox_override("focus",   empty_style)
+			btn.pressed.connect(func() -> void:
+				btn.pivot_offset = btn.size / 2
+				var tw := create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+				tw.tween_property(btn, "scale", Vector2(0.82, 0.82), 0.1)
+				var tw2 := create_tween().set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+				tw2.tween_interval(0.1)
+				tw2.tween_property(btn, "scale", Vector2(1.0, 1.0), 0.5)
+				_on_level_btn_pressed(_level_ids[i])
+			)
+			wrapper = btn
+		else:
+			wrapper = Control.new()
+		wrapper.custom_minimum_size = Vector2(nw, LEVEL_TRACK_NODE_H)
+
+		var node_rect := TextureRect.new()
+		node_rect.texture = node_tex
+		node_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		node_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		node_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		wrapper.add_child(node_rect)
+
+		var num_lbl := Label.new()
+		num_lbl.text = str(i + 1)
+		num_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		num_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		num_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		num_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		num_lbl.clip_text = false
+		# 字体随位数缩小：1位22，2位18，3位14
+		var digit_count := str(i + 1).length()
+		var fs := 22 - (digit_count - 1) * 4
+		var ls := LabelSettings.new()
+		ls.font = font
+		ls.font_size = fs
+		ls.font_color = Color(1.0, 0.95, 0.75)
+		ls.outline_size = 4
+		ls.outline_color = Color(0.1, 0.05, 0.0, 1.0)
+		num_lbl.label_settings = ls
+		wrapper.add_child(num_lbl)
+
+		track.add_child(wrapper)
+
+		# 连接线（最后一个节点后不加线）
+		if i < mini(win_start + LEVEL_TRACK_SHOW, total) - 1:
+			var line_tex: Texture2D = load(LEVEL_NODE_IMG["line"])
+			var line_rect := TextureRect.new()
+			line_rect.texture = line_tex
+			line_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			line_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			var lw := int(line_tex.get_width() * node_scale)
+			line_rect.custom_minimum_size = Vector2(lw, LEVEL_TRACK_NODE_H)
+			track.add_child(line_rect)
+
+func _refresh_level_info() -> void:
+	if _function_panel_node == null:
+		return
+	var monster_lbl:     Label         = _function_panel_node.get_node_or_null("InfoRow/MonsterBox/MonsterContent")
+	var monster_sprites: HBoxContainer = _function_panel_node.get_node_or_null("InfoRow/MonsterBox/MonsterSprites")
+	var reward_lbl:      Label         = _function_panel_node.get_node_or_null("InfoRow/RewardBox/RewardContent")
+	var lid_str := _next_level_id()
+	var level_data := _get_level_data(lid_str)
+
+	# 清空旧精灵
+	if monster_sprites:
+		for c in monster_sprites.get_children():
+			c.queue_free()
+
+	if level_data.is_empty():
+		if monster_lbl:    monster_lbl.text = "—"
+		if reward_lbl:     reward_lbl.text  = "即将开放"
+		return
+
+	var monster_ids: Array = String(level_data.get("monster_ids", "")).split(",")
+	var monster_lv: String = String(level_data.get("monster_level", "1"))
+
+	# 统计怪物（去掉占位0，保留顺序去重用于精灵显示）
+	var seen: Dictionary = {}
+	var ordered_mids: Array = []
+	for mid_str in monster_ids:
+		var mid := (mid_str as String).strip_edges()
+		if mid == "0" or mid.is_empty():
+			continue
+		if seen.has(mid):
+			seen[mid] += 1
+		else:
+			seen[mid] = 1
+			ordered_mids.append(mid)
+
+	# 填充精灵（每种怪物播放 alert 动画，高度 60px）
+	const SPRITE_H := 60.0
+	if monster_sprites:
+		monster_sprites.add_theme_constant_override("separation", 6)
+		for mid in ordered_mids:
+			var role_data: Dictionary = _roles.get(mid, {})
+			var sheet_path: String = String(role_data.get("alert_sheet", ""))
+			if sheet_path.is_empty() or not ResourceLoader.exists(sheet_path):
+				continue
+			var sheet_tex: Texture2D = load(sheet_path)
+			var n_frames: int = int(role_data.get("alert_frames", 1))
+			var anim_fps: float = float(role_data.get("alert_anim_fps", 12.0))
+			var fw := sheet_tex.get_width() / n_frames
+			var fh := sheet_tex.get_height()
+			var scale := SPRITE_H / float(fh)
+
+			var sf := SpriteFrames.new()
+			sf.add_animation("alert")
+			sf.set_animation_speed("alert", anim_fps)
+			sf.set_animation_loop("alert", true)
+			for f in n_frames:
+				var at := AtlasTexture.new()
+				at.atlas = sheet_tex
+				at.region = Rect2(f * fw, 0, fw, fh)
+				at.filter_clip = true
+				sf.add_frame("alert", at)
+
+			# 用 SubViewportContainer 把 AnimatedSprite2D 嵌入 UI
+			var sub_vp := SubViewport.new()
+			sub_vp.size = Vector2i(int(fw * scale), int(SPRITE_H))
+			sub_vp.transparent_bg = true
+			sub_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+
+			var anim_sprite := AnimatedSprite2D.new()
+			anim_sprite.sprite_frames = sf
+			anim_sprite.scale = Vector2(scale, scale)
+			anim_sprite.position = Vector2(fw * scale * 0.5, SPRITE_H * 0.5)
+			anim_sprite.play("alert")
+			sub_vp.add_child(anim_sprite)
+
+			var vpc := SubViewportContainer.new()
+			vpc.stretch = true
+			vpc.custom_minimum_size = Vector2(int(fw * scale), int(SPRITE_H))
+			vpc.add_child(sub_vp)
+			monster_sprites.add_child(vpc)
+
+			# 数量标记（>1 时显示 ×N）
+			if seen[mid] > 1:
+				var cnt_lbl := Label.new()
+				cnt_lbl.text = "×%d" % seen[mid]
+				cnt_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
+				var ls := LabelSettings.new()
+				ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+				ls.font_size = 14
+				ls.font_color = Color(1.0, 0.92, 0.6)
+				ls.outline_size = 3
+				ls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
+				cnt_lbl.label_settings = ls
+				monster_sprites.add_child(cnt_lbl)
+
+	if reward_lbl:
+		reward_lbl.text = "即将开放"
+
+func _get_level_data(lid_str: String) -> Dictionary:
+	var text := _read_table_text(LEVELS_TABLE_PATH)
+	if text.is_empty():
+		return {}
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return {}
+	var headers := (raw[0] as String).strip_edges().split("\t")
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 1:
+			continue
+		if (parts[0] as String).strip_edges() == lid_str:
+			var entry: Dictionary = {}
+			for j in mini(headers.size(), parts.size()):
+				entry[headers[j]] = parts[j]
+			return entry
+	return {}
 
 func _on_level_btn_pressed(level_id: String) -> void:
 	GlobalConfig.set_runtime("scene_mode", "battle")
