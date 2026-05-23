@@ -28,6 +28,7 @@ const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
 const LEVELS_TABLE_PATH := "res://asserts/table/levels.txt"
+const CHAT_TABLE_PATH := "res://asserts/table/chat.txt"
 const FIRST_LEVEL_ID := 10101
 
 # 远征队伍由 _resolve_team_from_owned() 根据 owned 角色列表推导：
@@ -145,6 +146,12 @@ var _chat_input: LineEdit = null
 var _chat_expanded: bool = false
 var _chat_rect := Rect2()
 var _chat_toggle_rect := Rect2()
+
+# 聊天自动播放
+var _chat_messages: Array = []
+var _chat_index: int = 0
+var _chat_play_timer: float = 0.0
+var _chat_next_delay: float = 1.5
 
 func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
@@ -310,6 +317,7 @@ func _reset_game() -> void:
 	_ore = 100
 	_gold = 0
 	_cleared_level = 0
+	_chat_index = 0
 	for key in _building_nodes:
 		_building_nodes[key]["level"] = 1
 		if BUILDINGS[key]["animated"]:
@@ -363,6 +371,7 @@ func _process(delta: float) -> void:
 	if _speech_timer >= SPEECH_TICK_INTERVAL:
 		_speech_timer = 0.0
 		_tick_speech()
+	_tick_chat(delta)
 	if _reset_style != null:
 		var hov := _reset_rect.has_point(get_viewport().get_mouse_position())
 		if hov != _reset_hovering:
@@ -1433,7 +1442,7 @@ func _refresh_label(key: String) -> void:
 	var state = _building_nodes[key]
 	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
 func _save_game() -> void:
-	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "cleared_level": _cleared_level, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
+	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "cleared_level": _cleared_level, "chat_index": _chat_index, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
 	for key in _building_nodes:
 		data["levels"][key] = _building_nodes[key]["level"]
 	for i in _team_slots.size():
@@ -1472,6 +1481,8 @@ func _load_game() -> void:
 		_formation_id = int(data["formation_id"])
 	if data.has("cleared_level"):
 		_cleared_level = int(data["cleared_level"])
+	if data.has("chat_index"):
+		_chat_index = int(data["chat_index"])
 	if data.has("levels") and data["levels"] is Dictionary:
 		var levels: Dictionary = data["levels"]
 		for key in levels:
@@ -1958,10 +1969,15 @@ func _spawn_chat_box() -> void:
 	_chat_root.add_child(send_lbl)
 	send_lbl.gui_input.connect(_on_chat_send_input)
 
-	# 初始消息
-	_chat_add_message("系统", "欢迎来到 Buildcraft Epoch！")
-	_chat_add_message("酒馆老板", "勇士们，先去出征看看你们的实力。")
-	_chat_add_message("矮人锤手", "啧，又有新人？")
+	# 加载聊天表 + 回放历史（保留索引前 5 条）
+	_load_chat_table()
+	if _chat_index > 0 and not _chat_messages.is_empty():
+		var start_i: int = max(0, _chat_index - 5)
+		var end_i: int = min(_chat_index, _chat_messages.size())
+		for i in range(start_i, end_i):
+			var m: Dictionary = _chat_messages[i]
+			_chat_add_message(m["speaker"], m["content"])
+	_chat_next_delay = randf_range(0.5, 3.0)
 
 func _on_chat_toggle_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
@@ -1993,26 +2009,68 @@ func _chat_send_current() -> void:
 func _chat_add_message(speaker: String, content: String) -> void:
 	if _chat_msg_box == null:
 		return
-	var lbl := Label.new()
-	lbl.text = "[%s] %s" % [speaker, content]
-	lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var ls := LabelSettings.new()
-	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
-	ls.font_size = 17
-	if speaker == "玩家":
-		ls.font_color = Color(0.85, 1.0, 0.85)
-	elif speaker == "系统":
-		ls.font_color = Color(1.0, 0.85, 0.55)
-	else:
-		ls.font_color = Color(0.92, 0.92, 1.0)
-	ls.outline_size = 1
-	ls.outline_color = Color(0, 0, 0, 0.85)
-	lbl.label_settings = ls
-	_chat_msg_box.add_child(lbl)
+	var rtl := RichTextLabel.new()
+	rtl.bbcode_enabled = true
+	rtl.fit_content = true
+	rtl.scroll_active = false
+	rtl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	rtl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	rtl.add_theme_font_override("normal_font", load("res://asserts/fonts/ZCOOLKuaiLe.ttf"))
+	rtl.add_theme_font_size_override("normal_font_size", 17)
+	rtl.add_theme_constant_override("outline_size", 2)
+	rtl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+	var name_color := _chat_name_color(speaker)
+	var content_color := _chat_content_color(speaker)
+	rtl.text = "[color=%s][%s][/color][color=#cfcfcf]: [/color][color=%s]%s[/color]" % [name_color, speaker, content_color, content]
+	_chat_msg_box.add_child(rtl)
 	# 滚到底部
 	await get_tree().process_frame
 	if _chat_scroll:
 		var v_bar := _chat_scroll.get_v_scroll_bar()
 		if v_bar:
 			_chat_scroll.scroll_vertical = int(v_bar.max_value)
+
+func _chat_name_color(speaker: String) -> String:
+	if speaker == "玩家":
+		return "#7CFF7C"
+	if speaker == "系统":
+		return "#FFC15E"
+	var palette := ["#7BC8F6", "#FFB6C1", "#FFD580", "#B0E57C", "#D6A8FF", "#FFE066", "#FF9F80", "#7CC4B6", "#F5A6FF", "#A5D8FF"]
+	return palette[abs(speaker.hash()) % palette.size()]
+
+func _chat_content_color(speaker: String) -> String:
+	if speaker == "玩家":
+		return "#E6FFE6"
+	if speaker == "系统":
+		return "#FFE6BF"
+	return "#EAEAEA"
+
+func _load_chat_table() -> void:
+	_chat_messages.clear()
+	var f := FileAccess.open(CHAT_TABLE_PATH, FileAccess.READ)
+	if f == null:
+		return
+	while not f.eof_reached():
+		var ln := f.get_line()
+		if ln.is_empty():
+			continue
+		if ln.begins_with("#") or ln.begins_with("id\t"):
+			continue
+		var parts := ln.split("\t")
+		if parts.size() < 3:
+			continue
+		_chat_messages.append({"speaker": parts[1], "content": parts[2]})
+	f.close()
+
+func _tick_chat(delta: float) -> void:
+	if _chat_messages.is_empty() or _chat_index >= _chat_messages.size():
+		return
+	_chat_play_timer += delta
+	if _chat_play_timer < _chat_next_delay:
+		return
+	_chat_play_timer = 0.0
+	_chat_next_delay = randf_range(0.5, 3.0)
+	var m: Dictionary = _chat_messages[_chat_index]
+	_chat_add_message(m["speaker"], m["content"])
+	_chat_index += 1
+	_save_game()
