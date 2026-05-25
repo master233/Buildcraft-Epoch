@@ -1,0 +1,5 @@
+skill_id	level	desc	param1	param2	upgrade_cost	icon
+# 技能 ID	技能等级	技能描述（{p1}/{p2} 占位符）	参数1	参数2	升级到该等级消耗金币（lv 1 = 0）	图标资源路径（res://...）
+30001	1	攻击时有{p1}%概率额外攻击一次，第二次造成{p2}%的攻击伤害	50	50	0	res://asserts/image/ui/skill/attack_combo.png
+30001	2	攻击时有{p1}%概率额外攻击一次，第二次造成{p2}%的攻击伤害	60	60	200	res://asserts/image/ui/skill/attack_combo.png
+30001	3	攻击时有{p1}%概率额外攻击一次，第二次造成{p2}%的攻击伤害	70	75	500	res://asserts/image/ui/skill/attack_combo.png

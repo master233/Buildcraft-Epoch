@@ -6,6 +6,9 @@ const ROLES_TABLE_PATH      := "res://asserts/table/roles.txt"
 const ROLE_ATTRS_TABLE_PATH := "res://asserts/table/role_attrs.txt"
 const FORMATIONS_TABLE_PATH := "res://asserts/table/formations.txt"
 const LEVELS_TABLE_PATH     := "res://asserts/table/levels.txt"
+const LEVEL_UP_TABLE_PATH   := "res://asserts/table/level_up.txt"
+const SKILL_TABLE_PATH      := "res://asserts/table/skill.txt"
+const DEFAULT_SKILLS: Array = [{"id": 30001, "level": 1}]
 const GRID_ROWS := 7
 const GRID_COLS := 12
 
@@ -173,6 +176,9 @@ func _perform_action(attacker: BattleUnit) -> void:
 			if sf.has_animation(back):
 				attacker.sprite.play(back)
 
+	# 2.5) 连击（30001）：攻击时有 p1% 概率追加一次 p2% 伤害
+	await _try_combo_strike(attacker, target, sf, has_atk_anim)
+
 	# 3) 退回原位
 	if is_instance_valid(atk_root):
 		var tw_out := create_tween()
@@ -185,10 +191,11 @@ func _perform_action(attacker: BattleUnit) -> void:
 	_check_battle_over()
 	_acting = false
 
-func _apply_damage(attacker: BattleUnit, target: BattleUnit) -> void:
+func _apply_damage(attacker: BattleUnit, target: BattleUnit, dmg_mult: float = 1.0) -> void:
 	var is_crit := (randi() % 10000) < attacker.crit
 	var dmg_base: int = max(1, attacker.atk - target.def)
-	var dmg := int(dmg_base * (1.5 if is_crit else 1.0))
+	var dmg := int(dmg_base * (1.5 if is_crit else 1.0) * dmg_mult)
+	dmg = max(1, dmg)
 	var is_miss := false
 	if (randi() % 10000) < target.dodge:
 		dmg = 0
@@ -202,6 +209,72 @@ func _apply_damage(attacker: BattleUnit, target: BattleUnit) -> void:
 	if dying:
 		target.is_dead = true
 	target.play_hurt_then(dying)
+
+func _find_skill(unit: BattleUnit, skill_id: int) -> Dictionary:
+	if unit == null:
+		return {}
+	for s in unit.skills:
+		if s is Dictionary and int(s.get("id", 0)) == skill_id:
+			return _get_skill_data(skill_id, int(s.get("level", 1)))
+	return {}
+
+# 连击（skill_id=30001）：p1% 概率追加一击，伤害 = p2% * 攻击力计算
+func _try_combo_strike(attacker: BattleUnit, target: BattleUnit, sf: SpriteFrames, has_atk_anim: bool) -> void:
+	if attacker == null or target == null or attacker.is_dead or target.is_dead:
+		return
+	var sd := _find_skill(attacker, 30001)
+	if sd.is_empty():
+		return
+	var prob: int = int(sd.get("p1", 0))
+	if prob <= 0:
+		return
+	if (randi() % 100) >= prob:
+		return
+	var mult: float = float(int(sd.get("p2", 0))) / 100.0
+	if mult <= 0.0:
+		return
+	# 飘 "连击!" 提示
+	_spawn_skill_label(attacker, "连击!")
+	# 再播一次攻击动画 + 应用追加伤害
+	if has_atk_anim and is_instance_valid(attacker.sprite) and sf and sf.has_animation("attack"):
+		attacker.sprite.play("attack")
+	await get_tree().create_timer(0.4).timeout
+	if not target.is_dead:
+		_apply_damage(attacker, target, mult)
+	if has_atk_anim and is_instance_valid(attacker.sprite):
+		if attacker.sprite.animation == "attack" and attacker.sprite.is_playing():
+			await attacker.sprite.animation_finished
+		if is_instance_valid(attacker.sprite):
+			var back := "alert" if sf and sf.has_animation("alert") else "idle"
+			if sf and sf.has_animation(back):
+				attacker.sprite.play(back)
+
+func _spawn_skill_label(attacker: BattleUnit, text: String) -> void:
+	if attacker == null or not is_instance_valid(attacker.root):
+		return
+	var lbl := Label.new()
+	lbl.text = text
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(160, 40)
+	var start_pos := attacker.root.position + Vector2(-80, -150)
+	lbl.position = start_pos
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.z_index = 110
+	var ls := LabelSettings.new()
+	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size  = 30
+	ls.font_color = Color(1.0, 0.85, 0.25)
+	ls.outline_size  = 5
+	ls.outline_color = Color(0.2, 0.05, 0, 1.0)
+	lbl.label_settings = ls
+	add_child(lbl)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(lbl, "position:y", start_pos.y - 40.0, 0.7) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "modulate:a", 0.0, 0.7) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(lbl.queue_free)
 
 func _spawn_damage_label(target: BattleUnit, dmg: int, is_miss: bool, is_crit: bool) -> void:
 	if not is_instance_valid(target.root):
@@ -423,6 +496,7 @@ func _place_formation_roles(vp: Vector2, fidx: int) -> void:
 		sf.add_animation(use_anim)
 		sf.set_animation_speed(use_anim, fps)
 		sf.set_animation_loop(use_anim, true)
+		@warning_ignore("integer_division")
 		var fw := tex2.get_width() / frames
 		var fh := tex2.get_height()
 		for f in frames:
@@ -549,15 +623,146 @@ func _record_level_cleared() -> void:
 			rf.close()
 			if parsed is Dictionary:
 				data = parsed
+
+	# 仅当首次通关时累加经验，避免重复刷
 	var prev: int = int(data.get("cleared_level", 0))
-	if cleared_id <= prev:
-		return
-	data["cleared_level"] = cleared_id
+	var first_clear: bool = cleared_id > prev
+	if first_clear:
+		data["cleared_level"] = cleared_id
+		_grant_exp_to_team(data, cleared_id)
+
 	var wf := FileAccess.open(save_path, FileAccess.WRITE)
 	if wf == null:
 		return
 	wf.store_string(JSON.stringify(data))
 	wf.close()
+
+func _grant_exp_to_team(data: Dictionary, cleared_id: int) -> void:
+	var levels_data := _load_levels_table()
+	var lid_str := str(cleared_id)
+	if not levels_data.has(lid_str):
+		return
+	var exp_gain: int = int(levels_data[lid_str].get("exp", 0))
+	if exp_gain <= 0:
+		return
+	var team_ids := _get_team_ids()
+	if team_ids.is_empty():
+		return
+	var level_up := _load_level_up_table()
+	var roles_state: Dictionary = {}
+	if data.has("roles") and data["roles"] is Dictionary:
+		roles_state = data["roles"]
+	for rid in team_ids:
+		var st: Dictionary = roles_state.get(rid, {})
+		var lv: int = int(st.get("level", 1))
+		var cur_exp: int = int(st.get("exp", 0)) + exp_gain
+		var promoted := _apply_level_up(lv, cur_exp, level_up)
+		st["level"] = promoted.level
+		st["exp"] = promoted.exp
+		if not st.has("star"):
+			st["star"] = 1
+		roles_state[rid] = st
+	data["roles"] = roles_state
+
+# 把 (level, exp) 按 level_up.txt 推进到稳定状态。max_exp <= 0 视为已满级。
+func _apply_level_up(level: int, cur_exp: int, level_up: Dictionary) -> Dictionary:
+	var lv: int = max(level, 1)
+	var ex: int = max(cur_exp, 0)
+	while true:
+		var max_exp: int = int(level_up.get(lv, 0))
+		if max_exp <= 0:
+			ex = 0  # 满级，经验清零
+			break
+		if ex < max_exp:
+			break
+		ex -= max_exp
+		lv += 1
+	return {"level": lv, "exp": ex}
+
+func _load_level_up_table() -> Dictionary:
+	var result: Dictionary = {}
+	var file := FileAccess.open(LEVEL_UP_TABLE_PATH, FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return result
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 2:
+			continue
+		var lv_s: String = (parts[0] as String).strip_edges()
+		var exp_s: String = (parts[1] as String).strip_edges()
+		if not lv_s.is_valid_int():
+			continue
+		result[int(lv_s)] = int(exp_s) if exp_s.is_valid_int() else 0
+	return result
+
+# 技能表：返回 {skill_id_int: {level_int: {desc, p1, p2, upgrade_cost, icon}}}
+var _skill_table_cache: Dictionary = {}
+func _load_skill_table() -> Dictionary:
+	if not _skill_table_cache.is_empty():
+		return _skill_table_cache
+	var result: Dictionary = {}
+	var file := FileAccess.open(SKILL_TABLE_PATH, FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return result
+	var headers := (raw[0] as String).strip_edges().split("\t")
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < headers.size():
+			continue
+		var entry: Dictionary = {}
+		for j in headers.size():
+			entry[headers[j]] = parts[j]
+		var sid_s: String = String(entry.get("skill_id", "")).strip_edges()
+		var lv_s: String = String(entry.get("level", "")).strip_edges()
+		if not sid_s.is_valid_int() or not lv_s.is_valid_int():
+			continue
+		var sid := int(sid_s)
+		var lv := int(lv_s)
+		if not result.has(sid):
+			result[sid] = {}
+		result[sid][lv] = {
+			"desc":         String(entry.get("desc", "")),
+			"p1":           int(entry.get("param1", "0")),
+			"p2":           int(entry.get("param2", "0")),
+			"upgrade_cost": int(entry.get("upgrade_cost", "0")),
+			"icon":         String(entry.get("icon", "")),
+		}
+	_skill_table_cache = result
+	return result
+
+func _get_skill_data(sid: int, lv: int) -> Dictionary:
+	var table := _load_skill_table()
+	if not table.has(sid):
+		return {}
+	var levels: Dictionary = table[sid]
+	if levels.has(lv):
+		return levels[lv]
+	# 找不到当前级，退到该技能最高已配置的级别
+	var keys := levels.keys()
+	keys.sort()
+	if keys.is_empty():
+		return {}
+	return levels[keys[-1]]
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 放置角色并构建 BattleUnit
@@ -633,6 +838,7 @@ func _place_battle_roles(vp: Vector2) -> void:
 		unit.status_bar = bar
 		unit.root       = root
 		unit.rd         = rd
+		unit.skills     = _get_role_skills(rid)
 		_battle_units.append(unit)
 
 func _place_enemy_roles(vp: Vector2) -> void:
@@ -738,6 +944,7 @@ func _build_animated_sprite(rd: Dictionary) -> AnimatedSprite2D:
 		sf.set_animation_speed(anim_name, fps)
 		# idle/alert 循环，attack/dead 只播一次
 		sf.set_animation_loop(anim_name, anim_name == "idle" or anim_name == "alert")
+		@warning_ignore("integer_division")
 		var fw := tex.get_width() / frames
 		var fh := tex.get_height()
 		for k in range(frames):
@@ -947,6 +1154,7 @@ func _load_levels_table() -> Dictionary:
 			"monster_ids":  monster_ids,
 			"monster_level": int(entry.get("monster_level", "1")),
 			"formation_id": int(entry.get("formation_id", "1")),
+			"exp":          int(entry.get("exp", "0")),
 		}
 	return result
 
@@ -969,6 +1177,31 @@ func _get_team_ids() -> Array:
 		if not s.is_empty():
 			result.append(s)
 	return result
+
+# 从存档读取角色已学技能；找不到则回退到默认技能
+func _get_role_skills(rid: String) -> Array:
+	var save_path := "user://savegame.json"
+	if FileAccess.file_exists(save_path):
+		var file := FileAccess.open(save_path, FileAccess.READ)
+		if file:
+			var parsed = JSON.parse_string(file.get_as_text())
+			file.close()
+			if parsed is Dictionary and parsed.has("roles") and parsed["roles"] is Dictionary:
+				var rs: Dictionary = parsed["roles"]
+				if rs.has(rid) and rs[rid] is Dictionary and rs[rid].has("skills"):
+					var raw = rs[rid]["skills"]
+					if raw is Array:
+						var out: Array = []
+						for s in raw:
+							if s is Dictionary and int(s.get("id", 0)) > 0:
+								out.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
+						if not out.is_empty():
+							return out
+	# 回退到默认
+	var defaults: Array = []
+	for s in DEFAULT_SKILLS:
+		defaults.append({"id": int(s.id), "level": int(s.level)})
+	return defaults
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 工具
@@ -1126,11 +1359,11 @@ class RoleStatusBar extends Node2D:
 			var fg_style := StyleBoxFlat.new()
 			fg_style.bg_color = Color(0.68, 0.08, 0.08, 1.0)
 			fg_style.set_corner_radius_all(0)
-			fg_style.set_corner_radius(0, r)  # CORNER_TOP_LEFT
-			fg_style.set_corner_radius(3, r)  # CORNER_BOTTOM_LEFT
+			fg_style.set_corner_radius(CORNER_TOP_LEFT, r)
+			fg_style.set_corner_radius(CORNER_BOTTOM_LEFT, r)
 			if ratio >= 0.99:
-				fg_style.set_corner_radius(1, r)  # CORNER_TOP_RIGHT
-				fg_style.set_corner_radius(2, r)  # CORNER_BOTTOM_RIGHT
+				fg_style.set_corner_radius(CORNER_TOP_RIGHT, r)
+				fg_style.set_corner_radius(CORNER_BOTTOM_RIGHT, r)
 			draw_style_box(fg_style, Rect2(bar_off, Vector2(bar_w * ratio, bar_h)))
 
 		# 边框：圆角，宽度 2px
@@ -1175,6 +1408,7 @@ class BattleUnit:
 	var status_bar: RoleStatusBar   = null
 	var root:       Node2D = null
 	var rd:         Dictionary = {}
+	var skills:     Array = []  # [{id:int, level:int}]
 
 	# 播动画；attack 结束后自动回 alert/idle
 	func play_anim(anim_name: String) -> void:

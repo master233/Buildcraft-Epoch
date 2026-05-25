@@ -4,15 +4,19 @@ extends Node2D
 @onready var _wood_lbl: Label = $UI/WoodLbl
 @onready var _ore_lbl: Label = $UI/OreLbl
 @onready var _gold_lbl: Label = $UI/GoldLbl
+@warning_ignore("unused_private_class_variable")
 @onready var _panel_dim: ColorRect = $UI/PanelDim
 @onready var _panel_bg: TextureRect = $UI/BuildingPanel
 @onready var _panel_name_lbl: Label = $UI/BuildingPanel/PanelNameLbl
 @onready var _panel_info_lbl: Label = $UI/BuildingPanel/PanelInfoLbl
 @onready var _upgrade_btn: TextureRect = $UI/BuildingPanel/UpgradeBtn
 @onready var _upgrade_lbl: Label = $UI/BuildingPanel/UpgradeLbl
+@warning_ignore("unused_private_class_variable")
 @onready var _close_btn: TextureRect = $UI/BuildingPanel/CloseBtn
 @onready var _panel_extra_lbl: Label = $UI/BuildingPanel/PanelExtraLbl if $UI/BuildingPanel.has_node("PanelExtraLbl") else null
+@warning_ignore("unused_private_class_variable")
 @onready var _panel_info_bg: ColorRect = $UI/BuildingPanel/PanelInfoBg if $UI/BuildingPanel.has_node("PanelInfoBg") else null
+@warning_ignore("unused_private_class_variable")
 @onready var _panel_extra_bg: ColorRect = $UI/BuildingPanel/PanelExtraBg if $UI/BuildingPanel.has_node("PanelExtraBg") else null
 @onready var _function_area: Control = $UI/BuildingPanel/FunctionArea
 
@@ -132,6 +136,9 @@ var _role_lines: Dictionary = {}
 var _team_slots: Array = []  # [{slot: Node2D, role_id: String, head_top_y, name_lbl, stars_lbl}]
 var _team_levels: Array[int] = []
 var _team_stars: Array[int] = []
+var _team_exps: Array[int] = []
+var _team_skills: Array = []  # 每队员一个 Array[{id:int, level:int}]
+const DEFAULT_SKILLS: Array = [{"id": 30001, "level": 1}]
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
 var _last_speech_slot_idx: int = -1
@@ -343,6 +350,8 @@ func _clear_team_nodes() -> void:
 	_team_slots.clear()
 	_team_levels.clear()
 	_team_stars.clear()
+	_team_exps.clear()
+	_team_skills.clear()
 
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
@@ -395,6 +404,7 @@ func _place_buildings() -> void:
 		if cfg["animated"]:
 			var sheet_tex: Texture2D = load(cfg["anim_sheets"][0])
 			var n_frames: int = cfg["n_frames"]
+			@warning_ignore("integer_division")
 			var frame_w := sheet_tex.get_width() / n_frames
 			var frame_h := sheet_tex.get_height()
 			var orig_tex: Texture2D = load(cfg["paths"][0])
@@ -453,11 +463,15 @@ func _place_expedition_team() -> void:
 	# 后面 _load_game 会用存档覆盖
 	_team_levels.clear()
 	_team_stars.clear()
+	_team_exps.clear()
+	_team_skills.clear()
 	for i in team_size:
 		var rid: String = _expedition_team_ids[i]
 		var role_data: Dictionary = _roles.get(rid, {})
 		_team_levels.append(int(role_data.get("init_level", 1)))
 		_team_stars.append(int(role_data.get("init_star", 1)))
+		_team_exps.append(0)
+		_team_skills.append(_default_skills_copy())
 	for i in team_size:
 		var role_id: String = _expedition_team_ids[i]
 		if not _roles.has(role_id):
@@ -478,6 +492,7 @@ func _place_expedition_team() -> void:
 		add_child(slot)
 
 		var sheet_tex: Texture2D = load(data["idle_sheet"])
+		@warning_ignore("integer_division")
 		var frame_w := sheet_tex.get_width() / idle_frames
 		var frame_h := sheet_tex.get_height()
 		_team_slots.append({
@@ -503,6 +518,7 @@ func _place_expedition_team() -> void:
 			var alert_frames: int = int(data.get("alert_frames", 1))
 			var alert_anim_fps: float = float(data.get("alert_anim_fps", 12.0))
 			var alert_tex: Texture2D = load(alert_sheet_path)
+			@warning_ignore("integer_division")
 			var alert_w := alert_tex.get_width() / alert_frames
 			var alert_h := alert_tex.get_height()
 			sf.add_animation("alert")
@@ -521,6 +537,7 @@ func _place_expedition_team() -> void:
 			var attack_frames: int = int(data.get("attack_frames", 1))
 			var attack_anim_fps: float = float(data.get("attack_anim_fps", 12.0))
 			var attack_tex: Texture2D = load(attack_sheet_path)
+			@warning_ignore("integer_division")
 			var attack_w := attack_tex.get_width() / attack_frames
 			var attack_h := attack_tex.get_height()
 			sf.add_animation("attack")
@@ -539,6 +556,7 @@ func _place_expedition_team() -> void:
 			var dead_frames: int = int(data.get("dead_frames", 1))
 			var dead_anim_fps: float = float(data.get("dead_anim_fps", 12.0))
 			var dead_tex: Texture2D = load(dead_sheet_path)
+			@warning_ignore("integer_division")
 			var dead_w := dead_tex.get_width() / dead_frames
 			var dead_h := dead_tex.get_height()
 			sf.add_animation("dead")
@@ -557,6 +575,7 @@ func _place_expedition_team() -> void:
 			var cast_frames: int = int(data.get("cast_frames", 1))
 			var cast_anim_fps: float = float(data.get("cast_anim_fps", 12.0))
 			var cast_tex: Texture2D = load(cast_sheet_path)
+			@warning_ignore("integer_division")
 			var cast_w := cast_tex.get_width() / cast_frames
 			var cast_h := cast_tex.get_height()
 			sf.add_animation("cast")
@@ -1112,7 +1131,7 @@ func _refresh_level_info() -> void:
 		return
 
 	var monster_ids: Array = String(level_data.get("monster_ids", "")).split(",")
-	var monster_lv: String = String(level_data.get("monster_level", "1"))
+	var _monster_lv: String = String(level_data.get("monster_level", "1"))
 
 	# 统计怪物（去掉占位0，保留顺序去重用于精灵显示）
 	var seen: Dictionary = {}
@@ -1139,9 +1158,10 @@ func _refresh_level_info() -> void:
 			var sheet_tex: Texture2D = load(sheet_path)
 			var n_frames: int = int(role_data.get("alert_frames", 1))
 			var anim_fps: float = float(role_data.get("alert_anim_fps", 12.0))
+			@warning_ignore("integer_division")
 			var fw := sheet_tex.get_width() / n_frames
 			var fh := sheet_tex.get_height()
-			var scale := SPRITE_H / float(fh)
+			var sprite_scale := SPRITE_H / float(fh)
 
 			var sf := SpriteFrames.new()
 			sf.add_animation("alert")
@@ -1156,20 +1176,20 @@ func _refresh_level_info() -> void:
 
 			# 用 SubViewportContainer 把 AnimatedSprite2D 嵌入 UI
 			var sub_vp := SubViewport.new()
-			sub_vp.size = Vector2i(int(fw * scale), int(SPRITE_H))
+			sub_vp.size = Vector2i(int(fw * sprite_scale), int(SPRITE_H))
 			sub_vp.transparent_bg = true
 			sub_vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 
 			var anim_sprite := AnimatedSprite2D.new()
 			anim_sprite.sprite_frames = sf
-			anim_sprite.scale = Vector2(scale, scale)
-			anim_sprite.position = Vector2(fw * scale * 0.5, SPRITE_H * 0.5)
+			anim_sprite.scale = Vector2(sprite_scale, sprite_scale)
+			anim_sprite.position = Vector2(fw * sprite_scale * 0.5, SPRITE_H * 0.5)
 			anim_sprite.play("alert")
 			sub_vp.add_child(anim_sprite)
 
 			var vpc := SubViewportContainer.new()
 			vpc.stretch = true
-			vpc.custom_minimum_size = Vector2(int(fw * scale), int(SPRITE_H))
+			vpc.custom_minimum_size = Vector2(int(fw * sprite_scale), int(SPRITE_H))
 			vpc.add_child(sub_vp)
 			monster_sprites.add_child(vpc)
 
@@ -1373,6 +1393,7 @@ func _apply_anim_sheet(key: String, lv: int) -> void:
 	var cfg = BUILDINGS[key]
 	var sheet_tex: Texture2D = load(cfg["anim_sheets"][lv - 1])
 	var n_frames: int = cfg["n_frames"]
+	@warning_ignore("integer_division")
 	var frame_w := sheet_tex.get_width() / n_frames
 	var frame_h := sheet_tex.get_height()
 	var sf := SpriteFrames.new()
@@ -1443,6 +1464,35 @@ func _refresh_hud() -> void:
 func _refresh_label(key: String) -> void:
 	var state = _building_nodes[key]
 	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
+
+func _default_skills_copy() -> Array:
+	var out: Array = []
+	for s in DEFAULT_SKILLS:
+		out.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
+	return out
+
+func _serialize_skills(idx: int) -> Array:
+	if idx < 0 or idx >= _team_skills.size():
+		return _default_skills_copy()
+	var src = _team_skills[idx]
+	if not (src is Array):
+		return _default_skills_copy()
+	var out: Array = []
+	for s in src:
+		if s is Dictionary:
+			out.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
+	return out
+
+func _parse_skills_array(raw) -> Array:
+	if not (raw is Array):
+		return _default_skills_copy()
+	var out: Array = []
+	for s in raw:
+		if s is Dictionary and int(s.get("id", 0)) > 0:
+			out.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
+	if out.is_empty():
+		return _default_skills_copy()
+	return out
 func _save_game() -> void:
 	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "cleared_level": _cleared_level, "chat_index": _chat_index, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
 	for key in _building_nodes:
@@ -1454,6 +1504,8 @@ func _save_game() -> void:
 		data["roles"][rid] = {
 			"level": _team_levels[i] if i < _team_levels.size() else 1,
 			"star": _team_stars[i] if i < _team_stars.size() else 1,
+			"exp": _team_exps[i] if i < _team_exps.size() else 0,
+			"skills": _serialize_skills(i),
 		}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
@@ -1510,6 +1562,10 @@ func _load_game() -> void:
 				_team_levels[i] = int(s.get("level", _team_levels[i]))
 			if i < _team_stars.size():
 				_team_stars[i] = int(s.get("star", _team_stars[i]))
+			if i < _team_exps.size():
+				_team_exps[i] = int(s.get("exp", _team_exps[i]))
+			if i < _team_skills.size() and s.has("skills"):
+				_team_skills[i] = _parse_skills_array(s["skills"])
 			_refresh_role_label(i)
 	# 读档后用 formation_id 查名字并刷新按钮
 	_formation_name = _query_formation_name(_formation_id)
@@ -1540,7 +1596,9 @@ func _build_upgrade_fx_frames() -> void:
 		tex = ImageTexture.create_from_image(img)
 	var cols := 5
 	var rows := 2
+	@warning_ignore("integer_division")
 	var fw := tex.get_width() / cols
+	@warning_ignore("integer_division")
 	var fh := tex.get_height() / rows
 	_upgrade_fx_frames = SpriteFrames.new()
 	_upgrade_fx_frames.add_animation("play")
@@ -1578,6 +1636,7 @@ func _build_animal_frames() -> void:
 	_bird_frames.set_animation_speed("fly", 10.0)
 	_bird_frames.set_animation_loop("fly", true)
 	var bird_tex: Texture2D = load("res://asserts/image/animal/bird_sheet.png")
+	@warning_ignore("integer_division")
 	var bw: int = bird_tex.get_width() / 6
 	var bh: int = bird_tex.get_height()
 	for i in 6:
@@ -1592,6 +1651,7 @@ func _build_animal_frames() -> void:
 	_squirrel_frames.set_animation_speed("run", 10.0)
 	_squirrel_frames.set_animation_loop("run", true)
 	var sq_tex: Texture2D = load("res://asserts/image/animal/squirrel_sheet.png")
+	@warning_ignore("integer_division")
 	var sw: int = sq_tex.get_width() / 6
 	var sh: int = sq_tex.get_height()
 	for i in 6:
