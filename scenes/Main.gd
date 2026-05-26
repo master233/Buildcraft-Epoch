@@ -50,7 +50,8 @@ const SPEECH_DURATION := 3.0
 var _panel_rect    := Rect2(0, 0, 1280, 720)
 var _upgrade_rect  := Rect2(360, 93, 560, 150)
 var _close_rect    := Rect2(1090, 10, 85, 80)
-var _reset_rect    := Rect2(0, 0, 160, 36)
+var _gm_rect       := Rect2(0, 0, 160, 36)
+var _gm_cmd_rects: Array[Rect2] = []
 
 const BUILDINGS := {
 	"home": {
@@ -108,10 +109,13 @@ var _ore: int = 100
 var _gold: int = 0
 var _cleared_level: int = 0
 var _level_ids: Array = []
-var _reset_bg: Panel = null
-var _reset_lbl: Label = null
-var _reset_style: StyleBoxFlat = null
-var _reset_hovering: bool = false
+var _gm_bg: Panel = null
+var _gm_lbl: Label = null
+var _gm_style: StyleBoxFlat = null
+var _gm_hovering: bool = false
+var _gm_cmd_panel: Panel = null
+var _gm_cmd_visible: bool = false
+var _gm_cmd_btns: Array = []  # [{bg: Panel, lbl: Label, action: String}]
 
 var _formation_id: int = 1
 var _formation_name: String = "标准阵"
@@ -138,7 +142,7 @@ var _team_levels: Array[int] = []
 var _team_stars: Array[int] = []
 var _team_exps: Array[int] = []
 var _team_skills: Array = []  # 每队员一个 Array[{id:int, level:int}]
-const DEFAULT_SKILLS: Array = [{"id": 30001, "level": 1}]
+const DEFAULT_SKILLS: Array = []
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
 var _last_speech_slot_idx: int = -1
@@ -226,7 +230,7 @@ func _setup() -> void:
 	get_tree().create_timer(13.0).timeout.connect(_spawn_bird.bind(2))
 	_spawn_squirrel(500.0, 0.50)
 	_spawn_squirrel(820.0, 0.55)
-	_spawn_reset_button()
+	_spawn_gm_button()
 	_spawn_chat_box()
 
 	# 从阵型选择场景返回时，读取玩家选中的阵型
@@ -238,47 +242,223 @@ func _setup() -> void:
 		_refresh_formation_btn()
 		_save_game()
 
-func _spawn_reset_button() -> void:
+func _spawn_gm_button() -> void:
 	var ui := $UI
 	var vp := get_viewport_rect().size
-	_reset_rect = Rect2(vp.x - 114, 12, 100, 36)
+	_gm_rect = Rect2(vp.x - 74, 12, 60, 36)
 
-	_reset_style = StyleBoxFlat.new()
-	_reset_style.bg_color = Color(0.42, 0.07, 0.07)
-	_reset_style.set_corner_radius_all(10)
-	_reset_style.border_width_top    = 2
-	_reset_style.border_width_right  = 2
-	_reset_style.border_width_bottom = 3
-	_reset_style.border_width_left   = 2
-	_reset_style.border_color = Color(0.80, 0.28, 0.22, 1.0)
-	_reset_style.shadow_color = Color(0, 0, 0, 0.55)
-	_reset_style.shadow_size  = 6
-	_reset_style.shadow_offset = Vector2(1, 3)
+	_gm_style = StyleBoxFlat.new()
+	_gm_style.bg_color = Color(0.12, 0.18, 0.42)
+	_gm_style.set_corner_radius_all(10)
+	_gm_style.border_width_top    = 2
+	_gm_style.border_width_right  = 2
+	_gm_style.border_width_bottom = 3
+	_gm_style.border_width_left   = 2
+	_gm_style.border_color = Color(0.40, 0.55, 0.95, 1.0)
+	_gm_style.shadow_color = Color(0, 0, 0, 0.55)
+	_gm_style.shadow_size  = 6
+	_gm_style.shadow_offset = Vector2(1, 3)
 
-	_reset_bg = Panel.new()
-	_reset_bg.size     = _reset_rect.size
-	_reset_bg.position = _reset_rect.position
-	_reset_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_reset_bg.add_theme_stylebox_override("panel", _reset_style)
-	ui.add_child(_reset_bg)
+	_gm_bg = Panel.new()
+	_gm_bg.size     = _gm_rect.size
+	_gm_bg.position = _gm_rect.position
+	_gm_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_gm_bg.add_theme_stylebox_override("panel", _gm_style)
+	ui.add_child(_gm_bg)
 
-	_reset_lbl = Label.new()
-	_reset_lbl.text = "重置游戏"
-	_reset_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_reset_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	_reset_lbl.size     = _reset_rect.size
-	_reset_lbl.position = _reset_rect.position
-	_reset_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_gm_lbl = Label.new()
+	_gm_lbl.text = "GM"
+	_gm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_gm_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	_gm_lbl.size     = _gm_rect.size
+	_gm_lbl.position = _gm_rect.position
+	_gm_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var ls := LabelSettings.new()
 	ls.font       = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
-	ls.font_size  = 20
-	ls.font_color = Color(1.0, 0.82, 0.82)
+	ls.font_size  = 22
+	ls.font_color = Color(0.92, 0.96, 1.0)
 	ls.outline_size  = 2
 	ls.outline_color = Color(0.0, 0.0, 0.0, 0.75)
 	ls.shadow_size   = 2
 	ls.shadow_color  = Color(0, 0, 0, 0.45)
-	_reset_lbl.label_settings = ls
-	ui.add_child(_reset_lbl)
+	_gm_lbl.label_settings = ls
+	ui.add_child(_gm_lbl)
+
+	_build_gm_cmd_panel(ui)
+
+func _build_gm_cmd_panel(ui: Node) -> void:
+	var commands := [
+		{"text": "添加资源", "action": "add_resources"},
+		{"text": "获得所有角色1个", "action": "grant_all_roles"},
+		{"text": "所有角色学习技能", "action": "learn_skill"},
+		{"text": "重置数据", "action": "reset"},
+	]
+	var pad := 8.0
+	var btn_h := 36.0
+	var gap := 6.0
+	var panel_w := 200.0
+	var panel_h := pad * 2 + btn_h * commands.size() + gap * (commands.size() - 1)
+	var panel_x := _gm_rect.position.x + _gm_rect.size.x - panel_w
+	var panel_y := _gm_rect.position.y + _gm_rect.size.y + 6.0
+
+	var pstyle := StyleBoxFlat.new()
+	pstyle.bg_color = Color(0.08, 0.10, 0.18, 0.95)
+	pstyle.set_corner_radius_all(10)
+	pstyle.border_width_top    = 2
+	pstyle.border_width_right  = 2
+	pstyle.border_width_bottom = 2
+	pstyle.border_width_left   = 2
+	pstyle.border_color = Color(0.40, 0.55, 0.95, 1.0)
+	pstyle.shadow_color = Color(0, 0, 0, 0.55)
+	pstyle.shadow_size  = 8
+
+	_gm_cmd_panel = Panel.new()
+	_gm_cmd_panel.size     = Vector2(panel_w, panel_h)
+	_gm_cmd_panel.position = Vector2(panel_x, panel_y)
+	_gm_cmd_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_gm_cmd_panel.add_theme_stylebox_override("panel", pstyle)
+	_gm_cmd_panel.visible = false
+	ui.add_child(_gm_cmd_panel)
+
+	_gm_cmd_btns.clear()
+	_gm_cmd_rects.clear()
+	for i in commands.size():
+		var cmd: Dictionary = commands[i]
+		var by := panel_y + pad + i * (btn_h + gap)
+		var btn_rect := Rect2(panel_x + pad, by, panel_w - pad * 2, btn_h)
+
+		var bstyle := StyleBoxFlat.new()
+		bstyle.bg_color = Color(0.18, 0.24, 0.50)
+		bstyle.set_corner_radius_all(8)
+		bstyle.border_width_top    = 1
+		bstyle.border_width_right  = 1
+		bstyle.border_width_bottom = 2
+		bstyle.border_width_left   = 1
+		bstyle.border_color = Color(0.55, 0.70, 1.0, 0.9)
+
+		var bg := Panel.new()
+		bg.size     = btn_rect.size
+		bg.position = btn_rect.position
+		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		bg.add_theme_stylebox_override("panel", bstyle)
+		bg.visible = false
+		ui.add_child(bg)
+
+		var lbl := Label.new()
+		lbl.text = String(cmd["text"])
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+		lbl.size     = btn_rect.size
+		lbl.position = btn_rect.position
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var bls := LabelSettings.new()
+		bls.font       = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+		bls.font_size  = 20
+		bls.font_color = Color(0.95, 0.98, 1.0)
+		bls.outline_size  = 2
+		bls.outline_color = Color(0.0, 0.0, 0.0, 0.8)
+		lbl.label_settings = bls
+		lbl.visible = false
+		ui.add_child(lbl)
+
+		_gm_cmd_btns.append({"bg": bg, "lbl": lbl, "action": String(cmd["action"])})
+		_gm_cmd_rects.append(btn_rect)
+
+func _set_gm_cmd_visible(v: bool) -> void:
+	_gm_cmd_visible = v
+	if _gm_cmd_panel and is_instance_valid(_gm_cmd_panel):
+		_gm_cmd_panel.visible = v
+	for entry in _gm_cmd_btns:
+		var bg = entry.get("bg", null)
+		var lbl = entry.get("lbl", null)
+		if bg and is_instance_valid(bg):
+			bg.visible = v
+		if lbl and is_instance_valid(lbl):
+			lbl.visible = v
+
+func _gm_add_resources() -> void:
+	_wood += 1000
+	_ore  += 1000
+	_gold += 1000
+	_refresh_hud()
+	_save_game()
+
+func _gm_grant_all_roles() -> void:
+	var max_star: int = GlobalConfig.get_int("max_star_level", 6)
+	var any_new := false
+	for i in range(10001, 10006):
+		var rid := str(i)
+		if not _roles.has(rid):
+			continue
+		if rid in _owned_role_ids:
+			var idx := -1
+			for j in _team_slots.size():
+				if String(_team_slots[j].get("role_id", "")) == rid:
+					idx = j
+					break
+			if idx >= 0 and idx < _team_stars.size() and _team_stars[idx] < max_star:
+				_team_stars[idx] += 1
+				_refresh_role_label(idx)
+			else:
+				_gold += 200
+		else:
+			_owned_role_ids.append(rid)
+			if _expedition_team_ids.size() < MAX_EXPEDITION_SIZE and not rid in _expedition_team_ids:
+				_expedition_team_ids.append(rid)
+			any_new = true
+	_save_game()
+	if any_new:
+		_clear_team_nodes()
+		_resolve_team_from_owned()
+		_place_expedition_team()
+		_load_game()
+	_refresh_hud()
+
+func _load_all_skill_ids() -> Array:
+	var text := _read_table_text("res://asserts/table/skill.txt")
+	if text.is_empty():
+		return []
+	var raw := text.split("\n", false)
+	var seen: Dictionary = {}
+	var ids: Array = []
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 1:
+			continue
+		var sid_s: String = (parts[0] as String).strip_edges()
+		if not sid_s.is_valid_int():
+			continue
+		var sid := int(sid_s)
+		if seen.has(sid):
+			continue
+		seen[sid] = true
+		ids.append(sid)
+	ids.sort()
+	return ids
+
+func _gm_learn_next_skill() -> void:
+	var all_ids := _load_all_skill_ids()
+	if all_ids.is_empty():
+		return
+	for i in _team_slots.size():
+		var cur: Array = []
+		if i < _team_skills.size() and _team_skills[i] is Array:
+			cur = _team_skills[i]
+		var owned: Dictionary = {}
+		for s in cur:
+			if s is Dictionary:
+				owned[int(s.get("id", 0))] = true
+		for sid in all_ids:
+			if not owned.has(sid):
+				cur.append({"id": sid, "level": 1})
+				break
+		while i >= _team_skills.size():
+			_team_skills.append([])
+		_team_skills[i] = cur
+	_save_game()
 
 const BATTLE_SCENE_PATH := "res://scenes/BattleScene.tscn"
 
@@ -383,12 +563,12 @@ func _process(delta: float) -> void:
 		_speech_timer = 0.0
 		_tick_speech()
 	_tick_chat(delta)
-	if _reset_style != null:
-		var hov := _reset_rect.has_point(get_viewport().get_mouse_position())
-		if hov != _reset_hovering:
-			_reset_hovering = hov
-			_reset_style.bg_color     = Color(0.62, 0.12, 0.12) if hov else Color(0.42, 0.07, 0.07)
-			_reset_style.border_color = Color(0.95, 0.40, 0.32) if hov else Color(0.80, 0.28, 0.22)
+	if _gm_style != null:
+		var hov := _gm_rect.has_point(get_viewport().get_mouse_position())
+		if hov != _gm_hovering:
+			_gm_hovering = hov
+			_gm_style.bg_color     = Color(0.18, 0.26, 0.58) if hov else Color(0.12, 0.18, 0.42)
+			_gm_style.border_color = Color(0.55, 0.70, 1.0) if hov else Color(0.40, 0.55, 0.95)
 
 func _place_buildings() -> void:
 	for key in BUILDINGS:
@@ -893,10 +1073,12 @@ func _set_panel_visible(v: bool) -> void:
 	_panel_visible = v
 	if not v:
 		_unload_function_panel()
-	if _reset_bg and is_instance_valid(_reset_bg):
-		_reset_bg.visible = not v
-	if _reset_lbl and is_instance_valid(_reset_lbl):
-		_reset_lbl.visible = not v
+	if _gm_bg and is_instance_valid(_gm_bg):
+		_gm_bg.visible = not v
+	if _gm_lbl and is_instance_valid(_gm_lbl):
+		_gm_lbl.visible = not v
+	if v:
+		_set_gm_cmd_visible(false)
 
 func _load_function_panel(key: String) -> void:
 	_unload_function_panel()
@@ -1259,15 +1441,32 @@ func _handle_click(pos: Vector2) -> void:
 		_panel_key = ""
 		return
 
-	if _reset_rect.has_point(pos):
-		_reset_bg.pivot_offset = _reset_bg.size / 2
-		_reset_lbl.pivot_offset = _reset_lbl.size / 2
+	if _gm_rect.has_point(pos):
+		_gm_bg.pivot_offset = _gm_bg.size / 2
+		_gm_lbl.pivot_offset = _gm_lbl.size / 2
 		var tw := create_tween()
-		tw.tween_property(_reset_bg,  "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.parallel().tween_property(_reset_lbl, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw.tween_property(_reset_bg,  "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
-		tw.parallel().tween_property(_reset_lbl, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
-		_reset_game()
+		tw.tween_property(_gm_bg,  "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(_gm_lbl, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw.tween_property(_gm_bg,  "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(_gm_lbl, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		_set_gm_cmd_visible(not _gm_cmd_visible)
+		return
+
+	if _gm_cmd_visible:
+		for i in _gm_cmd_rects.size():
+			if _gm_cmd_rects[i].has_point(pos):
+				var action: String = String(_gm_cmd_btns[i].get("action", ""))
+				_set_gm_cmd_visible(false)
+				if action == "reset":
+					_reset_game()
+				elif action == "add_resources":
+					_gm_add_resources()
+				elif action == "grant_all_roles":
+					_gm_grant_all_roles()
+				elif action == "learn_skill":
+					_gm_learn_next_skill()
+				return
+		_set_gm_cmd_visible(false)
 		return
 
 	# 检测角色点击

@@ -3,3 +3,6 @@ skill_id	level	desc	param1	param2	upgrade_cost	icon
 30001	1	攻击时有{p1}%概率额外攻击一次，第二次造成{p2}%的攻击伤害	50	50	0	res://asserts/image/ui/skill/attack_combo.png
 30001	2	攻击时有{p1}%概率额外攻击一次，第二次造成{p2}%的攻击伤害	60	60	200	res://asserts/image/ui/skill/attack_combo.png
 30001	3	攻击时有{p1}%概率额外攻击一次，第二次造成{p2}%的攻击伤害	70	75	500	res://asserts/image/ui/skill/attack_combo.png
+30002	1	受到普攻时有{p1}%概率反击，造成{p2}%的攻击伤害	25	80	0	res://asserts/image/ui/skill/attack_counter.png
+30002	2	受到普攻时有{p1}%概率反击，造成{p2}%的攻击伤害	35	90	200	res://asserts/image/ui/skill/attack_counter.png
+30002	3	受到普攻时有{p1}%概率反击，造成{p2}%的攻击伤害	50	100	500	res://asserts/image/ui/skill/attack_counter.png

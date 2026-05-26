@@ -8,7 +8,7 @@ const FORMATIONS_TABLE_PATH := "res://asserts/table/formations.txt"
 const LEVELS_TABLE_PATH     := "res://asserts/table/levels.txt"
 const LEVEL_UP_TABLE_PATH   := "res://asserts/table/level_up.txt"
 const SKILL_TABLE_PATH      := "res://asserts/table/skill.txt"
-const DEFAULT_SKILLS: Array = [{"id": 30001, "level": 1}]
+const DEFAULT_SKILLS: Array = []
 const GRID_ROWS := 7
 const GRID_COLS := 12
 
@@ -179,6 +179,9 @@ func _perform_action(attacker: BattleUnit) -> void:
 	# 2.5) 连击（30001）：攻击时有 p1% 概率追加一次 p2% 伤害
 	await _try_combo_strike(attacker, target, sf, has_atk_anim)
 
+	# 2.6) 反击（30002）：目标对攻击者进行 p1% 概率反击 p2% 伤害
+	await _try_counter_strike(attacker, target)
+
 	# 3) 退回原位
 	if is_instance_valid(atk_root):
 		var tw_out := create_tween()
@@ -248,6 +251,42 @@ func _try_combo_strike(attacker: BattleUnit, target: BattleUnit, sf: SpriteFrame
 			var back := "alert" if sf and sf.has_animation("alert") else "idle"
 			if sf and sf.has_animation(back):
 				attacker.sprite.play(back)
+
+# 反击（skill_id=30002）：目标在普攻命中后 p1% 概率反击攻击者，伤害 = p2% * 目标攻击力计算
+func _try_counter_strike(attacker: BattleUnit, target: BattleUnit) -> void:
+	if attacker == null or target == null or attacker.is_dead or target.is_dead:
+		return
+	var sd := _find_skill(target, 30002)
+	if sd.is_empty():
+		return
+	var prob: int = int(sd.get("p1", 0))
+	if prob <= 0:
+		return
+	if (randi() % 100) >= prob:
+		return
+	var mult: float = float(int(sd.get("p2", 0))) / 100.0
+	if mult <= 0.0:
+		return
+	# 飘 "反击!" 提示
+	_spawn_skill_label(target, "反击!")
+	# 目标原地播一次攻击动画 + 对攻击者应用伤害
+	var sf: SpriteFrames = null
+	var has_atk_anim := false
+	if is_instance_valid(target.sprite):
+		sf = target.sprite.sprite_frames
+		if sf and sf.has_animation("attack"):
+			has_atk_anim = true
+			target.sprite.play("attack")
+	await get_tree().create_timer(0.4).timeout
+	if not attacker.is_dead:
+		_apply_damage(target, attacker, mult)
+	if has_atk_anim and is_instance_valid(target.sprite):
+		if target.sprite.animation == "attack" and target.sprite.is_playing():
+			await target.sprite.animation_finished
+		if is_instance_valid(target.sprite):
+			var back := "alert" if sf and sf.has_animation("alert") else "idle"
+			if sf and sf.has_animation(back):
+				target.sprite.play(back)
 
 func _spawn_skill_label(attacker: BattleUnit, text: String) -> void:
 	if attacker == null or not is_instance_valid(attacker.root):
@@ -1178,8 +1217,10 @@ func _get_team_ids() -> Array:
 			result.append(s)
 	return result
 
-# 从存档读取角色已学技能；找不到则回退到默认技能
+# 从存档读取角色已学技能；找不到则回退到默认技能。槽位数 = 角色星数
 func _get_role_skills(rid: String) -> Array:
+	var star: int = 1
+	var skills_raw: Array = []
 	var save_path := "user://savegame.json"
 	if FileAccess.file_exists(save_path):
 		var file := FileAccess.open(save_path, FileAccess.READ)
@@ -1188,20 +1229,20 @@ func _get_role_skills(rid: String) -> Array:
 			file.close()
 			if parsed is Dictionary and parsed.has("roles") and parsed["roles"] is Dictionary:
 				var rs: Dictionary = parsed["roles"]
-				if rs.has(rid) and rs[rid] is Dictionary and rs[rid].has("skills"):
-					var raw = rs[rid]["skills"]
-					if raw is Array:
-						var out: Array = []
-						for s in raw:
+				if rs.has(rid) and rs[rid] is Dictionary:
+					var rd: Dictionary = rs[rid]
+					star = int(rd.get("star", 1))
+					if rd.has("skills") and rd["skills"] is Array:
+						for s in rd["skills"]:
 							if s is Dictionary and int(s.get("id", 0)) > 0:
-								out.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
-						if not out.is_empty():
-							return out
-	# 回退到默认
-	var defaults: Array = []
-	for s in DEFAULT_SKILLS:
-		defaults.append({"id": int(s.id), "level": int(s.level)})
-	return defaults
+								skills_raw.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
+	if skills_raw.is_empty():
+		for s in DEFAULT_SKILLS:
+			skills_raw.append({"id": int(s.id), "level": int(s.level)})
+	var slots: int = max(1, star)
+	if skills_raw.size() > slots:
+		skills_raw.resize(slots)
+	return skills_raw
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 工具

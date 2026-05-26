@@ -4,3 +4,4 @@ loading_tip	[font_size=48]感谢老板举办的活动 我们会好好利用这[c
 loading_time	3
 default_owned_roles	10001,10002,10003
 default_formation_id	1
+max_star_level	6
