@@ -138,10 +138,10 @@ var _slot_positions: Array[Vector2] = []
 var _layout_by_size: Dictionary = {}  # team_size:int → Array[int] of slot indices
 var _role_lines: Dictionary = {}
 var _team_slots: Array = []  # [{slot: Node2D, role_id: String, head_top_y, name_lbl, stars_lbl}]
-var _team_levels: Array[int] = []
-var _team_stars: Array[int] = []
-var _team_exps: Array[int] = []
-var _team_skills: Array = []  # 每队员一个 Array[{id:int, level:int}]
+var _role_levels: Dictionary = {}  # rid:String → int
+var _role_stars: Dictionary = {}   # rid:String → int
+var _role_exps: Dictionary = {}    # rid:String → int
+var _role_skills: Dictionary = {}  # rid:String → Array[{id:int, level:int}]
 const DEFAULT_SKILLS: Array = []
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
@@ -391,18 +391,16 @@ func _gm_grant_all_roles() -> void:
 		if not _roles.has(rid):
 			continue
 		if rid in _owned_role_ids:
-			var idx := -1
-			for j in _team_slots.size():
-				if String(_team_slots[j].get("role_id", "")) == rid:
-					idx = j
-					break
-			if idx >= 0 and idx < _team_stars.size() and _team_stars[idx] < max_star:
-				_team_stars[idx] += 1
-				_refresh_role_label(idx)
+			_ensure_role_data(rid)
+			var cur_star: int = int(_role_stars.get(rid, 1))
+			if cur_star < max_star:
+				_role_stars[rid] = cur_star + 1
+				_refresh_role_label_for(rid)
 			else:
 				_gold += 200
 		else:
 			_owned_role_ids.append(rid)
+			_ensure_role_data(rid)
 			if _expedition_team_ids.size() < MAX_EXPEDITION_SIZE and not rid in _expedition_team_ids:
 				_expedition_team_ids.append(rid)
 			any_new = true
@@ -413,6 +411,39 @@ func _gm_grant_all_roles() -> void:
 		_place_expedition_team()
 		_load_game()
 	_refresh_hud()
+
+func _ensure_default_skill(rid: String) -> void:
+	if rid.is_empty():
+		return
+	var role_data: Dictionary = _roles.get(rid, {})
+	var def_sid: int = int(role_data.get("default_skill", 0))
+	if def_sid <= 0:
+		return
+	var cur: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
+	for s in cur:
+		if s is Dictionary and int(s.get("id", 0)) == def_sid:
+			return
+	cur.insert(0, {"id": def_sid, "level": 1})
+	_role_skills[rid] = cur
+
+func _ensure_role_data(rid: String) -> void:
+	if rid.is_empty() or not _roles.has(rid):
+		return
+	var role_data: Dictionary = _roles[rid]
+	if not _role_levels.has(rid):
+		_role_levels[rid] = int(role_data.get("init_level", 1))
+	if not _role_stars.has(rid):
+		_role_stars[rid] = int(role_data.get("init_star", 1))
+	if not _role_exps.has(rid):
+		_role_exps[rid] = 0
+	if not _role_skills.has(rid):
+		var initial_skills: Array = _default_skills_copy()
+		var def_sid: int = int(role_data.get("default_skill", 0))
+		if def_sid > 0:
+			initial_skills.insert(0, {"id": def_sid, "level": 1})
+		_role_skills[rid] = initial_skills
+	else:
+		_ensure_default_skill(rid)
 
 func _load_all_skill_ids() -> Array:
 	var text := _read_table_text("res://asserts/table/skill.txt")
@@ -443,10 +474,12 @@ func _gm_learn_next_skill() -> void:
 	var all_ids := _load_all_skill_ids()
 	if all_ids.is_empty():
 		return
-	for i in _team_slots.size():
-		var cur: Array = []
-		if i < _team_skills.size() and _team_skills[i] is Array:
-			cur = _team_skills[i]
+	for entry in _team_slots:
+		var rid: String = String(entry.get("role_id", ""))
+		if rid.is_empty():
+			continue
+		_ensure_role_data(rid)
+		var cur: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
 		var owned: Dictionary = {}
 		for s in cur:
 			if s is Dictionary:
@@ -455,9 +488,7 @@ func _gm_learn_next_skill() -> void:
 			if not owned.has(sid):
 				cur.append({"id": sid, "level": 1})
 				break
-		while i >= _team_skills.size():
-			_team_skills.append([])
-		_team_skills[i] = cur
+		_role_skills[rid] = cur
 	_save_game()
 
 const BATTLE_SCENE_PATH := "res://scenes/BattleScene.tscn"
@@ -515,6 +546,10 @@ func _reset_game() -> void:
 			(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][0])
 		_refresh_label(key)
 	_clear_team_nodes()
+	_role_levels.clear()
+	_role_stars.clear()
+	_role_exps.clear()
+	_role_skills.clear()
 	_resolve_team_from_owned()
 	_place_expedition_team()
 	_refresh_hud()
@@ -528,10 +563,6 @@ func _clear_team_nodes() -> void:
 		if node != null and is_instance_valid(node):
 			node.queue_free()
 	_team_slots.clear()
-	_team_levels.clear()
-	_team_stars.clear()
-	_team_exps.clear()
-	_team_skills.clear()
 
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
@@ -639,19 +670,9 @@ func _place_expedition_team() -> void:
 	if layout.is_empty():
 		push_warning("team_layout.txt missing layout_size_%d" % team_size)
 		return
-	# 初始化每个成员的等级/星级，默认值取自 roles.txt 的 init_level / init_star；
-	# 后面 _load_game 会用存档覆盖
-	_team_levels.clear()
-	_team_stars.clear()
-	_team_exps.clear()
-	_team_skills.clear()
-	for i in team_size:
-		var rid: String = _expedition_team_ids[i]
-		var role_data: Dictionary = _roles.get(rid, {})
-		_team_levels.append(int(role_data.get("init_level", 1)))
-		_team_stars.append(int(role_data.get("init_star", 1)))
-		_team_exps.append(0)
-		_team_skills.append(_default_skills_copy())
+	# 初始化每个角色的属性数据（按 role_id 持久化，不随队伍变动重置）
+	for rid in _owned_role_ids:
+		_ensure_role_data(rid)
 	for i in team_size:
 		var role_id: String = _expedition_team_ids[i]
 		if not _roles.has(role_id):
@@ -811,8 +832,8 @@ func _refresh_role_label(idx: int) -> void:
 	var role_id: String = entry.get("role_id", "")
 	var role_data: Dictionary = _roles.get(role_id, {})
 	var role_name: String = String(role_data.get("name", role_id))
-	var lv: int = _team_levels[idx] if idx < _team_levels.size() else 1
-	var star: int = _team_stars[idx] if idx < _team_stars.size() else 1
+	var lv: int = int(_role_levels.get(role_id, role_data.get("init_level", 1)))
+	var star: int = int(_role_stars.get(role_id, role_data.get("init_star", 1)))
 	if entry.has("name_lbl") and entry["name_lbl"]:
 		entry["name_lbl"].text = "%s  Lv.%d" % [role_name, lv]
 	if entry.has("stars_box") and entry["stars_box"]:
@@ -828,6 +849,12 @@ func _refresh_role_label(idx: int) -> void:
 			sr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			sr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 			box.add_child(sr)
+
+func _refresh_role_label_for(rid: String) -> void:
+	for i in _team_slots.size():
+		if String(_team_slots[i].get("role_id", "")) == rid:
+			_refresh_role_label(i)
+			return
 
 
 func _read_table_text(path: String) -> String:
@@ -886,6 +913,7 @@ func _load_roles_table() -> void:
 			"dead_anim_fps": float(entry.get("dead_anim_fps", "12.0")),
 			"init_level": int(entry.get("init_level", "1")),
 			"init_star": int(entry.get("init_star", "1")),
+			"default_skill": int(entry.get("default_skill", "0")),
 		}
 
 func _resolve_team_from_owned() -> void:
@@ -1670,10 +1698,10 @@ func _default_skills_copy() -> Array:
 		out.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
 	return out
 
-func _serialize_skills(idx: int) -> Array:
-	if idx < 0 or idx >= _team_skills.size():
+func _serialize_skills(rid: String) -> Array:
+	if rid.is_empty():
 		return _default_skills_copy()
-	var src = _team_skills[idx]
+	var src = _role_skills.get(rid, null)
 	if not (src is Array):
 		return _default_skills_copy()
 	var out: Array = []
@@ -1696,15 +1724,15 @@ func _save_game() -> void:
 	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "cleared_level": _cleared_level, "chat_index": _chat_index, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
 	for key in _building_nodes:
 		data["levels"][key] = _building_nodes[key]["level"]
-	for i in _team_slots.size():
-		var rid: String = _team_slots[i].get("role_id", "")
+	for rid in _owned_role_ids:
 		if rid.is_empty():
 			continue
+		var role_data: Dictionary = _roles.get(rid, {})
 		data["roles"][rid] = {
-			"level": _team_levels[i] if i < _team_levels.size() else 1,
-			"star": _team_stars[i] if i < _team_stars.size() else 1,
-			"exp": _team_exps[i] if i < _team_exps.size() else 0,
-			"skills": _serialize_skills(i),
+			"level": int(_role_levels.get(rid, role_data.get("init_level", 1))),
+			"star": int(_role_stars.get(rid, role_data.get("init_star", 1))),
+			"exp": int(_role_exps.get(rid, 0)),
+			"skills": _serialize_skills(rid),
 		}
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
@@ -1750,21 +1778,24 @@ func _load_game() -> void:
 			_refresh_label(key)
 	if data.has("roles") and data["roles"] is Dictionary:
 		var roles_state: Dictionary = data["roles"]
-		for i in _team_slots.size():
-			var rid: String = _team_slots[i].get("role_id", "")
-			if rid.is_empty() or not roles_state.has(rid):
-				continue
+		for rid in roles_state.keys():
 			var s = roles_state[rid]
 			if not (s is Dictionary):
 				continue
-			if i < _team_levels.size():
-				_team_levels[i] = int(s.get("level", _team_levels[i]))
-			if i < _team_stars.size():
-				_team_stars[i] = int(s.get("star", _team_stars[i]))
-			if i < _team_exps.size():
-				_team_exps[i] = int(s.get("exp", _team_exps[i]))
-			if i < _team_skills.size() and s.has("skills"):
-				_team_skills[i] = _parse_skills_array(s["skills"])
+			if s.has("level"):
+				_role_levels[rid] = int(s.get("level", 1))
+			if s.has("star"):
+				_role_stars[rid] = int(s.get("star", 1))
+			if s.has("exp"):
+				_role_exps[rid] = int(s.get("exp", 0))
+			if s.has("skills"):
+				_role_skills[rid] = _parse_skills_array(s["skills"])
+			_ensure_default_skill(rid)
+		# 兜底：所有 owned 角色都补齐属性（防止存档缺字段）
+		for rid in _owned_role_ids:
+			_ensure_role_data(rid)
+		# 刷新所有 team slot 的 UI
+		for i in _team_slots.size():
 			_refresh_role_label(i)
 	# 读档后用 formation_id 查名字并刷新按钮
 	_formation_name = _query_formation_name(_formation_id)

@@ -1073,6 +1073,7 @@ func _load_roles_table() -> Dictionary:
 			"dead_anim_fps":   float(entry.get("dead_anim_fps",  "12.0")),
 			"init_level":      int(entry.get("init_level",      "1")),
 			"init_star":       int(entry.get("init_star",       "1")),
+			"default_skill":   int(entry.get("default_skill",   "0")),
 			"flip_h":          int(entry.get("flip_h",          "0")) != 0,
 		}
 	return result
