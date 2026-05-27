@@ -56,6 +56,18 @@ func arm() -> void:
 		_ui_layer.visible = true
 
 
+# 返回 0..1 的预加载进度，供 TitleScreen 在 Web 平台推给 HTML 加载层使用
+func get_preload_progress() -> float:
+	if _total_paths <= 0:
+		return 0.0
+	var done: int = _total_paths - _pending.size()
+	return float(done) / float(_total_paths)
+
+
+func is_preload_done() -> bool:
+	return _total_paths > 0 and _pending.is_empty()
+
+
 func _setup() -> void:
 	var vp := get_viewport_rect().size
 	var ui := CanvasLayer.new()

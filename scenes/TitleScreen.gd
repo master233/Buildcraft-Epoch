@@ -1,17 +1,90 @@
 extends Node2D
 
 const LOADING_SCENE: PackedScene = preload("res://scenes/LoadingScreen.tscn")
+const MAIN_SCENE := "res://scenes/Main.tscn"
 
 var _btn_ref: TextureButton = null
 var _btn_idle_tween: Tween = null
 var _starting: bool = false
 var _loading_instance: Node = null
+var _main_instance: Node = null
+var _main_preinstantiated: bool = false
+var _main_preinstantiate_frame: int = 0
 
 func _ready() -> void:
+	# Web 平台下，HTML 层完全替代 TitleScreen 的视觉与按钮：
+	# 不绘制 logo / 按钮，直接同步预加载 + 预实例化 Main，跳过 LoadingScreen 异步逻辑
+	# （Web 单线程下 ResourceLoader.load_threaded_* 可能卡住）。
+	if OS.has_feature("web"):
+		# 推迟一帧再启动同步预加载，让 _ready 先返回，HTML 进度条能正常显示
+		call_deferred("_web_kickoff")
+		set_process(true)
+		return
 	call_deferred("_build_ui")
-	# TitleScreen UI 渲染完后再后台预实例化 LoadingScreen，
-	# 让它的资源预加载在 TitleScreen 期间就开始跑（hidden、非 current_scene）
 	get_tree().create_timer(0.1).timeout.connect(_pre_instantiate_loading)
+
+
+func _web_kickoff() -> void:
+	# 同步预加载所有 Main._setup 会用到的资源，让 Main 启动时 load() 全部命中缓存
+	_preload_main_resources()
+	_pre_instantiate_loading()
+	_preinstantiate_main()
+
+
+func _preload_main_resources() -> void:
+	var paths := [
+		"res://asserts/fonts/ZCOOLKuaiLe.ttf",
+		"res://asserts/audio/bg1.wav",
+		"res://asserts/image/backgroud/bg_test_1.jpg",
+		"res://asserts/image/animal/bird_sheet.png",
+		"res://asserts/image/animal/squirrel_sheet.png",
+		"res://asserts/image/role/role1_idle_sheet.png",
+		"res://asserts/image/ui/star.png",
+	]
+	# 18 张建筑 anim_sheet
+	var keys := ["home", "tower", "lumberyard", "mine", "tavern", "research"]
+	for key in keys:
+		for lv in range(1, 4):
+			paths.append("res://asserts/image/building/building_anim_sheet/%s%d_anim_sheet.png" % [key, lv])
+	for p in paths:
+		var res := load(p)
+		if res != null:
+			ResourceCache.add(res)
+
+
+func _process(_delta: float) -> void:
+	if not OS.has_feature("web") or _starting:
+		return
+	var v: Variant = JavaScriptBridge.eval("window.__bce_start || 0", true)
+	if typeof(v) == TYPE_INT and v == 1 or typeof(v) == TYPE_FLOAT and v >= 1.0:
+		_on_start_pressed()
+
+
+func _preinstantiate_main() -> void:
+	if _main_preinstantiated:
+		return
+	_main_preinstantiated = true
+	var packed: PackedScene = load(MAIN_SCENE)
+	_main_instance = packed.instantiate()
+	# 隐藏，但保持 PROCESS_MODE_INHERIT，让 Main._ready 和 call_deferred("_setup") 正常跑
+	_main_instance.visible = false
+	get_tree().root.add_child(_main_instance)
+	if _main_instance.has_node("BGM"):
+		var bgm_node := _main_instance.get_node("BGM") as AudioStreamPlayer
+		if bgm_node:
+			bgm_node.stop()
+	# Main._ready → call_deferred("_setup") → _setup 在下一帧跑（约 0.5~1s 阻塞）。
+	# 等 3 帧确保 _setup 完成（包括延迟 0.5s 的 _build_upgrade_fx_frames 之外的部分），
+	# 再通知 HTML 显示「开始游戏」按钮，让点击瞬切。
+	_wait_main_setup_then_notify()
+
+
+func _wait_main_setup_then_notify() -> void:
+	# 等 3 帧 + tween 0.05s（让 deferred _setup 走完同步部分）
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await get_tree().process_frame
+	JavaScriptBridge.eval("window.__bce_assets_ready = 1;", true)
 
 func _build_ui() -> void:
 	var vp := get_viewport_rect().size
@@ -174,6 +247,28 @@ func _on_start_pressed() -> void:
 	if _btn_idle_tween != null:
 		_btn_idle_tween.kill()
 		_btn_idle_tween = null
+
+	# Web 平台：HTML 层已经一直在显示，所有资源 + Main 场景都已预实例化。
+	# 直接显示 Main、设为 current_scene、释放 TitleScreen 即可，跳过 _setup 1 秒卡顿。
+	if OS.has_feature("web"):
+		if _loading_instance != null:
+			_loading_instance.queue_free()
+			_loading_instance = null
+		ResourceCache.wait_main_ready_and_notify_html()
+		if _main_instance != null:
+			_main_instance.visible = true
+			# 重新启动 BGM（之前预实例化时 stop 了）
+			if _main_instance.has_node("BGM"):
+				var bgm_node := _main_instance.get_node("BGM") as AudioStreamPlayer
+				if bgm_node and bgm_node.stream != null:
+					bgm_node.play()
+			get_tree().current_scene = _main_instance
+			queue_free()
+			return
+		# 极少见路径：用户点得太快，预实例化还没跑完，回退 change_scene_to_file
+		get_tree().change_scene_to_file(MAIN_SCENE)
+		return
+
 	# LoadingScreen 已经预实例化好了：arm() 立即显示并开始计最短显示时间
 	if _loading_instance == null:
 		# 罕见路径：用户点击得太快，预实例化还没跑。回退到普通切场景

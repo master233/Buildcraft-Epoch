@@ -1,0 +1,307 @@
+<link rel="preload" as="image" href="loader_bg.jpg">
+<link rel="preload" as="image" href="loader_logo.png">
+<link rel="preload" as="image" href="loader_btn.png">
+<link rel="preload" as="font" href="loader_font.ttf" type="font/ttf" crossorigin>
+<style>
+/* 统一加载时长 —— 改这一处即可同步进度条/数字/JS 按钮显示时机 */
+:root {
+	--bce-loader-duration: 5s;
+}
+
+@font-face {
+	font-family: 'ZCOOLKuaiLe';
+	src: url('loader_font.ttf') format('truetype');
+	font-display: swap;
+}
+
+/* 隐藏 Godot 默认 splash */
+#status {
+	display: none !important;
+}
+
+#bce-loader {
+	position: fixed;
+	inset: 0;
+	z-index: 10;
+	background-color: #0d0d26;
+	background-image: url("loader_bg.jpg");
+	background-size: cover;
+	background-position: center;
+	transition: opacity 0.45s ease;
+}
+
+#bce-loader::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	background-color: rgba(13, 13, 38, 0.5);
+	pointer-events: none;
+}
+
+#bce-loader.fade-out {
+	opacity: 0;
+	pointer-events: none !important;
+}
+
+/* logo —— 模拟 TitleScreen.gd 中 logo 中心 y=35.6%（256.5/720）、视觉高度约 680/720=94vh */
+#bce-logo-pos {
+	position: absolute;
+	top: 35.6%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	pointer-events: none;
+}
+
+#bce-logo {
+	display: block;
+	height: 94vh;
+	width: auto;
+	max-width: 95vw;
+	animation: bce-logo-pulse 3.2s ease-in-out infinite;
+	filter: drop-shadow(0 0 32px rgba(255, 220, 120, 0.4));
+}
+
+@keyframes bce-logo-pulse {
+	0%, 100% { transform: scale(1.0); }
+	50%      { transform: scale(1.025); }
+}
+
+/* 进度条 —— 复刻 LoadingScreen 进度条样式（600x24, 棕边金填充, 12 圆角） */
+#bce-progress-pos {
+	position: absolute;
+	bottom: 70px;     /* LoadingScreen.gd: position.y = vp.y - 70 */
+	left: 50%;
+	transform: translateX(-50%);
+	width: min(83.3vw, 148vh);   /* 600/720 ≈ 0.833 */
+	max-width: 600px;
+	min-width: 360px;
+}
+
+#bce-progress {
+	position: relative;
+	width: 100%;
+	height: 24px;     /* LoadingScreen.gd BAR_HEIGHT = 24 */
+	background-color: rgba(13, 10, 5, 0.75);   /* Color(0.05, 0.04, 0.02, 0.75) */
+	border: 2px solid rgba(153, 115, 51, 0.85); /* Color(0.6, 0.45, 0.2, 0.85) */
+	border-radius: 12px;
+	overflow: hidden;
+	box-sizing: border-box;
+}
+
+#bce-progress-fill {
+	height: 100%;
+	width: 100%;
+	background-color: rgb(255, 217, 115);   /* Color(1.0, 0.85, 0.45) */
+	border-radius: 10px;     /* fill_style.set_corner_radius_all(10) */
+	/* 用 transform: scaleX 而不是 width —— 只有 transform/opacity 会被
+	   浏览器交给 GPU 合成线程，主线程被 wasm/pck 阻塞时仍匀速。
+	   width 动画是 layout-bound 的，仍走主线程，wasm 实例化时会卡。 */
+	transform-origin: left center;
+	transform: scaleX(0);
+	animation: bce-fill var(--bce-loader-duration) linear forwards;
+	will-change: transform;
+}
+
+@keyframes bce-fill {
+	from { transform: scaleX(0); }
+	to   { transform: scaleX(1); }
+}
+
+/* 进度条上覆盖的「加载中...XX%」 ——
+   数字胶卷：把 0..100 全部预渲染成 101 行，每行高度严格等于进度条内部高度（20px），
+   用 transform: translateY 卷动。和进度条 fill 一样走 GPU 合成线程，
+   主线程被 wasm 阻塞时仍匀速，与进度条同步。 */
+#bce-progress-text {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	bottom: 0;
+	overflow: hidden;
+	color: white;
+	font-family: 'ZCOOLKuaiLe', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+	font-size: 14px;
+	pointer-events: none;
+}
+
+#bce-progress-tape {
+	position: absolute;
+	left: 0;
+	right: 0;
+	top: 0;
+	transform: translateY(0);
+	/* steps(100) 让胶卷一次跳一行（一次跳一个数字），
+	   视觉上是数字原地从 0 跳到 100，不再滚动闪动 */
+	animation: bce-tape var(--bce-loader-duration) steps(100) forwards;
+	will-change: transform;
+}
+
+#bce-progress-tape > div {
+	height: 20px;            /* = 进度条 24px - 上下 border 各 2px */
+	line-height: 20px;
+	text-align: center;
+	-webkit-text-stroke: 0.6px rgba(0,0,0,0.9);
+	text-shadow:
+		1px 1px 0 rgba(0,0,0,0.9),
+		-1px 1px 0 rgba(0,0,0,0.9),
+		1px -1px 0 rgba(0,0,0,0.9),
+		-1px -1px 0 rgba(0,0,0,0.9);
+}
+
+@keyframes bce-tape {
+	to { transform: translateY(-2000px); }   /* 100 行 × 20px */
+}
+
+/* tip 文字：复刻 LoadingScreen.gd —— ZCOOLKuaiLe 32px 金色描边阴影，
+   位置在进度条上方约 80px（LoadingScreen 中是 vp.y * 0.62 - 70） */
+#bce-tip {
+	position: absolute;
+	left: 50%;
+	bottom: 110px;
+	transform: translateX(-50%);
+	width: min(90vw, 1100px);
+	color: rgb(255, 240, 166);
+	font-family: 'ZCOOLKuaiLe', 'Microsoft YaHei', 'PingFang SC', sans-serif;
+	font-size: clamp(20px, 4.4vh, 36px);
+	text-align: center;
+	line-height: 1.45;
+	-webkit-text-stroke: 1.2px rgba(0,0,0,0.95);
+	text-shadow:
+		2px 3px 0 rgba(0,0,0,0.55),
+		1px 1px 0 rgba(0,0,0,0.95),
+		-1px 1px 0 rgba(0,0,0,0.95),
+		1px -1px 0 rgba(0,0,0,0.95),
+		-1px -1px 0 rgba(0,0,0,0.95);
+	pointer-events: none;
+	white-space: pre-line;
+}
+#bce-tip .hl { color: #ff3333; }
+#bce-tip .small {
+	display: block;
+	margin-top: 1.2em;
+	font-size: 0.55em;
+	color: rgb(220, 220, 220);
+}
+
+/* loader.handing-off 时一起淡出 tip */
+#bce-loader.handing-off #bce-tip {
+	opacity: 0;
+	transition: opacity 0.2s ease;
+}
+
+/* 加载完成 → 进度条 + tip 消失，按钮淡入 */
+#bce-loader.ready #bce-progress-pos,
+#bce-loader.ready #bce-tip { display: none; }
+#bce-loader.ready #bce-start-btn { opacity: 1; pointer-events: auto; }
+
+/* 开始游戏按钮 —— TitleScreen.gd 中 STRETCH_KEEP_ASPECT_CENTERED 让 256x256 PNG 在 448x182 框内按高度 fit，
+   实际视觉是 182x182 正方形 → 25.3vh */
+#bce-start-btn {
+	position: absolute;
+	top: 81.8%;
+	left: 50%;
+	width: 25.3vh;
+	height: auto;
+	transform: translate(-50%, -50%) scale(1);
+	cursor: pointer;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.6s ease, transform 0.15s ease, filter 0.15s ease;
+	user-select: none;
+	-webkit-user-drag: none;
+	animation: bce-btn-idle 2.2s ease-in-out infinite;
+}
+
+#bce-start-btn:hover {
+	transform: translate(-50%, -50%) scale(1.07);
+	filter: brightness(1.1) drop-shadow(0 0 18px rgba(255, 220, 120, 0.6));
+}
+
+#bce-start-btn:active {
+	transform: translate(-50%, -50%) scale(0.93);
+}
+
+@keyframes bce-btn-idle {
+	0%, 100% { filter: brightness(1.0); }
+	50%      { filter: brightness(0.85); }
+}
+
+/* 进入"等待 Godot LoadingScreen 显示"状态：按钮+进度条+logo 一起隐藏，
+   但 loader 整体（背景）保持，避免点击瞬间灰屏 */
+#bce-loader.handing-off #bce-start-btn,
+#bce-loader.handing-off #bce-progress-pos,
+#bce-loader.handing-off #bce-logo-pos {
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.2s ease;
+}
+</style>
+
+<script>
+(function () {
+	function init() {
+		const loader = document.createElement('div');
+		loader.id = 'bce-loader';
+		// 胶卷：0..100 各占一行 20px，与进度条内部高度严格一致
+		let tape = '<div id="bce-progress-tape">';
+		for (let i = 0; i <= 100; i++) tape += '<div>加载中...' + i + '%</div>';
+		tape += '</div>';
+
+		loader.innerHTML =
+			'<div id="bce-logo-pos"><img id="bce-logo" src="loader_logo.png" alt=""></div>' +
+			'<div id="bce-tip">' +
+				'感谢老板举办的活动 我们会好好利用这<span class="hl">5W</span>的奖金的 ~_~' +
+			'</div>' +
+			'<div id="bce-progress-pos"><div id="bce-progress">' +
+				'<div id="bce-progress-fill"></div>' +
+				'<div id="bce-progress-text">' + tape + '</div>' +
+			'</div></div>' +
+			'<img id="bce-start-btn" src="loader_btn.png" alt="开始游戏">';
+		document.body.insertBefore(loader, document.body.firstChild);
+
+		window.__bce_start = 0;
+		window.__bce_main_ready = 0;
+		window.__bce_assets_ready = 0;
+
+		// 进度条 fill 和数字胶卷都用 CSS animation（transform，GPU 合成线程），
+		// 主线程被 wasm 阻塞时仍匀速，二者天然同步。JS 只负责动画结束后等资源 ready。
+		// 时长从 CSS --bce-loader-duration 读取，单一来源，改一处即生效。
+		const dur = getComputedStyle(document.documentElement).getPropertyValue('--bce-loader-duration').trim();
+		const FILL_DURATION_MS = dur.endsWith('ms') ? parseFloat(dur) : parseFloat(dur) * 1000;
+		setTimeout(function () {
+			const readyTimer = setInterval(function () {
+				if (window.__bce_assets_ready === 1) {
+					clearInterval(readyTimer);
+					setTimeout(function () { loader.classList.add('ready'); }, 200);
+				}
+			}, 100);
+		}, FILL_DURATION_MS);
+
+		// 点击开始游戏：HTML 隐藏 logo/按钮（背景保留），GDScript 切到 Main。
+		// 等 __bce_main_ready（由 ResourceCache 在 Main 渲染几帧后设置）→ 淡出整个 HTML。
+		// 兜底 8s（资源未预加载完时 Main._setup 同步 load 可能要几秒）。
+		document.getElementById('bce-start-btn').addEventListener('click', function () {
+			if (window.__bce_start) return;
+			window.__bce_start = 1;
+			const clickAt = performance.now();
+			loader.classList.add('handing-off');
+
+			const handoffTimer = setInterval(function () {
+				const ready = window.__bce_main_ready === 1;
+				const timeout = performance.now() - clickAt > 8000;
+				if (ready || timeout) {
+					clearInterval(handoffTimer);
+					loader.classList.add('fade-out');
+					setTimeout(function () { loader.remove(); }, 500);
+				}
+			}, 50);
+		});
+	}
+
+	if (document.readyState === 'loading') {
+		document.addEventListener('DOMContentLoaded', init);
+	} else {
+		init();
+	}
+})();
+</script>

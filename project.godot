@@ -13,6 +13,9 @@ config_version=5
 config/name="BuildcraftEpoch"
 run/main_scene="res://scenes/TitleScreen.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
+boot_splash/bg_color=Color(0.05, 0.05, 0.15, 1)
+boot_splash/stretch_mode=0
+boot_splash/image="res://asserts/image/ui/logo.png"
 config/icon="res://icon.svg"
 
 [autoload]

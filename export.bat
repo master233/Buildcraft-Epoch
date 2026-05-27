@@ -35,11 +35,19 @@ if not exist "%OUT%" mkdir "%OUT%"
 set PROJ=%~dp0
 if "%PROJ:~-1%"=="\" set PROJ=%PROJ:~0,-1%
 
-echo [2/2] Exporting project...
+echo [2/3] Exporting project...
 %GODOT% --headless --path "%PROJ%" --export-release "Web" "%OUT%\index.html"
 if errorlevel 1 (
     echo.
     echo ERROR: Export failed.
+    exit /b 1
+)
+
+echo [3/3] Post-export: inject HTML loader + generate loader assets...
+python "%PROJ%\tools\post_export.py"
+if errorlevel 1 (
+    echo.
+    echo ERROR: Post-export step failed. The HTML loader will not be active.
     exit /b 1
 )
 
