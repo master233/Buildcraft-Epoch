@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://46762tq6djxu"
-path="res://.godot/imported/research1.png-f4242b5e9b2d8ebccd3502ee05530217.ctex"
+uid="uid://dt8riti3prju5"
+path="res://.godot/imported/default_10005.png-b5bda6e5b75c5bd1759cefd0698b1739.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://asserts/image/building/building_template/research1.png"
-dest_files=["res://.godot/imported/research1.png-f4242b5e9b2d8ebccd3502ee05530217.ctex"]
+source_file="res://asserts/image/ui/skill/default_10005.png"
+dest_files=["res://.godot/imported/default_10005.png-b5bda6e5b75c5bd1759cefd0698b1739.ctex"]
 
 [params]
 

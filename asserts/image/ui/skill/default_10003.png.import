@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cfgnfuuipo4b8"
-path="res://.godot/imported/home2.png-6db589ef96ef6ae1690d1dc1622ee207.ctex"
+uid="uid://csl760ealmaf"
+path="res://.godot/imported/default_10003.png-9b2151fa05d7c64fa7ddfc3a829d0d84.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://asserts/image/building/building_template/home2.png"
-dest_files=["res://.godot/imported/home2.png-6db589ef96ef6ae1690d1dc1622ee207.ctex"]
+source_file="res://asserts/image/ui/skill/default_10003.png"
+dest_files=["res://.godot/imported/default_10003.png-9b2151fa05d7c64fa7ddfc3a829d0d84.ctex"]
 
 [params]
 

@@ -15,14 +15,6 @@ const BASE_PRELOAD: Array[String] = [
 	"res://asserts/image/animal/squirrel_sheet.png",
 	"res://asserts/image/role/role1_idle_sheet.png",
 	"res://asserts/image/ui/star.png",
-
-	# 建筑参考贴图（lv1，用于 _place_buildings 计算缩放，不随等级变）
-	"res://asserts/image/building/building_template/home1.png",
-	"res://asserts/image/building/building_template/tower1.png",
-	"res://asserts/image/building/building_template/lumberyard1.png",
-	"res://asserts/image/building/building_template/Mine1.png",
-	"res://asserts/image/building/building_template/Tavern1.png",
-	"res://asserts/image/building/building_template/research1.png",
 ]
 
 # 建筑 key → anim_sheet 文件名前缀（与 Main.gd 的 BUILDINGS 路径保持一致）

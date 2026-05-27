@@ -33,7 +33,7 @@ func _build_ui() -> void:
 
 	# Logo：入场从缩小+透明开始
 	var logo_px := vp.y * 0.63 * 1.5
-	var base_scale := logo_px / 4096.0
+	var base_scale := logo_px / 1024.0
 	var logo := Sprite2D.new()
 	logo.texture = load("res://asserts/image/ui/logo.png")
 	logo.scale = Vector2(base_scale * 0.6, base_scale * 0.6)

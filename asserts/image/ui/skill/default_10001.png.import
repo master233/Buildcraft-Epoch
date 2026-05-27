@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://blqkhguxc4fve"
-path="res://.godot/imported/lumberyard2.png-a34564eab5a35485b4b91db48e581ded.ctex"
+uid="uid://7216gvmljoys"
+path="res://.godot/imported/default_10001.png-617c9e78713fefe568d517a1a2db5599.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://asserts/image/building/building_template/lumberyard2.png"
-dest_files=["res://.godot/imported/lumberyard2.png-a34564eab5a35485b4b91db48e581ded.ctex"]
+source_file="res://asserts/image/ui/skill/default_10001.png"
+dest_files=["res://.godot/imported/default_10001.png-617c9e78713fefe568d517a1a2db5599.ctex"]
 
 [params]
 

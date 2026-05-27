@@ -55,48 +55,48 @@ var _gm_cmd_rects: Array[Rect2] = []
 
 const BUILDINGS := {
 	"home": {
-		"paths": ["res://asserts/image/building/building_template/home1.png", "res://asserts/image/building/building_template/home2.png", "res://asserts/image/building/building_template/home3.png"],
-		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/home1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home3_anim_sheet.png"], "n_frames": 8, "animated": true,
+		"ref_size": Vector2(350, 324),
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/home1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(640, 375), "display": "主基地", "y_adj": 25,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
 		"desc": "村庄的核心，限制其他建筑可达的最高等级。"
 	},
 	"tower": {
-		"paths": ["res://asserts/image/building/building_template/tower1.png", "res://asserts/image/building/building_template/tower2.png", "res://asserts/image/building/building_template/tower3.png"],
-		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tower1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower3_anim_sheet.png"], "n_frames": 8, "animated": true,
+		"ref_size": Vector2(350, 310),
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tower1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
 		"desc": "远眺地平线，规划下一次远征与探索。"
 	},
 	"lumberyard": {
-		"paths": ["res://asserts/image/building/building_template/lumberyard1.png", "res://asserts/image/building/building_template/lumberyard2.png", "res://asserts/image/building/building_template/lumberyard3.png"],
-		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/lumberyard1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard3_anim_sheet.png"], "n_frames": 8, "animated": true,
+		"ref_size": Vector2(288, 324),
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/lumberyard1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "wood",
 		"desc": "持续产出木材，等级越高产能越强。"
 	},
 	"mine": {
-		"paths": ["res://asserts/image/building/building_template/Mine1.png", "res://asserts/image/building/building_template/Mine2.png", "res://asserts/image/building/building_template/Mine3.png"],
-		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/mine1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine3_anim_sheet.png"], "n_frames": 8, "animated": true,
+		"ref_size": Vector2(288, 313),
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/mine1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "ore",
 		"desc": "持续开采矿石，等级越高产能越强。"
 	},
 	"tavern": {
-		"paths": ["res://asserts/image/building/building_template/Tavern1.png", "res://asserts/image/building/building_template/Tavern2.png", "res://asserts/image/building/building_template/Tavern3.png"],
-		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tavern1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern3_anim_sheet.png"], "n_frames": 8, "animated": true,
+		"ref_size": Vector2(350, 313),
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tavern1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
 		"desc": "招募旅途中遇见的英雄与冒险者。"
 	},
 	"research": {
-		"paths": ["res://asserts/image/building/building_template/research1.png", "res://asserts/image/building/building_template/research2.png", "res://asserts/image/building/building_template/research3.png"],
-		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/research1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research3_anim_sheet.png"], "n_frames": 8, "animated": true,
+		"ref_size": Vector2(288, 310),
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/research1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
 		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
@@ -540,10 +540,7 @@ func _reset_game() -> void:
 	_chat_index = 0
 	for key in _building_nodes:
 		_building_nodes[key]["level"] = 1
-		if BUILDINGS[key]["animated"]:
-			_apply_anim_sheet(key, 1)
-		else:
-			(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][0])
+		_apply_anim_sheet(key, 1)
 		_refresh_label(key)
 	_clear_team_nodes()
 	_role_levels.clear()
@@ -610,40 +607,31 @@ func _place_buildings() -> void:
 		container.z_index = int(cfg["pos"].y)
 		add_child(container)
 
-		var display_node: Node2D
-		var label_y_offset: float
-		if cfg["animated"]:
-			var sheet_tex: Texture2D = load(cfg["anim_sheets"][0])
-			var n_frames: int = cfg["n_frames"]
-			@warning_ignore("integer_division")
-			var frame_w := sheet_tex.get_width() / n_frames
-			var frame_h := sheet_tex.get_height()
-			var orig_tex: Texture2D = load(cfg["paths"][0])
-			var scale_by_w := (orig_tex.get_width()  * BUILDING_SCALE) / float(frame_w)
-			var scale_by_h := (orig_tex.get_height() * BUILDING_SCALE) / float(frame_h)
-			var anim_scale  := minf(scale_by_w, scale_by_h)
-			var sf := SpriteFrames.new()
-			sf.add_animation("idle")
-			sf.set_animation_speed("idle", 8.0)
-			sf.set_animation_loop("idle", true)
-			for i in n_frames:
-				var at := AtlasTexture.new()
-				at.atlas = sheet_tex
-				at.region = Rect2(i * frame_w, 0, frame_w, frame_h)
-				at.filter_clip = true
-				sf.add_frame("idle", at)
-			var anim_sprite := AnimatedSprite2D.new()
-			anim_sprite.sprite_frames = sf
-			anim_sprite.scale = Vector2(anim_scale, anim_scale)
-			anim_sprite.play("idle")
-			display_node = anim_sprite
-			label_y_offset = -(frame_h * anim_scale * 0.35) - 8.0 + cfg["y_adj"]
-		else:
-			var sprite := Sprite2D.new()
-			sprite.texture = load(cfg["paths"][0])
-			sprite.scale = Vector2(BUILDING_SCALE, BUILDING_SCALE)
-			display_node = sprite
-			label_y_offset = -(sprite.texture.get_height() * BUILDING_SCALE * 0.35) - 8.0 + cfg["y_adj"]
+		var sheet_tex: Texture2D = load(cfg["anim_sheets"][0])
+		var n_frames: int = cfg["n_frames"]
+		@warning_ignore("integer_division")
+		var frame_w := sheet_tex.get_width() / n_frames
+		var frame_h := sheet_tex.get_height()
+		var ref_size: Vector2 = cfg["ref_size"]
+		var scale_by_w := (ref_size.x * BUILDING_SCALE) / float(frame_w)
+		var scale_by_h := (ref_size.y * BUILDING_SCALE) / float(frame_h)
+		var anim_scale  := minf(scale_by_w, scale_by_h)
+		var sf := SpriteFrames.new()
+		sf.add_animation("idle")
+		sf.set_animation_speed("idle", 8.0)
+		sf.set_animation_loop("idle", true)
+		for i in n_frames:
+			var at := AtlasTexture.new()
+			at.atlas = sheet_tex
+			at.region = Rect2(i * frame_w, 0, frame_w, frame_h)
+			at.filter_clip = true
+			sf.add_frame("idle", at)
+		var anim_sprite := AnimatedSprite2D.new()
+		anim_sprite.sprite_frames = sf
+		anim_sprite.scale = Vector2(anim_scale, anim_scale)
+		anim_sprite.play("idle")
+		var display_node: Node2D = anim_sprite
+		var label_y_offset: float = -(frame_h * anim_scale * 0.35) - 8.0 + cfg["y_adj"]
 		container.add_child(display_node)
 
 		var label := Label.new()
@@ -1604,10 +1592,7 @@ func upgrade_building(key: String) -> void:
 		return
 	state["level"] += 1
 	var lv: int = state["level"]
-	if BUILDINGS[key]["animated"]:
-		_apply_anim_sheet(key, lv)
-	else:
-		(state["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][lv - 1])
+	_apply_anim_sheet(key, lv)
 	_refresh_label(key)
 	# 主基地升级后，刷新其他建筑的灰度状态
 	if key == "home":
@@ -1634,9 +1619,9 @@ func _apply_anim_sheet(key: String, lv: int) -> void:
 		at.filter_clip = true
 		sf.add_frame("idle", at)
 	var anim_sprite := _building_nodes[key]["sprite"] as AnimatedSprite2D
-	var orig_tex: Texture2D = load(cfg["paths"][0])
-	var scale_by_w := (orig_tex.get_width()  * BUILDING_SCALE) / float(frame_w)
-	var scale_by_h := (orig_tex.get_height() * BUILDING_SCALE) / float(frame_h)
+	var ref_size: Vector2 = cfg["ref_size"]
+	var scale_by_w := (ref_size.x * BUILDING_SCALE) / float(frame_w)
+	var scale_by_h := (ref_size.y * BUILDING_SCALE) / float(frame_h)
 	anim_sprite.sprite_frames = sf
 	anim_sprite.scale = Vector2(minf(scale_by_w, scale_by_h), minf(scale_by_w, scale_by_h))
 	anim_sprite.play("idle")
@@ -1771,10 +1756,7 @@ func _load_game() -> void:
 				continue
 			var lv: int = clampi(int(levels[key]), 1, 3)
 			_building_nodes[key]["level"] = lv
-			if BUILDINGS[key]["animated"]:
-				_apply_anim_sheet(key, lv)
-			else:
-				(_building_nodes[key]["sprite"] as Sprite2D).texture = load(BUILDINGS[key]["paths"][lv - 1])
+			_apply_anim_sheet(key, lv)
 			_refresh_label(key)
 	if data.has("roles") and data["roles"] is Dictionary:
 		var roles_state: Dictionary = data["roles"]
