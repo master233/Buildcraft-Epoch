@@ -1899,7 +1899,7 @@ func _spawn_bird(chain_id: int = 0) -> void:
 		0:  # 平稳滑翔
 			y = randf_range(y_min, y_max)
 			duration = randf_range(28.0, 36.0)
-			bird.scale = Vector2(0.0675, 0.0675)
+			bird.scale = Vector2(0.135, 0.135)
 			bird.speed_scale = 0.7
 			bird.position = Vector2(start_x, y)
 			var drift_y := y + randf_range(-15.0, 15.0)
@@ -1914,7 +1914,7 @@ func _spawn_bird(chain_id: int = 0) -> void:
 		1:  # 正弦波振荡
 			y = randf_range(y_min, y_max)
 			duration = randf_range(20.0, 28.0)
-			bird.scale = Vector2(0.0675, 0.0675)
+			bird.scale = Vector2(0.135, 0.135)
 			bird.speed_scale = 1.0
 			bird.position = Vector2(start_x, y)
 			var freq := randf_range(2.0, 3.5)
@@ -1930,7 +1930,7 @@ func _spawn_bird(chain_id: int = 0) -> void:
 		2:  # 抛物线弧
 			y = randf_range(y_max - 10.0, y_max + 30.0)
 			duration = randf_range(24.0, 32.0)
-			bird.scale = Vector2(0.0675, 0.0675)
+			bird.scale = Vector2(0.135, 0.135)
 			bird.speed_scale = 1.0
 			bird.position = Vector2(start_x, y)
 			var peak_y := y - randf_range(40.0, 70.0)
@@ -1945,7 +1945,7 @@ func _spawn_bird(chain_id: int = 0) -> void:
 		3:  # 急速冲过
 			y = randf_range(y_min, y_max)
 			duration = randf_range(10.0, 14.0)
-			bird.scale = Vector2(0.05625, 0.05625)
+			bird.scale = Vector2(0.1125, 0.1125)
 			bird.speed_scale = 1.6
 			bird.position = Vector2(start_x, y)
 			var t3 := create_tween()
@@ -1967,16 +1967,16 @@ func _spawn_squirrel(start_x: float, ground_y_frac: float) -> void:
 	sq.set_meta("gait", gait)
 	match gait:
 		0:
-			sq.scale = Vector2(0.06, 0.06)
+			sq.scale = Vector2(0.12, 0.12)
 			sq.speed_scale = 1.0
 		1:
-			sq.scale = Vector2(0.06, 0.06)
+			sq.scale = Vector2(0.12, 0.12)
 			sq.speed_scale = 0.95
 		2:
-			sq.scale = Vector2(0.05625, 0.05625)
+			sq.scale = Vector2(0.1125, 0.1125)
 			sq.speed_scale = 0.7
 		3:
-			sq.scale = Vector2(0.06, 0.06)
+			sq.scale = Vector2(0.12, 0.12)
 			sq.speed_scale = 0.9
 
 	sq.position = Vector2(start_x, ground_y)
