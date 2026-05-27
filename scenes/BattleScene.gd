@@ -121,6 +121,10 @@ func _process(delta: float) -> void:
 		var unit: BattleUnit = _round_queue.pop_front()
 		if unit.is_dead:
 			continue
+		# 晕眩：本回合跳过，并消耗晕眩
+		if unit.stunned:
+			_clear_stun(unit)
+			continue
 		_perform_action(unit)
 		return
 
@@ -167,7 +171,8 @@ func _perform_action(attacker: BattleUnit) -> void:
 			has_atk_anim = true
 			attacker.sprite.play("attack")
 	await get_tree().create_timer(0.4).timeout
-	_apply_damage(attacker, target)
+	var ignore_dodge := _try_eagle_eye(attacker)
+	var hit := _apply_damage(attacker, target, 1.0, ignore_dodge)
 	if has_atk_anim and is_instance_valid(attacker.sprite):
 		if attacker.sprite.animation == "attack" and attacker.sprite.is_playing():
 			await attacker.sprite.animation_finished
@@ -178,6 +183,14 @@ func _perform_action(attacker: BattleUnit) -> void:
 
 	# 2.5) 连击（30001）：攻击时有 p1% 概率追加一次 p2% 伤害
 	await _try_combo_strike(attacker, target, sf, has_atk_anim)
+
+	# 2.55) 攻防一体（40001）：普攻命中后附加 护甲*p1% 物理伤害（miss 不触发）
+	if hit:
+		await _try_armor_strike(attacker, target)
+
+	# 2.57) 野蛮冲撞（40005）：普攻命中后 p1% 概率晕眩目标一回合
+	if hit:
+		_try_brutal_stun(attacker, target)
 
 	# 2.6) 反击（30002）：目标对攻击者进行 p1% 概率反击 p2% 伤害
 	await _try_counter_strike(attacker, target)
@@ -194,24 +207,27 @@ func _perform_action(attacker: BattleUnit) -> void:
 	_check_battle_over()
 	_acting = false
 
-func _apply_damage(attacker: BattleUnit, target: BattleUnit, dmg_mult: float = 1.0) -> void:
+func _apply_damage(attacker: BattleUnit, target: BattleUnit, dmg_mult: float = 1.0, ignore_dodge: bool = false) -> bool:
 	var is_crit := (randi() % 10000) < attacker.crit
 	var dmg_base: int = max(1, attacker.atk - target.def)
 	var dmg := int(dmg_base * (1.5 if is_crit else 1.0) * dmg_mult)
 	dmg = max(1, dmg)
 	var is_miss := false
-	if (randi() % 10000) < target.dodge:
+	if not ignore_dodge and (randi() % 10000) < target.dodge:
 		dmg = 0
 		is_miss = true
 	target.cur_hp = max(0, target.cur_hp - dmg)
 	target.status_bar.update_hp(target.cur_hp)
 	_spawn_damage_label(target, dmg, is_miss, is_crit)
 	if is_miss:
-		return
+		return false
+	if dmg > 0:
+		_apply_drain(target, dmg)
 	var dying := target.cur_hp <= 0
 	if dying:
 		target.is_dead = true
 	target.play_hurt_then(dying)
+	return true
 
 func _find_skill(unit: BattleUnit, skill_id: int) -> Dictionary:
 	if unit == null:
@@ -288,6 +304,41 @@ func _try_counter_strike(attacker: BattleUnit, target: BattleUnit) -> void:
 			if sf and sf.has_animation(back):
 				target.sprite.play(back)
 
+# 攻防一体（skill_id=40001）：普攻命中后必定附加一次伤害，伤害 = 攻击者护甲 * p1%
+func _try_armor_strike(attacker: BattleUnit, target: BattleUnit) -> void:
+	if attacker == null or target == null or attacker.is_dead or target.is_dead:
+		return
+	var sd := _find_skill(attacker, 40001)
+	if sd.is_empty():
+		return
+	var ratio: float = float(int(sd.get("p1", 0))) / 100.0
+	if ratio <= 0.0:
+		return
+	var bonus: int = max(1, int(attacker.def * ratio))
+	_spawn_skill_label(attacker, "盾击!")
+	target.cur_hp = max(0, target.cur_hp - bonus)
+	target.status_bar.update_hp(target.cur_hp)
+	_spawn_damage_label(target, bonus, false, false)
+	var dying := target.cur_hp <= 0
+	if dying:
+		target.is_dead = true
+	target.play_hurt_then(dying)
+
+# 鹰眼（skill_id=40002）：普攻有 p1% 概率本次无视目标闪避
+func _try_eagle_eye(attacker: BattleUnit) -> bool:
+	if attacker == null or attacker.is_dead:
+		return false
+	var sd := _find_skill(attacker, 40002)
+	if sd.is_empty():
+		return false
+	var prob: int = int(sd.get("p1", 0))
+	if prob <= 0:
+		return false
+	if (randi() % 100) >= prob:
+		return false
+	_spawn_skill_label(attacker, "鹰眼!")
+	return true
+
 func _spawn_skill_label(attacker: BattleUnit, text: String) -> void:
 	if attacker == null or not is_instance_valid(attacker.root):
 		return
@@ -358,6 +409,11 @@ func _spawn_damage_label(target: BattleUnit, dmg: int, is_miss: bool, is_crit: b
 	tw.chain().tween_callback(lbl.queue_free)
 
 func _start_new_round() -> void:
+	# 回合末结算（第一回合开始前不触发）
+	if _round_number > 0:
+		_resolve_end_of_round()
+	# 清理上一回合的灵魂汲取标记
+	_clear_drain_marks()
 	var alive: Array = []
 	for u in _battle_units:
 		var unit := u as BattleUnit
@@ -369,6 +425,225 @@ func _start_new_round() -> void:
 	_round_number += 1
 	if is_instance_valid(_round_label):
 		_round_label.text = "第 %d 回合" % _round_number
+	# 回合开始结算：灵魂汲取等
+	_resolve_start_of_round()
+
+# 回合末统一结算：复苏（40003）等回合末效果
+func _resolve_end_of_round() -> void:
+	for u in _battle_units:
+		var caster := u as BattleUnit
+		if caster == null or caster.is_dead:
+			continue
+		_try_revive_heal(caster)
+
+# 复苏（skill_id=40003）：每回合末，为同阵营 HP 百分比最低的存活单位回复 p1 点生命
+func _try_revive_heal(caster: BattleUnit) -> void:
+	var sd := _find_skill(caster, 40003)
+	if sd.is_empty():
+		return
+	var heal: int = int(sd.get("p1", 0))
+	if heal <= 0:
+		return
+	var target: BattleUnit = null
+	var lowest_ratio: float = 2.0
+	for u in _battle_units:
+		var ally := u as BattleUnit
+		if ally == null or ally.is_dead:
+			continue
+		if ally.is_enemy != caster.is_enemy:
+			continue
+		if ally.max_hp <= 0:
+			continue
+		if ally.cur_hp >= ally.max_hp:
+			continue
+		var ratio: float = float(ally.cur_hp) / float(ally.max_hp)
+		if ratio < lowest_ratio:
+			lowest_ratio = ratio
+			target = ally
+	if target == null:
+		return
+	var new_hp: int = min(target.max_hp, target.cur_hp + heal)
+	var actual: int = new_hp - target.cur_hp
+	if actual <= 0:
+		return
+	target.cur_hp = new_hp
+	if is_instance_valid(target.status_bar):
+		target.status_bar.update_hp(target.cur_hp)
+	_spawn_skill_label(caster, "复苏!")
+	_spawn_heal_label(target, actual)
+
+func _spawn_heal_label(target: BattleUnit, amount: int) -> void:
+	if target == null or not is_instance_valid(target.root):
+		return
+	var lbl := Label.new()
+	lbl.text = "+" + str(amount)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(140, 48)
+	var start_pos := target.root.position + Vector2(-70, -110)
+	lbl.position = start_pos
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.z_index = 100
+	var ls := LabelSettings.new()
+	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size  = 28
+	ls.font_color = Color(0.45, 1.0, 0.45)
+	ls.outline_size  = 4
+	ls.outline_color = Color(0, 0, 0, 1.0)
+	ls.shadow_size   = 3
+	ls.shadow_color  = Color(0, 0, 0, 0.6)
+	lbl.label_settings = ls
+	add_child(lbl)
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(lbl, "position:y", start_pos.y - 60.0, 0.8) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(lbl, "modulate:a", 0.0, 0.8) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.chain().tween_callback(lbl.queue_free)
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 灵魂汲取（40004）
+# ─────────────────────────────────────────────────────────────────────────────
+
+func _clear_drain_marks() -> void:
+	for u in _battle_units:
+		var unit := u as BattleUnit
+		if unit == null:
+			continue
+		unit.drain_sources.clear()
+		if is_instance_valid(unit.drain_label):
+			unit.drain_label.queue_free()
+		unit.drain_label = null
+
+func _resolve_start_of_round() -> void:
+	for u in _battle_units:
+		var caster := u as BattleUnit
+		if caster == null or caster.is_dead:
+			continue
+		_try_soul_drain_mark(caster)
+
+# 回合开始：从对方阵营存活单位中随机挑一个标记为汲取目标
+func _try_soul_drain_mark(caster: BattleUnit) -> void:
+	var sd := _find_skill(caster, 40004)
+	if sd.is_empty():
+		return
+	var ratio: float = float(int(sd.get("p1", 0))) / 100.0
+	if ratio <= 0.0:
+		return
+	var enemies: Array = []
+	for u in _battle_units:
+		var e := u as BattleUnit
+		if e == null or e.is_dead:
+			continue
+		if e.is_enemy != caster.is_enemy:
+			enemies.append(e)
+	if enemies.is_empty():
+		return
+	var target: BattleUnit = enemies[randi() % enemies.size()]
+	target.drain_sources.append({"caster": caster, "ratio": ratio})
+	if not is_instance_valid(target.drain_label):
+		_attach_drain_marker(target)
+
+func _attach_drain_marker(target: BattleUnit) -> void:
+	if not is_instance_valid(target.root):
+		return
+	var lbl := Label.new()
+	lbl.text = "汲取"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(120, 32)
+	lbl.position = Vector2(-60, -95)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.z_index = 90
+	var ls := LabelSettings.new()
+	ls.font          = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size     = 22
+	ls.font_color    = Color(0.85, 0.55, 1.0)
+	ls.outline_size  = 4
+	ls.outline_color = Color(0, 0, 0, 1.0)
+	ls.shadow_size   = 3
+	ls.shadow_color  = Color(0, 0, 0, 0.6)
+	lbl.label_settings = ls
+	target.root.add_child(lbl)
+	target.drain_label = lbl
+
+# 实际造成伤害后调用：对所有汲取此目标的施法者按比例回血
+func _apply_drain(target: BattleUnit, dmg: int) -> void:
+	if target == null or target.drain_sources.is_empty():
+		return
+	for src in target.drain_sources:
+		var caster := src.get("caster") as BattleUnit
+		if caster == null or caster.is_dead:
+			continue
+		var ratio: float = float(src.get("ratio", 0.0))
+		var heal: int = int(round(float(dmg) * ratio))
+		if heal <= 0:
+			continue
+		var new_hp: int = min(caster.max_hp, caster.cur_hp + heal)
+		var actual: int = new_hp - caster.cur_hp
+		if actual <= 0:
+			continue
+		caster.cur_hp = new_hp
+		if is_instance_valid(caster.status_bar):
+			caster.status_bar.update_hp(caster.cur_hp)
+		_spawn_heal_label(caster, actual)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 野蛮冲撞（40005）
+# ─────────────────────────────────────────────────────────────────────────────
+
+# 普攻命中后调用：按 p1% 概率给目标上晕眩
+func _try_brutal_stun(attacker: BattleUnit, target: BattleUnit) -> void:
+	if attacker == null or target == null or target.is_dead:
+		return
+	if target.stunned:
+		return
+	var sd := _find_skill(attacker, 40005)
+	if sd.is_empty():
+		return
+	var prob: int = int(sd.get("p1", 0))
+	if prob <= 0:
+		return
+	if (randi() % 100) >= prob:
+		return
+	target.stunned = true
+	_spawn_skill_label(attacker, "冲撞!")
+	_attach_stun_marker(target)
+
+func _clear_stun(target: BattleUnit) -> void:
+	if target == null:
+		return
+	target.stunned = false
+	if is_instance_valid(target.stun_label):
+		target.stun_label.queue_free()
+	target.stun_label = null
+
+func _attach_stun_marker(target: BattleUnit) -> void:
+	if not is_instance_valid(target.root):
+		return
+	if is_instance_valid(target.stun_label):
+		target.stun_label.queue_free()
+	var lbl := Label.new()
+	lbl.text = "晕眩"
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(120, 32)
+	lbl.position = Vector2(-60, -125)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.z_index = 90
+	var ls := LabelSettings.new()
+	ls.font          = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size     = 22
+	ls.font_color    = Color(1.0, 0.9, 0.3)
+	ls.outline_size  = 4
+	ls.outline_color = Color(0, 0, 0, 1.0)
+	ls.shadow_size   = 3
+	ls.shadow_color  = Color(0, 0, 0, 0.6)
+	lbl.label_settings = ls
+	target.root.add_child(lbl)
+	target.stun_label = lbl
+
 
 func _check_battle_over() -> bool:
 	var players_alive := false
@@ -1451,6 +1726,12 @@ class BattleUnit:
 	var root:       Node2D = null
 	var rd:         Dictionary = {}
 	var skills:     Array = []  # [{id:int, level:int}]
+	# 灵魂汲取（40004）：本回合作为标记目标时，所有汲取者引用 + 汲取百分比；以及头顶飘字标签
+	var drain_sources: Array = []  # [{caster: BattleUnit, ratio: float}]
+	var drain_label:   Label = null
+	# 野蛮冲撞（40005）：晕眩状态及头顶标签
+	var stunned:    bool  = false
+	var stun_label: Label = null
 
 	# 播动画；attack 结束后自动回 alert/idle
 	func play_anim(anim_name: String) -> void:
