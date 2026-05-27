@@ -22,6 +22,7 @@ extends Node2D
 
 const BUILDING_FUNCTION_SCENES := {
 	"tower": "res://scenes/building_panels/TowerPanel.tscn",
+	"home":  "res://scenes/building_panels/HeroPanel.tscn",
 }
 
 var _function_panel_node: Node = null
@@ -134,6 +135,9 @@ var _bird_next_pattern: Array[int] = [0, 1, 2]
 var _upgrade_fx_frames: SpriteFrames = null
 var _upgrade_fx_scale: float = 1.0
 var _roles: Dictionary = {}  # role_id → {name, idle_sheet, idle_frames, idle_scale, idle_anim_fps}
+var _role_attrs: Dictionary = {}   # role_id → {init_hp, init_atk, init_def, init_speed, lv_hp, …, star_hp, …}
+var _level_up_table: Dictionary = {}  # level:int → max_exp:int
+var _hero_panel_rid: String = ""   # 英雄面板当前选中的 role_id
 var _slot_positions: Array[Vector2] = []
 var _layout_by_size: Dictionary = {}  # team_size:int → Array[int] of slot indices
 var _role_lines: Dictionary = {}
@@ -215,6 +219,8 @@ func _setup() -> void:
 
 	_place_buildings()
 	_load_roles_table()
+	_load_role_attrs_table()
+	_load_level_up_table()
 	_load_team_layout()
 	_load_role_lines()
 	_resolve_team_from_owned()
@@ -1110,11 +1116,394 @@ func _load_function_panel(key: String) -> void:
 	# 连接关卡按钮（远征塔）
 	if key == "tower":
 		_connect_tower_buttons()
+	elif key == "home":
+		_connect_hero_panel()
 
 func _unload_function_panel() -> void:
 	if _function_panel_node and is_instance_valid(_function_panel_node):
 		_function_panel_node.queue_free()
 	_function_panel_node = null
+
+# ─── 英雄面板（主基地）────────────────────────────────────────────────────────
+
+const ROLE_ATTRS_TABLE_PATH := "res://asserts/table/role_attrs.txt"
+const LEVEL_UP_TABLE_PATH   := "res://asserts/table/level_up.txt"
+
+func _load_role_attrs_table() -> void:
+	var text := _read_table_text(ROLE_ATTRS_TABLE_PATH)
+	if text.is_empty():
+		return
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return
+	var headers := (raw[0] as String).strip_edges().split("\t")
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < headers.size():
+			continue
+		var entry := {}
+		for j in headers.size():
+			entry[headers[j]] = parts[j]
+		var rid: String = String(entry.get("role_id", ""))
+		if rid.is_empty():
+			continue
+		_role_attrs[rid] = {
+			"init_hp":    int(entry.get("init_hp",    "300")),
+			"init_atk":   int(entry.get("init_atk",   "50")),
+			"init_def":   int(entry.get("init_def",   "30")),
+			"init_speed": int(entry.get("init_speed", "80")),
+			"lv_hp":      int(entry.get("lv_hp",      "10")),
+			"lv_atk":     int(entry.get("lv_atk",     "3")),
+			"lv_def":     int(entry.get("lv_def",     "2")),
+			"lv_speed":   int(entry.get("lv_speed",   "1")),
+			"star_hp":    int(entry.get("star_hp",    "20")),
+			"star_atk":   int(entry.get("star_atk",   "10")),
+			"star_def":   int(entry.get("star_def",   "5")),
+			"star_speed": int(entry.get("star_speed", "2")),
+		}
+
+func _load_level_up_table() -> void:
+	var text := _read_table_text(LEVEL_UP_TABLE_PATH)
+	if text.is_empty():
+		return
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 2:
+			continue
+		var lv := int((parts[0] as String).strip_edges())
+		var mx := int((parts[1] as String).strip_edges())
+		_level_up_table[lv] = mx
+
+func _hero_calc_attrs(rid: String) -> Dictionary:
+	var lv   := int(_role_levels.get(rid, 1))
+	var star := int(_role_stars.get(rid, 1))
+	if not _role_attrs.has(rid):
+		return {"hp": 300, "atk": 50, "def": 30, "spd": 80}
+	var a: Dictionary = _role_attrs[rid]
+	return {
+		"hp":  a.init_hp    + (lv - 1) * a.lv_hp    + star * a.star_hp,
+		"atk": a.init_atk   + (lv - 1) * a.lv_atk   + star * a.star_atk,
+		"def": a.init_def   + (lv - 1) * a.lv_def   + star * a.star_def,
+		"spd": a.init_speed + (lv - 1) * a.lv_speed + star * a.star_speed,
+	}
+
+func _hero_panel_get_node(path: String) -> Node:
+	return _function_panel_node.get_node_or_null(path) if _function_panel_node and is_instance_valid(_function_panel_node) else null
+
+func _connect_hero_panel() -> void:
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var star_tex: Texture2D = load(STAR_ICON_PATH)
+
+	# 一次性连接升级/升星按钮（按钮随 panel 销毁，无需断开）
+	var lv_btn: Button = _hero_panel_get_node("DetailArea/RightCol/LevelRow/LevelUpBtn")
+	if lv_btn:
+		lv_btn.pressed.connect(func() -> void:
+			var rid := _hero_panel_rid
+			if rid.is_empty():
+				return
+			var cur_lv: int = int(_role_levels.get(rid, 1))
+			var need_exp: int = int(_level_up_table.get(cur_lv, 0))
+			var cur_exp: int  = int(_role_exps.get(rid, 0))
+			if need_exp > 0 and cur_exp >= need_exp:
+				_role_levels[rid] = cur_lv + 1
+				_role_exps[rid]   = cur_exp - need_exp
+				_save_game()
+				_refresh_role_label_for(rid)
+				_show_hero_detail(rid)
+		)
+
+	var star_btn: Button = _hero_panel_get_node("DetailArea/RightCol/StarRow/StarUpBtn")
+	if star_btn:
+		star_btn.pressed.connect(func() -> void:
+			var rid := _hero_panel_rid
+			if rid.is_empty():
+				return
+			var cur_star: int = int(_role_stars.get(rid, 1))
+			if cur_star < GlobalConfig.get_int("max_star_level", 6):
+				_role_stars[rid] = cur_star + 1
+				_save_game()
+				_refresh_role_label_for(rid)
+				_show_hero_detail(rid)
+				_hero_rebuild_list_card_stars(rid)
+		)
+
+	# 左侧列表：每个已拥有英雄一张卡片
+	var vbox := _hero_panel_get_node("HeroList/HeroListVBox")
+	if vbox == null:
+		return
+
+	if _owned_role_ids.is_empty():
+		var empty_lbl := Label.new()
+		empty_lbl.text = "尚无英雄"
+		(empty_lbl as Label).label_settings = _make_hero_label_settings(font, 17)
+		vbox.add_child(empty_lbl)
+		return
+
+	var first_rid: String = _owned_role_ids[0]
+	for rid in _owned_role_ids:
+		var rd: Dictionary = _roles.get(rid, {})
+		var lv: int = int(_role_levels.get(rid, 1))
+		var star: int = int(_role_stars.get(rid, 1))
+
+		var card := PanelContainer.new()
+		var card_style := StyleBoxFlat.new()
+		card_style.bg_color = Color(0.55, 0.38, 0.18, 0.55)
+		card_style.set_corner_radius_all(6)
+		card.add_theme_stylebox_override("panel", card_style)
+		card.custom_minimum_size = Vector2(182, 64)
+
+		var hbox := HBoxContainer.new()
+		hbox.add_theme_constant_override("separation", 6)
+		card.add_child(hbox)
+
+		# 头像
+		var role_idx: int = int(rid) - 10000
+		var avatar_path := "res://asserts/image/role/role%d_avatar.png" % role_idx
+		var avatar := TextureRect.new()
+		var avatar_tex: Texture2D = load(avatar_path) if ResourceLoader.exists(avatar_path) else null
+		if avatar_tex:
+			avatar.texture = avatar_tex
+		avatar.custom_minimum_size = Vector2(60, 60)
+		avatar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		hbox.add_child(avatar)
+
+		# 名字 + 等级 + 星
+		var info_vbox := VBoxContainer.new()
+		info_vbox.add_theme_constant_override("separation", 2)
+		info_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		hbox.add_child(info_vbox)
+
+		var name_lbl := Label.new()
+		name_lbl.text = String(rd.get("name", rid))
+		name_lbl.label_settings = _make_hero_label_settings(font, 16)
+		info_vbox.add_child(name_lbl)
+
+		var lv_lbl := Label.new()
+		lv_lbl.text = "Lv.%d" % lv
+		lv_lbl.label_settings = _make_hero_label_settings(font, 14)
+		info_vbox.add_child(lv_lbl)
+
+		var stars_hbox := HBoxContainer.new()
+		stars_hbox.add_theme_constant_override("separation", 1)
+		info_vbox.add_child(stars_hbox)
+		for _s in maxi(star, 0):
+			var sr := TextureRect.new()
+			sr.texture = star_tex
+			sr.custom_minimum_size = Vector2(14, 14)
+			sr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			sr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			stars_hbox.add_child(sr)
+
+		vbox.add_child(card)
+
+		var sel_rid := rid
+		card.gui_input.connect(func(ev: InputEvent) -> void:
+			if ev is InputEventMouseButton and (ev as InputEventMouseButton).pressed and (ev as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT:
+				_show_hero_detail(sel_rid)
+		)
+
+		card.set_meta("rid", rid)
+		card.set_meta("base_style", card_style)
+
+	_show_hero_detail(first_rid)
+
+func _hero_highlight_card(selected_rid: String) -> void:
+	var vbox := _hero_panel_get_node("HeroList/HeroListVBox")
+	if vbox == null:
+		return
+	for child in vbox.get_children():
+		if not child.has_meta("rid"):
+			continue
+		var rid: String = String(child.get_meta("rid"))
+		var st: StyleBoxFlat = child.get_meta("base_style")
+		if rid == selected_rid:
+			st.bg_color = Color(0.96, 0.82, 0.42, 0.92)
+		else:
+			st.bg_color = Color(0.55, 0.38, 0.18, 0.55)
+
+func _show_hero_detail(rid: String) -> void:
+	_hero_panel_rid = rid
+	_hero_highlight_card(rid)
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var rd: Dictionary = _roles.get(rid, {})
+	var lv: int   = int(_role_levels.get(rid, 1))
+	var star: int = int(_role_stars.get(rid, 1))
+	var exp: int  = int(_role_exps.get(rid, 0))
+	var max_exp: int = int(_level_up_table.get(lv, 0))
+	var max_star: int = GlobalConfig.get_int("max_star_level", 6)
+
+	# 名字
+	var name_lbl: Label = _hero_panel_get_node("DetailArea/HeroNameLbl")
+	if name_lbl:
+		name_lbl.text = String(rd.get("name", rid))
+
+	# 头像
+	var avatar_rect: TextureRect = _hero_panel_get_node("DetailArea/AvatarRect")
+	if avatar_rect:
+		var role_idx: int = int(rid) - 10000
+		var ap := "res://asserts/image/role/role%d_avatar.png" % role_idx
+		if ResourceLoader.exists(ap):
+			avatar_rect.texture = load(ap)
+		else:
+			avatar_rect.texture = null
+
+	# 等级标签
+	var lv_lbl: Label = _hero_panel_get_node("DetailArea/RightCol/LevelRow/LevelLbl")
+	if lv_lbl:
+		lv_lbl.text = "等级: Lv.%d" % lv
+
+	# 升级按钮
+	var lv_btn: Button = _hero_panel_get_node("DetailArea/RightCol/LevelRow/LevelUpBtn")
+	if lv_btn:
+		lv_btn.disabled = (max_exp == 0 or exp < max_exp)
+
+	# 星级
+	var stars_box: HBoxContainer = _hero_panel_get_node("DetailArea/RightCol/StarRow/StarsBox")
+	if stars_box:
+		for c in stars_box.get_children():
+			stars_box.remove_child(c)
+			c.queue_free()
+		var star_tex: Texture2D = load(STAR_ICON_PATH)
+		for _s in maxi(star, 0):
+			var sr := TextureRect.new()
+			sr.texture = star_tex
+			sr.custom_minimum_size = Vector2(18, 18)
+			sr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			sr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			stars_box.add_child(sr)
+
+	var star_btn: Button = _hero_panel_get_node("DetailArea/RightCol/StarRow/StarUpBtn")
+	if star_btn:
+		star_btn.disabled = (star >= max_star)
+
+	# 基础属性
+	var attrs := _hero_calc_attrs(rid)
+	var attr_hp: Label  = _hero_panel_get_node("DetailArea/AttrBox/AttrHp")
+	var attr_atk: Label = _hero_panel_get_node("DetailArea/AttrBox/AttrAtk")
+	var attr_def: Label = _hero_panel_get_node("DetailArea/AttrBox/AttrDef")
+	var attr_spd: Label = _hero_panel_get_node("DetailArea/AttrBox/AttrSpd")
+	if attr_hp:  attr_hp.text  = "❤ 生命：%d"  % attrs.hp
+	if attr_atk: attr_atk.text = "⚔ 攻击：%d"  % attrs.atk
+	if attr_def: attr_def.text = "🛡 防御：%d"  % attrs.def
+	if attr_spd: attr_spd.text = "💨 速度：%d"  % attrs.spd
+
+	# 技能槽
+	var skill_row: HBoxContainer = _hero_panel_get_node("DetailArea/RightCol/SkillRow")
+	if skill_row:
+		for c in skill_row.get_children():
+			skill_row.remove_child(c)
+			c.queue_free()
+		var skills: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
+		var max_skill_slots: int = star
+		for i in max_skill_slots:
+			var slot_panel := PanelContainer.new()
+			var slot_style := StyleBoxFlat.new()
+			slot_style.set_corner_radius_all(6)
+			slot_panel.custom_minimum_size = Vector2(56, 56)
+			if i < skills.size():
+				var sk = skills[i]
+				var sid: int = int(sk.get("id", 0))
+				var slv: int = int(sk.get("level", 1))
+				slot_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
+				var icon_vbox := VBoxContainer.new()
+				icon_vbox.add_theme_constant_override("separation", 2)
+				slot_panel.add_child(icon_vbox)
+				var icon_rect := TextureRect.new()
+				icon_rect.custom_minimum_size = Vector2(40, 40)
+				icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				# 尝试加载图标
+				var icon_path := _get_skill_icon_path(rid, sid)
+				if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+					icon_rect.texture = load(icon_path)
+				icon_vbox.add_child(icon_rect)
+				var lv_badge := Label.new()
+				lv_badge.text = "Lv.%d" % slv
+				lv_badge.label_settings = _make_hero_label_settings(font, 16)
+				lv_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				icon_vbox.add_child(lv_badge)
+			else:
+				slot_style.bg_color = Color(0.20, 0.15, 0.08, 0.35)
+				slot_style.border_width_bottom = 1
+				slot_style.border_color = Color(0.5, 0.4, 0.2, 0.5)
+				slot_panel.add_theme_stylebox_override("panel", slot_style)
+				var lock_lbl := Label.new()
+				lock_lbl.text = "🔒"
+				lock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				lock_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+				lock_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				lock_lbl.size_flags_vertical   = Control.SIZE_EXPAND_FILL
+				slot_panel.add_child(lock_lbl)
+			skill_row.add_child(slot_panel)
+
+func _get_skill_icon_path(rid: String, sid: int) -> String:
+	# default skill: per-role icon
+	var role_idx: int = int(rid) - 10000
+	if sid <= 0:
+		return "res://asserts/image/ui/skill/default_%s.png" % rid
+	# check if there's a per-role default icon for sid==default_skill
+	var rd: Dictionary = _roles.get(rid, {})
+	var def_sid: int = int(rd.get("default_skill", 0))
+	if sid == def_sid and role_idx >= 1 and role_idx <= 5:
+		return "res://asserts/image/ui/skill/default_%s.png" % rid
+	# general skill icons by id
+	var text := _read_table_text("res://asserts/table/skill.txt")
+	if not text.is_empty():
+		for line: String in text.split("\n", false):
+			var s := line.strip_edges()
+			if s.is_empty() or s.begins_with("#"):
+				continue
+			var parts := s.split("\t")
+			if parts.size() >= 7 and int((parts[0] as String).strip_edges()) == sid and int((parts[1] as String).strip_edges()) == 1:
+				return String((parts[6] as String).strip_edges())
+	return ""
+
+func _hero_rebuild_list_card_stars(rid: String) -> void:
+	var vbox := _hero_panel_get_node("HeroList/HeroListVBox")
+	if vbox == null:
+		return
+	var star: int = int(_role_stars.get(rid, 1))
+	var star_tex: Texture2D = load(STAR_ICON_PATH)
+	for card in vbox.get_children():
+		if not card.has_meta("rid") or String(card.get_meta("rid")) != rid:
+			continue
+		# path: card → hbox → info_vbox → stars_hbox (index 2)
+		var hbox: HBoxContainer = card.get_child(0)
+		if hbox == null or hbox.get_child_count() < 2:
+			return
+		var info_vbox: VBoxContainer = hbox.get_child(1)
+		if info_vbox == null or info_vbox.get_child_count() < 3:
+			return
+		var stars_hbox: HBoxContainer = info_vbox.get_child(2)
+		if stars_hbox == null:
+			return
+		for c in stars_hbox.get_children():
+			stars_hbox.remove_child(c)
+			c.queue_free()
+		for _s in maxi(star, 0):
+			var sr := TextureRect.new()
+			sr.texture = star_tex
+			sr.custom_minimum_size = Vector2(14, 14)
+			sr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			sr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			stars_hbox.add_child(sr)
+
+func _make_hero_label_settings(font: Font, size: int) -> LabelSettings:
+	var ls := LabelSettings.new()
+	ls.font = font
+	ls.font_size = size
+	ls.font_color = Color(0.22, 0.13, 0.06, 1)
+	ls.outline_size = 1
+	ls.outline_color = Color(1, 0.96, 0.85, 0.4)
+	return ls
 
 func _connect_tower_buttons() -> void:
 	_build_level_track()

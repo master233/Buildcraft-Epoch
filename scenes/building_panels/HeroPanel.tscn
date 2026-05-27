@@ -1,0 +1,156 @@
+[gd_scene format=3 uid="uid://bnpgoqd5vsis"]
+
+[ext_resource type="FontFile" uid="uid://b6wyxgm7fm30n" path="res://asserts/fonts/ZCOOLKuaiLe.ttf" id="1"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_title"]
+font = ExtResource("1")
+font_size = 20
+font_color = Color(0.22, 0.13, 0.06, 1)
+outline_size = 2
+outline_color = Color(1, 0.96, 0.85, 0.5)
+
+[sub_resource type="LabelSettings" id="LabelSettings_detail"]
+font = ExtResource("1")
+font_size = 17
+font_color = Color(0.22, 0.13, 0.06, 1)
+outline_size = 1
+outline_color = Color(1, 0.96, 0.85, 0.4)
+
+[node name="HeroPanel" type="Control" unique_id=26158919]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 856.0
+offset_bottom = 396.0
+
+[node name="HeroListTitle" type="Label" parent="." unique_id=100000002]
+layout_mode = 0
+offset_left = 22.0
+offset_top = 16.0
+offset_right = 96.0
+offset_bottom = 44.0
+text = "角色列表"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="HeroList" type="ScrollContainer" parent="." unique_id=901687467]
+layout_mode = 0
+offset_left = 22.0
+offset_top = 51.0
+offset_right = 212.0
+offset_bottom = 396.0
+
+[node name="HeroListVBox" type="VBoxContainer" parent="HeroList" unique_id=1354428565]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="Divider" type="VSeparator" parent="." unique_id=139568755]
+layout_mode = 0
+offset_left = 227.00002
+offset_top = 4.0
+offset_right = 231.00002
+offset_bottom = 134.33334
+scale = Vector2(3, 3)
+
+[node name="DetailArea" type="Control" parent="." unique_id=749066466]
+anchors_preset = 0
+offset_left = 258.0
+offset_right = 856.0
+offset_bottom = 396.0
+
+[node name="HeroNameLbl" type="Label" parent="DetailArea" unique_id=1795674335]
+layout_mode = 0
+offset_left = -1.0
+offset_top = 16.0
+offset_right = 127.0
+offset_bottom = 56.0
+text = "—"
+label_settings = SubResource("LabelSettings_title")
+horizontal_alignment = 1
+
+[node name="AvatarRect" type="TextureRect" parent="DetailArea" unique_id=938276760]
+layout_mode = 0
+offset_top = 70.0
+offset_right = 128.0
+offset_bottom = 210.0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="AttrBox" type="VBoxContainer" parent="DetailArea" unique_id=415995048]
+layout_mode = 0
+offset_top = 216.0
+offset_right = 178.0
+offset_bottom = 382.0
+theme_override_constants/separation = 6
+
+[node name="AttrHp" type="Label" parent="DetailArea/AttrBox" unique_id=857581670]
+layout_mode = 2
+text = "❤ 生命：—"
+label_settings = SubResource("LabelSettings_detail")
+
+[node name="AttrAtk" type="Label" parent="DetailArea/AttrBox" unique_id=91370472]
+layout_mode = 2
+text = "⚔ 攻击：—"
+label_settings = SubResource("LabelSettings_detail")
+
+[node name="AttrDef" type="Label" parent="DetailArea/AttrBox" unique_id=1742139028]
+layout_mode = 2
+text = "🛡 防御：—"
+label_settings = SubResource("LabelSettings_detail")
+
+[node name="AttrSpd" type="Label" parent="DetailArea/AttrBox" unique_id=629480196]
+layout_mode = 2
+text = "💨 速度：—"
+label_settings = SubResource("LabelSettings_detail")
+
+[node name="RightCol" type="VBoxContainer" parent="DetailArea" unique_id=290782358]
+layout_mode = 0
+offset_left = 203.0
+offset_top = 40.0
+offset_right = 542.0
+offset_bottom = 395.0
+theme_override_constants/separation = 8
+
+[node name="LevelRow" type="HBoxContainer" parent="DetailArea/RightCol" unique_id=1506980130]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="LevelLbl" type="Label" parent="DetailArea/RightCol/LevelRow" unique_id=835281785]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "等级: Lv.1"
+label_settings = SubResource("LabelSettings_detail")
+
+[node name="LevelUpBtn" type="Button" parent="DetailArea/RightCol/LevelRow" unique_id=1006839449]
+custom_minimum_size = Vector2(72, 28)
+layout_mode = 2
+text = "升级"
+
+[node name="StarRow" type="HBoxContainer" parent="DetailArea/RightCol" unique_id=1381536446]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="StarLbl" type="Label" parent="DetailArea/RightCol/StarRow" unique_id=1953116073]
+layout_mode = 2
+text = "星级："
+label_settings = SubResource("LabelSettings_detail")
+
+[node name="StarsBox" type="HBoxContainer" parent="DetailArea/RightCol/StarRow" unique_id=255474733]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="StarUpBtn" type="Button" parent="DetailArea/RightCol/StarRow" unique_id=1119940508]
+custom_minimum_size = Vector2(72, 28)
+layout_mode = 2
+text = "升星"
+
+[node name="SkillLbl" type="Label" parent="DetailArea/RightCol" unique_id=1068237476]
+layout_mode = 2
+text = "技能"
+label_settings = SubResource("LabelSettings_title")
+
+[node name="SkillRow" type="HBoxContainer" parent="DetailArea/RightCol" unique_id=1670286639]
+custom_minimum_size = Vector2(0, 64)
+layout_mode = 2
+theme_override_constants/separation = 6
