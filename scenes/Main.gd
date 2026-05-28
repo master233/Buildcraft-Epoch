@@ -2096,6 +2096,14 @@ func _parse_skills_array(raw) -> Array:
 	return out
 func _save_game() -> void:
 	var data := {"wood": _wood, "ore": _ore, "gold": _gold, "formation_id": _formation_id, "cleared_level": _cleared_level, "chat_index": _chat_index, "levels": {}, "roles": {}, "owned_roles": _owned_role_ids.duplicate(), "team_ids": _expedition_team_ids.duplicate()}
+	# 保留 BattleScene 写入的 battle_speed
+	if FileAccess.file_exists(SAVE_PATH):
+		var rf := FileAccess.open(SAVE_PATH, FileAccess.READ)
+		if rf:
+			var parsed = JSON.parse_string(rf.get_as_text())
+			rf.close()
+			if parsed is Dictionary and parsed.has("battle_speed"):
+				data["battle_speed"] = int(parsed["battle_speed"])
 	for key in _building_nodes:
 		data["levels"][key] = _building_nodes[key]["level"]
 	for rid in _owned_role_ids:
@@ -2510,7 +2518,7 @@ func _spawn_chat_box() -> void:
 	ui.add_child(_chat_toggle_panel)
 
 	_chat_toggle_lbl = Label.new()
-	_chat_toggle_lbl.text = "▲ 聊天"
+	_chat_toggle_lbl.text = "^ 聊天"
 	_chat_toggle_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_chat_toggle_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	_chat_toggle_lbl.size = Vector2(toggle_w, toggle_h)
@@ -2685,7 +2693,7 @@ func _set_chat_expanded(v: bool) -> void:
 	if _chat_root:
 		_chat_root.visible = v
 	if _chat_toggle_lbl:
-		_chat_toggle_lbl.text = ("▼ 聊天" if v else "▲ 聊天")
+		_chat_toggle_lbl.text = ("v 聊天" if v else "^ 聊天")
 	if _chat_preview_panel:
 		_chat_preview_panel.visible = not v
 	if _chat_preview_rtl:

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b7t44ke7l64lf"
-path="res://.godot/imported/building_click_board.bak2.png-0d5fe28e50e80ab6f1d81171ba6570ee.ctex"
+uid="uid://bt07joxwlgf6u"
+path="res://.godot/imported/dodge.png-4e2ef95ff5b7fb5eade2678ab180c8a1.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://asserts/image/building/building_board/building_click_board.bak2.png"
-dest_files=["res://.godot/imported/building_click_board.bak2.png-0d5fe28e50e80ab6f1d81171ba6570ee.ctex"]
+source_file="res://asserts/image/ui/skill/dodge.png"
+dest_files=["res://.godot/imported/dodge.png-4e2ef95ff5b7fb5eade2678ab180c8a1.ctex"]
 
 [params]
 

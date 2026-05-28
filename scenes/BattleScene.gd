@@ -8,6 +8,7 @@ const FORMATIONS_TABLE_PATH := "res://asserts/table/formations.txt"
 const LEVELS_TABLE_PATH     := "res://asserts/table/levels.txt"
 const LEVEL_UP_TABLE_PATH   := "res://asserts/table/level_up.txt"
 const SKILL_TABLE_PATH      := "res://asserts/table/skill.txt"
+const SKILL_UPGRADE_COST_PATH := "res://asserts/table/skill_upgrade_cost.txt"
 const DEFAULT_SKILLS: Array = []
 const GRID_ROWS := 7
 const GRID_COLS := 12
@@ -38,6 +39,8 @@ var _action_timer: float = 0.0
 var _round_queue: Array = []    # 当前回合剩余待行动单位（按 spd 降序）
 var _round_number: int = 0
 var _round_label: Label = null
+var _speed_btn_label: Label = null
+var _battle_speed: int = 1
 var _acting: bool = false       # 正在演出某单位行动序列
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -72,6 +75,7 @@ func _build_ui() -> void:
 		ui.add_child(exit_btn.panel)
 		ui.add_child(exit_btn.label)
 		exit_btn.label.gui_input.connect(_on_exit_input)
+		_build_speed_button(ui, vp)
 
 func _build_round_label(ui: CanvasLayer, vp: Vector2) -> void:
 	var lbl_w := 240.0
@@ -95,6 +99,61 @@ func _build_round_label(ui: CanvasLayer, vp: Vector2) -> void:
 	ui.add_child(lbl)
 	_round_label = lbl
 
+# 战斗速度按钮：默认 1x，点击切换 1x/2x；通过 Engine.time_scale 全局加速
+func _build_speed_button(ui: CanvasLayer, vp: Vector2) -> void:
+	_battle_speed = _load_battle_speed()
+	Engine.time_scale = float(_battle_speed)
+	var btn := _make_button("速度 x%d" % _battle_speed, Vector2(vp.x - 240, 16), Vector2(112, 44))
+	ui.add_child(btn.panel)
+	ui.add_child(btn.label)
+	_speed_btn_label = btn.label
+	btn.label.gui_input.connect(_on_speed_btn_input)
+
+func _on_speed_btn_input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton):
+		return
+	var mb := event as InputEventMouseButton
+	if mb.button_index != MOUSE_BUTTON_LEFT or not mb.pressed:
+		return
+	_battle_speed = 2 if _battle_speed == 1 else 1
+	Engine.time_scale = float(_battle_speed)
+	if is_instance_valid(_speed_btn_label):
+		_speed_btn_label.text = "速度 x%d" % _battle_speed
+	_save_battle_speed(_battle_speed)
+
+func _load_battle_speed() -> int:
+	var save_path := "user://savegame.json"
+	if not FileAccess.file_exists(save_path):
+		return 1
+	var file := FileAccess.open(save_path, FileAccess.READ)
+	if file == null:
+		return 1
+	var parsed = JSON.parse_string(file.get_as_text())
+	file.close()
+	if not (parsed is Dictionary):
+		return 1
+	var spd: int = int(parsed.get("battle_speed", 1))
+	return 2 if spd == 2 else 1
+
+func _save_battle_speed(spd: int) -> void:
+	var save_path := "user://savegame.json"
+	var data: Dictionary = {}
+	if FileAccess.file_exists(save_path):
+		var rf := FileAccess.open(save_path, FileAccess.READ)
+		if rf:
+			var parsed = JSON.parse_string(rf.get_as_text())
+			rf.close()
+			if parsed is Dictionary:
+				data = parsed
+	data["battle_speed"] = spd
+	var wf := FileAccess.open(save_path, FileAccess.WRITE)
+	if wf:
+		wf.store_string(JSON.stringify(data))
+		wf.close()
+
+func _exit_tree() -> void:
+	Engine.time_scale = 1.0
+
 # ─────────────────────────────────────────────────────────────────────────────
 # 战斗主循环
 # ─────────────────────────────────────────────────────────────────────────────
@@ -110,11 +169,12 @@ func _process(delta: float) -> void:
 		return
 	_action_timer = 0.0
 
-	# 当前回合行动队列空了，开新回合
+	# 当前回合行动队列空了，开新回合（异步，期间 _acting 标记防止重入）
 	if _round_queue.is_empty():
-		_start_new_round()
-		if _round_queue.is_empty():
-			return
+		_acting = true
+		await _start_new_round()
+		_acting = false
+		return
 
 	# 一次 tick 只启动一个单位的行动序列
 	while not _round_queue.is_empty():
@@ -162,6 +222,25 @@ func _perform_action(attacker: BattleUnit) -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	await tw_in.finished
 
+	# 1.5) 守护（30003）：队友普攻被命中前，有几率替队友分担伤害；触发则移动到队友身旁
+	var guard := _try_protect_guard(target, attacker)
+	var protector: BattleUnit = null
+	var protector_origin: Vector2 = Vector2.ZERO
+	var protector_origin_z: int = 0
+	var share_ratio: float = 0.0
+	if not guard.is_empty():
+		protector = guard["protector"]
+		share_ratio = guard["share"]
+		_spawn_skill_label(protector, _skill_name(30003) + "!")
+		protector_origin = protector.root.position
+		protector_origin_z = protector.root.z_index
+		protector.root.z_index = 9
+		var pdest: Vector2 = target.root.position + Vector2(-off_x, 0)
+		var tw_p := create_tween()
+		tw_p.tween_property(protector.root, "position", pdest, MOVE_IN_TIME) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		await tw_p.finished
+
 	# 2) 播攻击动画 → 0.4s 后扣血 + 飘字 → 等动画播完回 alert
 	var sf: SpriteFrames = null
 	var has_atk_anim := false
@@ -172,7 +251,13 @@ func _perform_action(attacker: BattleUnit) -> void:
 			attacker.sprite.play("attack")
 	await get_tree().create_timer(0.4).timeout
 	var ignore_dodge := _try_eagle_eye(attacker)
-	var hit := _apply_damage(attacker, target, 1.0, ignore_dodge)
+	var hit: bool
+	if protector != null:
+		hit = _apply_damage(attacker, target, 1.0 - share_ratio, ignore_dodge)
+		if not protector.is_dead:
+			_apply_damage(attacker, protector, share_ratio, ignore_dodge)
+	else:
+		hit = _apply_damage(attacker, target, 1.0, ignore_dodge)
 	if has_atk_anim and is_instance_valid(attacker.sprite):
 		if attacker.sprite.animation == "attack" and attacker.sprite.is_playing():
 			await attacker.sprite.animation_finished
@@ -195,6 +280,10 @@ func _perform_action(attacker: BattleUnit) -> void:
 	# 2.6) 反击（30002）：目标对攻击者进行 p1% 概率反击 p2% 伤害
 	await _try_counter_strike(attacker, target)
 
+	# 2.7) 追击（30005）：本次普攻击杀目标后，可对随机存活敌人继续追击；继续击杀则重复
+	if target.is_dead and not attacker.is_dead:
+		await _try_pursue_strike(attacker, sf, has_atk_anim, off_x)
+
 	# 3) 退回原位
 	if is_instance_valid(atk_root):
 		var tw_out := create_tween()
@@ -204,16 +293,49 @@ func _perform_action(attacker: BattleUnit) -> void:
 		if is_instance_valid(atk_root):
 			atk_root.z_index = origin_z
 
+	# 3.5) 守护者回到原位
+	if protector != null and is_instance_valid(protector.root) and not protector.is_dead:
+		var tw_pb := create_tween()
+		tw_pb.tween_property(protector.root, "position", protector_origin, MOVE_OUT_TIME) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		await tw_pb.finished
+		if is_instance_valid(protector.root):
+			protector.root.z_index = protector_origin_z
+
 	_check_battle_over()
 	_acting = false
 
 func _apply_damage(attacker: BattleUnit, target: BattleUnit, dmg_mult: float = 1.0, ignore_dodge: bool = false) -> bool:
-	var is_crit := (randi() % 10000) < attacker.crit
+	# 暴击（30004）：本次普攻额外提升 p1% 暴击率，暴击伤害为 p2%
+	var crit_chance: int = attacker.crit
+	var crit_mult: float = 1.5
+	var crit_sd := _find_skill(attacker, 30004)
+	if not crit_sd.is_empty():
+		crit_chance += int(crit_sd.get("p1", 0)) * 100
+		var p2: int = int(crit_sd.get("p2", 0))
+		if p2 > 0:
+			crit_mult = float(p2) / 100.0
+	var is_crit := (randi() % 10000) < crit_chance
 	var dmg_base: int = max(1, attacker.atk - target.def)
-	var dmg := int(dmg_base * (1.5 if is_crit else 1.0) * dmg_mult)
+	# 隐身（30009）：处于隐身状态时攻击伤害按 stealth_mult 乘算
+	var stealth_mul: float = 1.0
+	if attacker.stealth_rounds > 0:
+		stealth_mul = attacker.stealth_mult
+	# 真视（30010）：攻击隐身目标时额外造成 p1% 伤害
+	var true_sight_bonus: float = 0.0
+	if target.stealth_rounds > 0:
+		var ts_sd := _find_skill(attacker, 30010)
+		if not ts_sd.is_empty():
+			true_sight_bonus = float(int(ts_sd.get("p1", 0))) / 100.0
+	var dmg := int(dmg_base * (crit_mult if is_crit else 1.0) * dmg_mult * stealth_mul * (1.0 + true_sight_bonus))
 	dmg = max(1, dmg)
 	var is_miss := false
-	if not ignore_dodge and (randi() % 10000) < target.dodge:
+	# 闪避（30006）：被普攻时额外提升 p1% 闪避率
+	var dodge_chance: int = target.dodge
+	var dodge_sd := _find_skill(target, 30006)
+	if not dodge_sd.is_empty():
+		dodge_chance += int(dodge_sd.get("p1", 0)) * 100
+	if not ignore_dodge and (randi() % 10000) < dodge_chance:
 		dmg = 0
 		is_miss = true
 	target.cur_hp = max(0, target.cur_hp - dmg)
@@ -223,6 +345,7 @@ func _apply_damage(attacker: BattleUnit, target: BattleUnit, dmg_mult: float = 1
 		return false
 	if dmg > 0:
 		_apply_drain(target, dmg)
+		_apply_life_steal(attacker, dmg)
 	var dying := target.cur_hp <= 0
 	if dying:
 		target.is_dead = true
@@ -236,6 +359,16 @@ func _find_skill(unit: BattleUnit, skill_id: int) -> Dictionary:
 		if s is Dictionary and int(s.get("id", 0)) == skill_id:
 			return _get_skill_data(skill_id, int(s.get("level", 1)))
 	return {}
+
+# 迅捷（30008）：返回单位在排序时的有效出手速度（基础 + p1）
+func _effective_spd(unit: BattleUnit) -> int:
+	if unit == null:
+		return 0
+	var bonus: int = 0
+	var sd := _find_skill(unit, 30008)
+	if not sd.is_empty():
+		bonus = int(sd.get("p1", 0))
+	return unit.spd + bonus
 
 # 连击（skill_id=30001）：p1% 概率追加一击，伤害 = p2% * 攻击力计算
 func _try_combo_strike(attacker: BattleUnit, target: BattleUnit, sf: SpriteFrames, has_atk_anim: bool) -> void:
@@ -253,7 +386,7 @@ func _try_combo_strike(attacker: BattleUnit, target: BattleUnit, sf: SpriteFrame
 	if mult <= 0.0:
 		return
 	# 飘 "连击!" 提示
-	_spawn_skill_label(attacker, "连击!")
+	_spawn_skill_label(attacker, _skill_name(30001) + "!")
 	# 再播一次攻击动画 + 应用追加伤害
 	if has_atk_anim and is_instance_valid(attacker.sprite) and sf and sf.has_animation("attack"):
 		attacker.sprite.play("attack")
@@ -284,7 +417,7 @@ func _try_counter_strike(attacker: BattleUnit, target: BattleUnit) -> void:
 	if mult <= 0.0:
 		return
 	# 飘 "反击!" 提示
-	_spawn_skill_label(target, "反击!")
+	_spawn_skill_label(target, _skill_name(30002) + "!")
 	# 目标原地播一次攻击动画 + 对攻击者应用伤害
 	var sf: SpriteFrames = null
 	var has_atk_anim := false
@@ -304,6 +437,95 @@ func _try_counter_strike(attacker: BattleUnit, target: BattleUnit) -> void:
 			if sf and sf.has_animation(back):
 				target.sprite.play(back)
 
+# 追击（skill_id=30005）：普攻击杀目标后，对随机存活敌人造成 p1% 伤害；继续击杀则循环触发
+func _try_pursue_strike(attacker: BattleUnit, sf: SpriteFrames, has_atk_anim: bool, off_x: float) -> void:
+	if attacker == null or attacker.is_dead:
+		return
+	var sd := _find_skill(attacker, 30005)
+	if sd.is_empty():
+		return
+	var mult: float = float(int(sd.get("p1", 0))) / 100.0
+	if mult <= 0.0:
+		return
+	while not attacker.is_dead:
+		var pool: Array = []
+		for u in _battle_units:
+			var e := u as BattleUnit
+			if e == null or e.is_dead:
+				continue
+			if e.is_enemy == attacker.is_enemy:
+				continue
+			if not is_instance_valid(e.root):
+				continue
+			pool.append(e)
+		if pool.is_empty():
+			return
+		var next_target := pool[randi() % pool.size()] as BattleUnit
+		_spawn_skill_label(attacker, _skill_name(30005) + "!")
+		# 冲到新目标前
+		var dest: Vector2 = next_target.root.position + Vector2(off_x, 0)
+		var tw_m := create_tween()
+		tw_m.tween_property(attacker.root, "position", dest, MOVE_IN_TIME) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		await tw_m.finished
+		if attacker.is_dead or not is_instance_valid(attacker.root):
+			return
+		# 播攻击动画 + 应用追击伤害
+		if has_atk_anim and is_instance_valid(attacker.sprite) and sf and sf.has_animation("attack"):
+			attacker.sprite.play("attack")
+		await get_tree().create_timer(0.4).timeout
+		if next_target.is_dead:
+			# 目标在等待期间已被其他效果击杀，重新选一个继续追
+			pass
+		else:
+			_apply_damage(attacker, next_target, mult)
+		if has_atk_anim and is_instance_valid(attacker.sprite):
+			if attacker.sprite.animation == "attack" and attacker.sprite.is_playing():
+				await attacker.sprite.animation_finished
+			if is_instance_valid(attacker.sprite):
+				var back := "alert" if sf and sf.has_animation("alert") else "idle"
+				if sf and sf.has_animation(back):
+					attacker.sprite.play(back)
+		# 没击杀，结束追击
+		if not next_target.is_dead:
+			return
+		# 继续下一轮（while 循环重新挑选目标）
+
+# 守护（skill_id=30003）：队友被普攻命中前，有 p1% 概率替队友分担 p2% 伤害
+# 返回 {"protector": BattleUnit, "share": float(0~1)}；不触发返回 {}
+func _try_protect_guard(target: BattleUnit, attacker: BattleUnit) -> Dictionary:
+	if target == null or target.is_dead:
+		return {}
+	var candidates: Array = []
+	for u in _battle_units:
+		var ally := u as BattleUnit
+		if ally == null or ally.is_dead:
+			continue
+		if ally == target:
+			continue
+		if ally.is_enemy != target.is_enemy:
+			continue
+		if not is_instance_valid(ally.root):
+			continue
+		var sd := _find_skill(ally, 30003)
+		if sd.is_empty():
+			continue
+		candidates.append({"ally": ally, "sd": sd})
+	if candidates.is_empty():
+		return {}
+	# 多人持有时随机一位尝试触发
+	var pick: Dictionary = candidates[randi() % candidates.size()]
+	var sd: Dictionary = pick["sd"]
+	var prob: int = int(sd.get("p1", 0))
+	if prob <= 0:
+		return {}
+	if (randi() % 100) >= prob:
+		return {}
+	var share: float = float(int(sd.get("p2", 0))) / 100.0
+	if share <= 0.0:
+		return {}
+	return {"protector": pick["ally"], "share": share}
+
 # 攻防一体（skill_id=40001）：普攻命中后必定附加一次伤害，伤害 = 攻击者护甲 * p1%
 func _try_armor_strike(attacker: BattleUnit, target: BattleUnit) -> void:
 	if attacker == null or target == null or attacker.is_dead or target.is_dead:
@@ -315,7 +537,7 @@ func _try_armor_strike(attacker: BattleUnit, target: BattleUnit) -> void:
 	if ratio <= 0.0:
 		return
 	var bonus: int = max(1, int(attacker.def * ratio))
-	_spawn_skill_label(attacker, "盾击!")
+	_spawn_skill_label(attacker, _skill_name(40001) + "!")
 	target.cur_hp = max(0, target.cur_hp - bonus)
 	target.status_bar.update_hp(target.cur_hp)
 	_spawn_damage_label(target, bonus, false, false)
@@ -336,8 +558,12 @@ func _try_eagle_eye(attacker: BattleUnit) -> bool:
 		return false
 	if (randi() % 100) >= prob:
 		return false
-	_spawn_skill_label(attacker, "鹰眼!")
+	_spawn_skill_label(attacker, _skill_name(40002) + "!")
 	return true
+
+func _skill_name(sid: int) -> String:
+	var sd := _get_skill_data(sid, 1)
+	return String(sd.get("name", ""))
 
 func _spawn_skill_label(attacker: BattleUnit, text: String) -> void:
 	if attacker == null or not is_instance_valid(attacker.root):
@@ -411,22 +637,110 @@ func _spawn_damage_label(target: BattleUnit, dmg: int, is_miss: bool, is_crit: b
 func _start_new_round() -> void:
 	# 回合末结算（第一回合开始前不触发）
 	if _round_number > 0:
-		_resolve_end_of_round()
+		await _resolve_end_of_round()
 	# 清理上一回合的灵魂汲取标记
 	_clear_drain_marks()
+	# 隐身（30009）：第一回合开战前初始化，其后每回合开始衰减一回合
+	if _round_number == 0:
+		_init_stealth_states()
+	else:
+		_tick_stealth_states()
 	var alive: Array = []
 	for u in _battle_units:
 		var unit := u as BattleUnit
 		if not unit.is_dead:
 			alive.append(unit)
 	# 按出手速度从高到低排序
-	alive.sort_custom(func(a, b): return a.spd > b.spd)
+	alive.sort_custom(func(a, b): return _effective_spd(a) > _effective_spd(b))
 	_round_queue = alive
 	_round_number += 1
 	if is_instance_valid(_round_label):
 		_round_label.text = "第 %d 回合" % _round_number
-	# 回合开始结算：灵魂汲取等
-	_resolve_start_of_round()
+	# 回合切换 banner：放大淡出，期间整场停顿
+	await _show_round_banner(_round_number)
+	# 回合开始结算：自愈、灵魂汲取等
+	await _resolve_start_of_round()
+
+# 回合切换 banner：屏幕中央显示"第 N 回合"放大淡出，约 1.0s
+func _show_round_banner(round_no: int) -> void:
+	var vp := get_viewport_rect().size
+	var lbl := Label.new()
+	lbl.text = "第 %d 回合" % round_no
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(520, 120)
+	lbl.position = Vector2((vp.x - 520) * 0.5, (vp.y - 120) * 0.5 - 40)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	lbl.z_index = 200
+	lbl.pivot_offset = Vector2(260, 60)
+	var ls := LabelSettings.new()
+	ls.font          = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size     = 72
+	ls.font_color    = Color(1.0, 0.92, 0.5)
+	ls.outline_size  = 8
+	ls.outline_color = Color(0.1, 0.04, 0, 1.0)
+	ls.shadow_size   = 6
+	ls.shadow_color  = Color(0, 0, 0, 0.7)
+	lbl.label_settings = ls
+	lbl.scale = Vector2(0.4, 0.4)
+	lbl.modulate = Color(1, 1, 1, 0)
+	add_child(lbl)
+	var tw_in := create_tween().set_parallel(true)
+	tw_in.tween_property(lbl, "scale", Vector2(1.15, 1.15), 0.28) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw_in.tween_property(lbl, "modulate:a", 1.0, 0.2)
+	await tw_in.finished
+	await get_tree().create_timer(0.45).timeout
+	var tw_out := create_tween().set_parallel(true)
+	tw_out.tween_property(lbl, "scale", Vector2(1.4, 1.4), 0.25) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw_out.tween_property(lbl, "modulate:a", 0.0, 0.25)
+	await tw_out.finished
+	lbl.queue_free()
+
+# 隐身（30009）：开战前初始化各单位的隐身回合数与攻击伤害倍率
+func _init_stealth_states() -> void:
+	for u in _battle_units:
+		var unit := u as BattleUnit
+		if unit == null:
+			continue
+		var sd := _find_skill(unit, 30009)
+		if sd.is_empty():
+			continue
+		var rounds: int = int(sd.get("p1", 0))
+		var mult_pct: int = int(sd.get("p2", 0))
+		if rounds <= 0 or mult_pct <= 0:
+			continue
+		unit.stealth_rounds = rounds
+		unit.stealth_mult   = float(mult_pct) / 100.0
+		# 若敌方拥有真视（30010），隐身者保留伤害加成但不再半透明（被看穿）
+		if is_instance_valid(unit.sprite) and not _enemy_has_true_sight(unit):
+			unit.sprite.modulate = Color(1, 1, 1, 0.35)
+
+# 真视（30010）：检查 unit 对面阵营是否有人持有 30010 技能
+func _enemy_has_true_sight(unit: BattleUnit) -> bool:
+	for u in _battle_units:
+		var other := u as BattleUnit
+		if other == null or other.is_dead:
+			continue
+		if other.is_enemy == unit.is_enemy:
+			continue
+		if not _find_skill(other, 30010).is_empty():
+			return true
+	return false
+
+# 每回合开始衰减一次；归零则恢复正常透明度
+func _tick_stealth_states() -> void:
+	for u in _battle_units:
+		var unit := u as BattleUnit
+		if unit == null or unit.is_dead:
+			continue
+		if unit.stealth_rounds <= 0:
+			continue
+		unit.stealth_rounds -= 1
+		if unit.stealth_rounds <= 0:
+			if is_instance_valid(unit.sprite):
+				unit.sprite.modulate = Color(1, 1, 1, 1)
 
 # 回合末统一结算：复苏（40003）等回合末效果
 func _resolve_end_of_round() -> void:
@@ -434,16 +748,17 @@ func _resolve_end_of_round() -> void:
 		var caster := u as BattleUnit
 		if caster == null or caster.is_dead:
 			continue
-		_try_revive_heal(caster)
+		if _try_revive_heal(caster):
+			await get_tree().create_timer(0.45).timeout
 
 # 复苏（skill_id=40003）：每回合末，为同阵营 HP 百分比最低的存活单位回复 p1 点生命
-func _try_revive_heal(caster: BattleUnit) -> void:
+func _try_revive_heal(caster: BattleUnit) -> bool:
 	var sd := _find_skill(caster, 40003)
 	if sd.is_empty():
-		return
+		return false
 	var heal: int = int(sd.get("p1", 0))
 	if heal <= 0:
-		return
+		return false
 	var target: BattleUnit = null
 	var lowest_ratio: float = 2.0
 	for u in _battle_units:
@@ -461,16 +776,17 @@ func _try_revive_heal(caster: BattleUnit) -> void:
 			lowest_ratio = ratio
 			target = ally
 	if target == null:
-		return
+		return false
 	var new_hp: int = min(target.max_hp, target.cur_hp + heal)
 	var actual: int = new_hp - target.cur_hp
 	if actual <= 0:
-		return
+		return false
 	target.cur_hp = new_hp
 	if is_instance_valid(target.status_bar):
 		target.status_bar.update_hp(target.cur_hp)
-	_spawn_skill_label(caster, "复苏!")
+	_spawn_skill_label(caster, _skill_name(40003) + "!")
 	_spawn_heal_label(target, actual)
+	return true
 
 func _spawn_heal_label(target: BattleUnit, amount: int) -> void:
 	if target == null or not is_instance_valid(target.root):
@@ -521,16 +837,43 @@ func _resolve_start_of_round() -> void:
 		var caster := u as BattleUnit
 		if caster == null or caster.is_dead:
 			continue
-		_try_soul_drain_mark(caster)
+		if _try_soul_drain_mark(caster):
+			await get_tree().create_timer(0.4).timeout
+		if _try_self_recovery(caster):
+			await get_tree().create_timer(0.45).timeout
+
+# 自愈（skill_id=30011）：每回合开始回复自身 p1% 最大血量
+func _try_self_recovery(unit: BattleUnit) -> bool:
+	if unit == null or unit.is_dead:
+		return false
+	var sd := _find_skill(unit, 30011)
+	if sd.is_empty():
+		return false
+	var pct: int = int(sd.get("p1", 0))
+	if pct <= 0:
+		return false
+	if unit.cur_hp >= unit.max_hp:
+		return false
+	var heal: int = max(1, int(round(float(unit.max_hp) * float(pct) / 100.0)))
+	var new_hp: int = min(unit.max_hp, unit.cur_hp + heal)
+	var actual: int = new_hp - unit.cur_hp
+	if actual <= 0:
+		return false
+	unit.cur_hp = new_hp
+	if is_instance_valid(unit.status_bar):
+		unit.status_bar.update_hp(unit.cur_hp)
+	_spawn_skill_label(unit, _skill_name(30011) + "!")
+	_spawn_heal_label(unit, actual)
+	return true
 
 # 回合开始：从对方阵营存活单位中随机挑一个标记为汲取目标
-func _try_soul_drain_mark(caster: BattleUnit) -> void:
+func _try_soul_drain_mark(caster: BattleUnit) -> bool:
 	var sd := _find_skill(caster, 40004)
 	if sd.is_empty():
-		return
+		return false
 	var ratio: float = float(int(sd.get("p1", 0))) / 100.0
 	if ratio <= 0.0:
-		return
+		return false
 	var enemies: Array = []
 	for u in _battle_units:
 		var e := u as BattleUnit
@@ -539,11 +882,13 @@ func _try_soul_drain_mark(caster: BattleUnit) -> void:
 		if e.is_enemy != caster.is_enemy:
 			enemies.append(e)
 	if enemies.is_empty():
-		return
+		return false
 	var target: BattleUnit = enemies[randi() % enemies.size()]
 	target.drain_sources.append({"caster": caster, "ratio": ratio})
 	if not is_instance_valid(target.drain_label):
 		_attach_drain_marker(target)
+	_spawn_skill_label(caster, _skill_name(40004) + "!")
+	return true
 
 func _attach_drain_marker(target: BattleUnit) -> void:
 	if not is_instance_valid(target.root):
@@ -590,6 +935,30 @@ func _apply_drain(target: BattleUnit, dmg: int) -> void:
 			caster.status_bar.update_hp(caster.cur_hp)
 		_spawn_heal_label(caster, actual)
 
+# 吸血（skill_id=30007）：普攻造成伤害时，攻击者回复伤害值 p1% 血量
+func _apply_life_steal(attacker: BattleUnit, dmg: int) -> void:
+	if attacker == null or attacker.is_dead or dmg <= 0:
+		return
+	var sd := _find_skill(attacker, 30007)
+	if sd.is_empty():
+		return
+	var ratio: float = float(int(sd.get("p1", 0))) / 100.0
+	if ratio <= 0.0:
+		return
+	var heal: int = int(round(float(dmg) * ratio))
+	if heal <= 0:
+		return
+	if attacker.cur_hp >= attacker.max_hp:
+		return
+	var new_hp: int = min(attacker.max_hp, attacker.cur_hp + heal)
+	var actual: int = new_hp - attacker.cur_hp
+	if actual <= 0:
+		return
+	attacker.cur_hp = new_hp
+	if is_instance_valid(attacker.status_bar):
+		attacker.status_bar.update_hp(attacker.cur_hp)
+	_spawn_heal_label(attacker, actual)
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 野蛮冲撞（40005）
@@ -610,7 +979,7 @@ func _try_brutal_stun(attacker: BattleUnit, target: BattleUnit) -> void:
 	if (randi() % 100) >= prob:
 		return
 	target.stunned = true
-	_spawn_skill_label(attacker, "冲撞!")
+	_spawn_skill_label(attacker, _skill_name(40005) + "!")
 	_attach_stun_marker(target)
 
 func _clear_stun(target: BattleUnit) -> void:
@@ -1264,7 +1633,8 @@ func _load_level_up_table() -> Dictionary:
 		result[int(lv_s)] = int(exp_s) if exp_s.is_valid_int() else 0
 	return result
 
-# 技能表：返回 {skill_id_int: {level_int: {desc, p1, p2, upgrade_cost, icon}}}
+# 技能表：返回 {skill_id_int: {level_int: {desc, p1, p2, icon}}}
+# 技能升级金币消耗统一从 skill_upgrade_cost.txt 读取，不再随技能配置
 var _skill_table_cache: Dictionary = {}
 func _load_skill_table() -> Dictionary:
 	if not _skill_table_cache.is_empty():
@@ -1300,10 +1670,10 @@ func _load_skill_table() -> Dictionary:
 		if not result.has(sid):
 			result[sid] = {}
 		result[sid][lv] = {
+			"name":         String(entry.get("name", "")),
 			"desc":         String(entry.get("desc", "")),
 			"p1":           int(entry.get("param1", "0")),
 			"p2":           int(entry.get("param2", "0")),
-			"upgrade_cost": int(entry.get("upgrade_cost", "0")),
 			"icon":         String(entry.get("icon", "")),
 		}
 	_skill_table_cache = result
@@ -1322,6 +1692,42 @@ func _get_skill_data(sid: int, lv: int) -> Dictionary:
 	if keys.is_empty():
 		return {}
 	return levels[keys[-1]]
+
+# 技能升级金币消耗表：{level_int: cost_int}（lv 1 = 0）
+var _skill_cost_cache: Dictionary = {}
+func _load_skill_upgrade_costs() -> Dictionary:
+	if not _skill_cost_cache.is_empty():
+		return _skill_cost_cache
+	var result: Dictionary = {}
+	var file := FileAccess.open(SKILL_UPGRADE_COST_PATH, FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return result
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 2:
+			continue
+		var lv_s: String = (parts[0] as String).strip_edges()
+		var cost_s: String = (parts[1] as String).strip_edges()
+		if not lv_s.is_valid_int():
+			continue
+		result[int(lv_s)] = int(cost_s) if cost_s.is_valid_int() else 0
+	_skill_cost_cache = result
+	return result
+
+# 升级到目标等级所需金币；目标等级不在表中时返回 0
+func _get_skill_upgrade_cost(target_lv: int) -> int:
+	var t := _load_skill_upgrade_costs()
+	return int(t.get(target_lv, 0))
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 放置角色并构建 BattleUnit
@@ -1978,6 +2384,9 @@ class BattleUnit:
 	# 野蛮冲撞（40005）：晕眩状态及头顶标签
 	var stunned:    bool  = false
 	var stun_label: Label = null
+	# 隐身（30009）：剩余隐身回合数；> 0 期间 sprite 半透明且攻击伤害按 stealth_mult 计算
+	var stealth_rounds: int   = 0
+	var stealth_mult:   float = 1.0
 
 	# 播动画；attack 结束后自动回 alert/idle
 	func play_anim(anim_name: String) -> void:
