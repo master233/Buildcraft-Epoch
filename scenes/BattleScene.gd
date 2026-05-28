@@ -514,6 +514,7 @@ func _clear_drain_marks() -> void:
 		if is_instance_valid(unit.drain_label):
 			unit.drain_label.queue_free()
 		unit.drain_label = null
+		_relayout_status_labels(unit)
 
 func _resolve_start_of_round() -> void:
 	for u in _battle_units:
@@ -552,7 +553,7 @@ func _attach_drain_marker(target: BattleUnit) -> void:
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	lbl.size = Vector2(120, 32)
-	lbl.position = Vector2(-60, -95)
+	lbl.position = Vector2(-120, -95)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lbl.z_index = 90
 	var ls := LabelSettings.new()
@@ -566,6 +567,7 @@ func _attach_drain_marker(target: BattleUnit) -> void:
 	lbl.label_settings = ls
 	target.root.add_child(lbl)
 	target.drain_label = lbl
+	_relayout_status_labels(target)
 
 # 实际造成伤害后调用：对所有汲取此目标的施法者按比例回血
 func _apply_drain(target: BattleUnit, dmg: int) -> void:
@@ -618,6 +620,7 @@ func _clear_stun(target: BattleUnit) -> void:
 	if is_instance_valid(target.stun_label):
 		target.stun_label.queue_free()
 	target.stun_label = null
+	_relayout_status_labels(target)
 
 func _attach_stun_marker(target: BattleUnit) -> void:
 	if not is_instance_valid(target.root):
@@ -629,7 +632,7 @@ func _attach_stun_marker(target: BattleUnit) -> void:
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	lbl.size = Vector2(120, 32)
-	lbl.position = Vector2(-60, -125)
+	lbl.position = Vector2(0, -95)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lbl.z_index = 90
 	var ls := LabelSettings.new()
@@ -643,6 +646,91 @@ func _attach_stun_marker(target: BattleUnit) -> void:
 	lbl.label_settings = ls
 	target.root.add_child(lbl)
 	target.stun_label = lbl
+	_relayout_status_labels(target)
+
+
+# 把当前激活的异常状态标签按 1 个居中 / 2 个分左右的方式排好
+func _relayout_status_labels(target: BattleUnit) -> void:
+	if target == null:
+		return
+	var labels: Array = []
+	if is_instance_valid(target.drain_label):
+		labels.append(target.drain_label)
+	if is_instance_valid(target.stun_label):
+		labels.append(target.stun_label)
+	var y: float = -95.0
+	if labels.size() == 1:
+		var lbl: Label = labels[0]
+		lbl.position = Vector2(-lbl.size.x * 0.5, y)
+	elif labels.size() >= 2:
+		var left: Label = labels[0]
+		var right: Label = labels[1]
+		left.position  = Vector2(-left.size.x, y)
+		right.position = Vector2(0, y)
+
+
+# 结算面板经验条增长动画
+func _animate_exp_bar(fill: Panel, inner_w: float, fill_h: float, row: Dictionary, fill_style: StyleBoxFlat, text_lbl: Label = null, _final_max: int = 0) -> void:
+	fill.set_meta("inner_w", inner_w)
+	fill.set_meta("fill_h",  fill_h)
+	var from_lv: int = int(row.get("from_level", 1))
+	var to_lv: int = int(row.get("to_level", 1))
+	var from_exp: int = int(row.get("from_exp", 0))
+	var to_exp: int = int(row.get("to_exp", 0))
+	var from_max: int = int(row.get("from_max_exp", 0))
+	var to_max: int = int(row.get("to_max_exp", 0))
+	var seg_dur: float = 1.2
+	var tw := create_tween()
+	# 入场延迟，让用户看到起始进度
+	tw.tween_interval(0.35)
+	if to_lv == from_lv:
+		var max_v: int = to_max if to_max > 0 else 1
+		tw.tween_method(_set_bar_progress.bind(fill, text_lbl, max_v), float(from_exp), float(to_exp), seg_dur) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		if to_max <= 0:
+			tw.tween_callback(func() -> void:
+				fill_style.bg_color = Color(1.0, 0.85, 0.35)
+				if is_instance_valid(text_lbl):
+					text_lbl.text = "MAX")
+		return
+	# 跨级动画：先涨满当前级，闪光，回到 0，再涨下一级
+	if from_max > 0:
+		var s_ratio: float = float(from_exp) / float(from_max)
+		tw.tween_method(_set_bar_progress.bind(fill, text_lbl, from_max), float(from_exp), float(from_max), seg_dur * (1.0 - s_ratio + 0.2)) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+		tw.tween_callback(_flash_level_up.bind(fill_style, fill))
+	# 末段
+	if to_max > 0:
+		var e_ratio: float = float(to_exp) / float(to_max)
+		tw.tween_method(_set_bar_progress.bind(fill, text_lbl, to_max), 0.0, float(to_exp), seg_dur * (e_ratio + 0.2)) \
+			.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	else:
+		tw.tween_callback(func() -> void:
+			fill_style.bg_color = Color(1.0, 0.85, 0.35)
+			if is_instance_valid(text_lbl):
+				text_lbl.text = "MAX")
+
+func _set_bar_progress(exp_val: float, fill: Panel, text_lbl: Label, max_v: int) -> void:
+	if not is_instance_valid(fill):
+		return
+	var inner_w: float = float(fill.get_meta("inner_w", 0.0))
+	var fill_h:  float = float(fill.get_meta("fill_h",  fill.size.y))
+	var ratio: float = 0.0
+	if max_v > 0:
+		ratio = clamp(exp_val / float(max_v), 0.0, 1.0)
+	fill.size = Vector2(max(0.0, inner_w * ratio), fill_h)
+	if is_instance_valid(text_lbl):
+		text_lbl.text = "%d / %d" % [int(round(exp_val)), max_v]
+
+func _flash_level_up(fill_style: StyleBoxFlat, fill: Panel) -> void:
+	if not is_instance_valid(fill):
+		return
+	var c0: Color = fill_style.bg_color
+	fill_style.bg_color = Color(1.0, 1.0, 0.7)
+	var flash := create_tween()
+	flash.tween_method(func(t: float) -> void:
+		fill_style.bg_color = Color(1.0, 1.0, 0.7).lerp(c0, t),
+		0.0, 1.0, 0.25)
 
 
 func _check_battle_over() -> bool:
@@ -667,8 +755,9 @@ func _check_battle_over() -> bool:
 
 func _end_battle(victory: bool) -> void:
 	_battle_over = true
+	var clear_info: Dictionary = {}
 	if victory:
-		_record_level_cleared()
+		clear_info = _record_level_cleared()
 	var vp := get_viewport_rect().size
 	var ui := CanvasLayer.new()
 	ui.layer = 20
@@ -677,8 +766,18 @@ func _end_battle(victory: bool) -> void:
 	var title := "胜利！" if victory else "战败..."
 	var title_color := Color(1.0, 0.9, 0.2) if victory else Color(1.0, 0.3, 0.3)
 
-	var panel_w := 420.0
-	var panel_h := 200.0
+	var exp_rows: Array = clear_info.get("rows", []) if victory else []
+	var avatar_size := 72.0
+	var cell_w := 100.0
+	var cell_gap := 28.0
+	var rows_area_h: float = 0.0
+	if exp_rows.size() > 0:
+		rows_area_h = 16.0 + avatar_size + 6.0 + 22.0 + 4.0 + 18.0 + 4.0 + 22.0 + 16.0
+	var min_panel_w := 460.0
+	var gap_count: int = max(0, exp_rows.size() - 1)
+	var needed_w: float = float(exp_rows.size()) * cell_w + float(gap_count) * cell_gap + 56.0
+	var panel_w: float = max(min_panel_w, needed_w)
+	var panel_h: float = 200.0 + rows_area_h
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.05, 0.08, 0.18, 0.95)
 	style.set_corner_radius_all(16)
@@ -711,7 +810,129 @@ func _end_battle(victory: bool) -> void:
 	title_lbl.label_settings = tls
 	ui.add_child(title_lbl)
 
-	var back_btn := _make_button("返回", panel.position + Vector2((panel_w - 120) * 0.5, 110.0), Vector2(120, 52))
+	# 角色头像 + 等级/经验（仅胜利时，横向排列）
+	if exp_rows.size() > 0:
+		var gap_count2: int = max(0, exp_rows.size() - 1)
+		var total_w: float = float(exp_rows.size()) * cell_w + float(gap_count2) * cell_gap
+		var start_x: float = panel.position.x + (panel_w - total_w) * 0.5
+		var top_y: float = panel.position.y + 96.0
+		var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+		for i in exp_rows.size():
+			var row: Dictionary = exp_rows[i]
+			var rid: String = String(row.get("role_id", ""))
+			var role_idx: int = int(rid) - 10000
+			var cx: float = start_x + float(i) * (cell_w + cell_gap)
+
+			# 头像
+			var avatar_path := "res://asserts/image/role/role%d_avatar.png" % role_idx
+			var tr := TextureRect.new()
+			tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			tr.custom_minimum_size = Vector2(avatar_size, avatar_size)
+			tr.size = Vector2(avatar_size, avatar_size)
+			tr.position = Vector2(cx + (cell_w - avatar_size) * 0.5, top_y)
+			tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			if ResourceLoader.exists(avatar_path):
+				tr.texture = load(avatar_path)
+			ui.add_child(tr)
+			tr.size = Vector2(avatar_size, avatar_size)
+
+			var to_lv: int = int(row.get("to_level", 1))
+			var from_lv: int = int(row.get("from_level", 1))
+			var leveled_up: bool = to_lv > from_lv
+
+			# 等级
+			var lv_lbl := Label.new()
+			lv_lbl.text = ("Lv.%d -> Lv.%d" % [from_lv, to_lv]) if leveled_up else ("Lv.%d" % to_lv)
+			lv_lbl.size = Vector2(cell_w, 22.0)
+			lv_lbl.position = Vector2(cx, top_y + avatar_size + 6.0)
+			lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			lv_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+			var ls1 := LabelSettings.new()
+			ls1.font = font
+			ls1.font_size = 18
+			ls1.font_color = Color(1.0, 0.95, 0.55) if leveled_up else Color(0.88, 0.93, 1.0)
+			ls1.outline_size = 3
+			ls1.outline_color = Color(0, 0, 0, 1.0)
+			lv_lbl.label_settings = ls1
+			ui.add_child(lv_lbl)
+
+			# 经验条
+			var bar_h := 18.0
+			var bar_w: float = cell_w - 8.0
+			var bar_x: float = cx + (cell_w - bar_w) * 0.5
+			var bar_y: float = top_y + avatar_size + 6.0 + 22.0 + 4.0
+			var max_exp: int = int(row.get("to_max_exp", 0))
+			var to_exp: int = int(row.get("to_exp", 0))
+			var from_exp: int = int(row.get("from_exp", 0))
+			var from_max_exp: int = int(row.get("from_max_exp", 0))
+			var start_ratio: float = 0.0
+			if from_max_exp > 0:
+				start_ratio = clamp(float(from_exp) / float(from_max_exp), 0.0, 1.0)
+			else:
+				start_ratio = 1.0
+			var bar_bg_style := StyleBoxFlat.new()
+			bar_bg_style.bg_color = Color(0.10, 0.12, 0.18, 0.95)
+			bar_bg_style.set_corner_radius_all(3)
+			bar_bg_style.border_width_top    = 1
+			bar_bg_style.border_width_bottom = 1
+			bar_bg_style.border_width_left   = 1
+			bar_bg_style.border_width_right  = 1
+			bar_bg_style.border_color = Color(0, 0, 0, 0.7)
+			var bar_bg := Panel.new()
+			bar_bg.size = Vector2(bar_w, bar_h)
+			bar_bg.position = Vector2(bar_x, bar_y)
+			bar_bg.add_theme_stylebox_override("panel", bar_bg_style)
+			bar_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			ui.add_child(bar_bg)
+			var fill_style := StyleBoxFlat.new()
+			fill_style.bg_color = Color(0.45, 0.85, 0.55) if max_exp > 0 else Color(1.0, 0.85, 0.35)
+			fill_style.set_corner_radius_all(3)
+			var fill := Panel.new()
+			var inner_w: float = bar_w - 2.0
+			var min_fill: float = 0.0  # 允许 0 宽，避免起始空段也有一段
+			fill.size = Vector2(max(min_fill, inner_w * start_ratio), bar_h - 2.0)
+			fill.position = Vector2(bar_x + 1.0, bar_y + 1.0)
+			fill.add_theme_stylebox_override("panel", fill_style)
+			fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			ui.add_child(fill)
+			# 经验条上叠一层文字 "cur/max" 或 "MAX"
+			var bar_text_lbl := Label.new()
+			bar_text_lbl.size = Vector2(bar_w, bar_h)
+			bar_text_lbl.position = Vector2(bar_x, bar_y)
+			bar_text_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			bar_text_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+			bar_text_lbl.text = ("%d / %d" % [from_exp, from_max_exp]) if from_max_exp > 0 else "MAX"
+			bar_text_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var bls := LabelSettings.new()
+			bls.font = font
+			bls.font_size = 13
+			bls.font_color = Color(1, 1, 1, 1)
+			bls.outline_size = 3
+			bls.outline_color = Color(0, 0, 0, 0.9)
+			bar_text_lbl.label_settings = bls
+			ui.add_child(bar_text_lbl)
+			# 动画：起始 ratio → 末尾 ratio，跨级时分段
+			_animate_exp_bar(fill, inner_w, bar_h - 2.0, row, fill_style, bar_text_lbl, max_exp)
+
+			# 经验
+			var exp_lbl := Label.new()
+			exp_lbl.text = "+%d EXP" % int(row.get("exp_gain", 0))
+			exp_lbl.size = Vector2(cell_w, 22.0)
+			exp_lbl.position = Vector2(cx, bar_y + bar_h + 4.0)
+			exp_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			exp_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
+			var ls2 := LabelSettings.new()
+			ls2.font = font
+			ls2.font_size = 14
+			ls2.font_color = Color(0.85, 0.95, 0.75)
+			ls2.outline_size = 3
+			ls2.outline_color = Color(0, 0, 0, 1.0)
+			exp_lbl.label_settings = ls2
+			ui.add_child(exp_lbl)
+
+	var btn_y: float = panel.position.y + 110.0 + rows_area_h
+	var back_btn := _make_button("返回", Vector2(panel.position.x + (panel_w - 120) * 0.5, btn_y), Vector2(120, 52))
 	ui.add_child(back_btn.panel)
 	ui.add_child(back_btn.label)
 	back_btn.label.gui_input.connect(_on_exit_input)
@@ -724,10 +945,9 @@ func _end_battle(victory: bool) -> void:
 			var btn_h := 52.0
 			var gap := 30.0
 			var x0 := panel.position.x + (panel_w - (btn_w * 2 + gap)) * 0.5
-			var y := panel.position.y + 110.0
-			back_btn.panel.position = Vector2(x0, y)
-			back_btn.label.position = Vector2(x0, y)
-			var next_btn := _make_button("下一关", Vector2(x0 + btn_w + gap, y), Vector2(btn_w, btn_h))
+			back_btn.panel.position = Vector2(x0, btn_y)
+			back_btn.label.position = Vector2(x0, btn_y)
+			var next_btn := _make_button("下一关", Vector2(x0 + btn_w + gap, btn_y), Vector2(btn_w, btn_h))
 			ui.add_child(next_btn.panel)
 			ui.add_child(next_btn.label)
 			next_btn.label.gui_input.connect(_on_next_level_input.bind(next_id))
@@ -923,11 +1143,12 @@ func _go_back_main() -> void:
 	var main := load(MAIN_SCENE_PATH) as PackedScene
 	SceneTransition.change_to(main)
 
-func _record_level_cleared() -> void:
+func _record_level_cleared() -> Dictionary:
+	var result: Dictionary = {"rows": []}
 	var save_path := "user://savegame.json"
 	var level_id_str: String = String(GlobalConfig.get_runtime("level_id"))
 	if not level_id_str.is_valid_int():
-		return
+		return result
 	var cleared_id := int(level_id_str)
 	var data: Dictionary = {}
 	if FileAccess.file_exists(save_path):
@@ -938,45 +1159,69 @@ func _record_level_cleared() -> void:
 			if parsed is Dictionary:
 				data = parsed
 
-	# 仅当首次通关时累加经验，避免重复刷
-	var prev: int = int(data.get("cleared_level", 0))
-	var first_clear: bool = cleared_id > prev
-	if first_clear:
+	# 每次通关都累加经验
+	if cleared_id > int(data.get("cleared_level", 0)):
 		data["cleared_level"] = cleared_id
-		_grant_exp_to_team(data, cleared_id)
+	result["rows"] = _grant_exp_to_team(data, cleared_id)
 
 	var wf := FileAccess.open(save_path, FileAccess.WRITE)
 	if wf == null:
-		return
+		return result
 	wf.store_string(JSON.stringify(data))
 	wf.close()
+	return result
 
-func _grant_exp_to_team(data: Dictionary, cleared_id: int) -> void:
+func _grant_exp_to_team(data: Dictionary, cleared_id: int) -> Array:
+	var rows: Array = []
 	var levels_data := _load_levels_table()
 	var lid_str := str(cleared_id)
 	if not levels_data.has(lid_str):
-		return
+		return rows
 	var exp_gain: int = int(levels_data[lid_str].get("exp", 0))
 	if exp_gain <= 0:
-		return
+		return rows
 	var team_ids := _get_team_ids()
 	if team_ids.is_empty():
-		return
+		return rows
 	var level_up := _load_level_up_table()
+	var roles_data := _load_roles_table()
 	var roles_state: Dictionary = {}
 	if data.has("roles") and data["roles"] is Dictionary:
 		roles_state = data["roles"]
 	for rid in team_ids:
 		var st: Dictionary = roles_state.get(rid, {})
 		var lv: int = int(st.get("level", 1))
-		var cur_exp: int = int(st.get("exp", 0)) + exp_gain
+		var from_lv: int = lv
+		var from_exp: int = int(st.get("exp", 0))
+		var cur_exp: int = from_exp + exp_gain
 		var promoted := _apply_level_up(lv, cur_exp, level_up)
 		st["level"] = promoted.level
 		st["exp"] = promoted.exp
 		if not st.has("star"):
 			st["star"] = 1
 		roles_state[rid] = st
+		var role_name: String = ""
+		if roles_data.has(rid):
+			role_name = String((roles_data[rid] as Dictionary).get("name", rid))
+		if role_name.is_empty():
+			role_name = String(rid)
+		var to_lv: int = int(promoted.level)
+		var to_exp: int = int(promoted.exp)
+		var to_max_exp: int = int(level_up.get(to_lv, 0))
+		var from_max_exp: int = int(level_up.get(from_lv, 0))
+		rows.append({
+			"role_id":      rid,
+			"name":         role_name,
+			"from_level":   from_lv,
+			"to_level":     to_lv,
+			"from_exp":     from_exp,
+			"to_exp":       to_exp,
+			"from_max_exp": from_max_exp,
+			"to_max_exp":   to_max_exp,
+			"exp_gain":     exp_gain,
+		})
 	data["roles"] = roles_state
+	return rows
 
 # 把 (level, exp) 按 level_up.txt 推进到稳定状态。max_exp <= 0 视为已满级。
 func _apply_level_up(level: int, cur_exp: int, level_up: Dictionary) -> Dictionary:
@@ -1350,6 +1595,7 @@ func _load_roles_table() -> Dictionary:
 			"init_star":       int(entry.get("init_star",       "1")),
 			"default_skill":   int(entry.get("default_skill",   "0")),
 			"flip_h":          int(entry.get("flip_h",          "0")) != 0,
+			"name":            String(entry.get("name",           "")),
 		}
 	return result
 
