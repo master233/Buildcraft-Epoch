@@ -15,10 +15,12 @@ if %errorlevel% == 0 (
 set STEAM_PATH1=C:\Program Files (x86)\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe
 set STEAM_PATH2=D:\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe
 set STEAM_PATH3=E:\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe
+set STEAM_PATH4=C:\Software\Steam\steamapps\common\Godot Engine\godot.windows.opt.tools.64.exe
 
 if exist "%STEAM_PATH1%" ( set GODOT="%STEAM_PATH1%" & goto :export )
 if exist "%STEAM_PATH2%" ( set GODOT="%STEAM_PATH2%" & goto :export )
 if exist "%STEAM_PATH3%" ( set GODOT="%STEAM_PATH3%" & goto :export )
+if exist "%STEAM_PATH4%" ( set GODOT="%STEAM_PATH4%" & goto :export )
 
 echo.
 echo ERROR: Godot not found.

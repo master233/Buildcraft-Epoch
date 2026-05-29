@@ -1204,6 +1204,8 @@ func _connect_hero_panel() -> void:
 	# 一次性连接升级/升星按钮（按钮随 panel 销毁，无需断开）
 	var lv_btn: Button = _hero_panel_get_node("DetailArea/RightCol/LevelRow/LevelUpBtn")
 	if lv_btn:
+		lv_btn.add_theme_font_override("font", font)
+		lv_btn.add_theme_font_size_override("font_size", 16)
 		lv_btn.pressed.connect(func() -> void:
 			var rid := _hero_panel_rid
 			if rid.is_empty():
@@ -1221,6 +1223,8 @@ func _connect_hero_panel() -> void:
 
 	var star_btn: Button = _hero_panel_get_node("DetailArea/RightCol/StarRow/StarUpBtn")
 	if star_btn:
+		star_btn.add_theme_font_override("font", font)
+		star_btn.add_theme_font_size_override("font_size", 16)
 		star_btn.pressed.connect(func() -> void:
 			var rid := _hero_panel_rid
 			if rid.is_empty():
@@ -1279,20 +1283,28 @@ func _connect_hero_panel() -> void:
 		var info_vbox := VBoxContainer.new()
 		info_vbox.add_theme_constant_override("separation", 2)
 		info_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info_vbox.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		info_vbox.alignment = BoxContainer.ALIGNMENT_CENTER
 		hbox.add_child(info_vbox)
 
 		var name_lbl := Label.new()
 		name_lbl.text = String(rd.get("name", rid))
-		name_lbl.label_settings = _make_hero_label_settings(font, 16)
+		name_lbl.label_settings = _make_hero_label_settings(font, 18)
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		info_vbox.add_child(name_lbl)
 
 		var lv_lbl := Label.new()
 		lv_lbl.text = "Lv.%d" % lv
-		lv_lbl.label_settings = _make_hero_label_settings(font, 14)
+		lv_lbl.label_settings = _make_hero_label_settings(font, 16)
+		lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		lv_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		info_vbox.add_child(lv_lbl)
 
 		var stars_hbox := HBoxContainer.new()
 		stars_hbox.add_theme_constant_override("separation", 1)
+		stars_hbox.alignment = BoxContainer.ALIGNMENT_CENTER
+		stars_hbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		info_vbox.add_child(stars_hbox)
 		for _s in maxi(star, 0):
 			var sr := TextureRect.new()
@@ -1390,10 +1402,10 @@ func _show_hero_detail(rid: String) -> void:
 	var attr_atk: Label = _hero_panel_get_node("DetailArea/AttrBox/AttrAtk")
 	var attr_def: Label = _hero_panel_get_node("DetailArea/AttrBox/AttrDef")
 	var attr_spd: Label = _hero_panel_get_node("DetailArea/AttrBox/AttrSpd")
-	if attr_hp:  attr_hp.text  = "❤ 生命：%d"  % attrs.hp
-	if attr_atk: attr_atk.text = "⚔ 攻击：%d"  % attrs.atk
-	if attr_def: attr_def.text = "🛡 防御：%d"  % attrs.def
-	if attr_spd: attr_spd.text = "💨 速度：%d"  % attrs.spd
+	if attr_hp:  attr_hp.text  = "生命：%d"  % attrs.hp
+	if attr_atk: attr_atk.text = "攻击：%d"  % attrs.atk
+	if attr_def: attr_def.text = "防御：%d"  % attrs.def
+	if attr_spd: attr_spd.text = "速度：%d"  % attrs.spd
 
 	# 技能槽
 	var skill_row: HBoxContainer = _hero_panel_get_node("DetailArea/RightCol/SkillRow")
@@ -1436,11 +1448,12 @@ func _show_hero_detail(rid: String) -> void:
 				slot_style.border_color = Color(0.5, 0.4, 0.2, 0.5)
 				slot_panel.add_theme_stylebox_override("panel", slot_style)
 				var lock_lbl := Label.new()
-				lock_lbl.text = "🔒"
+				lock_lbl.text = "未解锁"
 				lock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				lock_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 				lock_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				lock_lbl.size_flags_vertical   = Control.SIZE_EXPAND_FILL
+				lock_lbl.label_settings = _make_hero_label_settings(font, 13)
 				slot_panel.add_child(lock_lbl)
 			skill_row.add_child(slot_panel)
 

@@ -85,29 +85,29 @@ theme_override_constants/separation = 6
 
 [node name="AttrHp" type="Label" parent="DetailArea/AttrBox" unique_id=857581670]
 layout_mode = 2
-text = "❤ 生命：—"
+text = "生命：—"
 label_settings = SubResource("LabelSettings_detail")
 
 [node name="AttrAtk" type="Label" parent="DetailArea/AttrBox" unique_id=91370472]
 layout_mode = 2
-text = "⚔ 攻击：—"
+text = "攻击：—"
 label_settings = SubResource("LabelSettings_detail")
 
 [node name="AttrDef" type="Label" parent="DetailArea/AttrBox" unique_id=1742139028]
 layout_mode = 2
-text = "🛡 防御：—"
+text = "防御：—"
 label_settings = SubResource("LabelSettings_detail")
 
 [node name="AttrSpd" type="Label" parent="DetailArea/AttrBox" unique_id=629480196]
 layout_mode = 2
-text = "💨 速度：—"
+text = "速度：—"
 label_settings = SubResource("LabelSettings_detail")
 
 [node name="RightCol" type="VBoxContainer" parent="DetailArea" unique_id=290782358]
 layout_mode = 0
 offset_left = 203.0
 offset_top = 40.0
-offset_right = 542.0
+offset_right = 573.0
 offset_bottom = 395.0
 theme_override_constants/separation = 8
 
@@ -117,9 +117,12 @@ theme_override_constants/separation = 8
 
 [node name="LevelLbl" type="Label" parent="DetailArea/RightCol/LevelRow" unique_id=835281785]
 layout_mode = 2
-size_flags_horizontal = 3
 text = "等级: Lv.1"
 label_settings = SubResource("LabelSettings_detail")
+
+[node name="LevelSpacer" type="Control" parent="DetailArea/RightCol/LevelRow" unique_id=455474733]
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="LevelUpBtn" type="Button" parent="DetailArea/RightCol/LevelRow" unique_id=1006839449]
 custom_minimum_size = Vector2(72, 28)
@@ -137,8 +140,11 @@ label_settings = SubResource("LabelSettings_detail")
 
 [node name="StarsBox" type="HBoxContainer" parent="DetailArea/RightCol/StarRow" unique_id=255474733]
 layout_mode = 2
-size_flags_horizontal = 3
 theme_override_constants/separation = 2
+
+[node name="StarSpacer" type="Control" parent="DetailArea/RightCol/StarRow" unique_id=355474733]
+layout_mode = 2
+size_flags_horizontal = 3
 
 [node name="StarUpBtn" type="Button" parent="DetailArea/RightCol/StarRow" unique_id=1119940508]
 custom_minimum_size = Vector2(72, 28)
