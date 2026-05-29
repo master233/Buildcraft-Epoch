@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://bnpgoqd5vsis"]
 
 [ext_resource type="FontFile" uid="uid://b6wyxgm7fm30n" path="res://asserts/fonts/ZCOOLKuaiLe.ttf" id="1"]
+[ext_resource type="Script" uid="uid://birnpur06l2kk" path="res://scenes/building_panels/DashedLine.gd" id="2"]
 
 [sub_resource type="LabelSettings" id="LabelSettings_title"]
 font = ExtResource("1")
@@ -9,19 +10,19 @@ font_color = Color(0.22, 0.13, 0.06, 1)
 outline_size = 2
 outline_color = Color(1, 0.96, 0.85, 0.5)
 
-[sub_resource type="LabelSettings" id="LabelSettings_detail"]
-font = ExtResource("1")
-font_size = 17
-font_color = Color(0.22, 0.13, 0.06, 1)
-outline_size = 1
-outline_color = Color(1, 0.96, 0.85, 0.4)
-
 [sub_resource type="LabelSettings" id="LabelSettings_green"]
 font = ExtResource("1")
 font_size = 17
 font_color = Color(0.18, 0.75, 0.25, 1)
 outline_size = 2
 outline_color = Color(0, 0.1, 0, 0.6)
+
+[sub_resource type="LabelSettings" id="LabelSettings_detail"]
+font = ExtResource("1")
+font_size = 17
+font_color = Color(0.22, 0.13, 0.06, 1)
+outline_size = 1
+outline_color = Color(1, 0.96, 0.85, 0.4)
 
 [node name="HeroPanel" type="Control" unique_id=26158919]
 layout_mode = 3
@@ -51,108 +52,136 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 4
 
-[node name="Divider" type="VSeparator" parent="." unique_id=139568755]
-layout_mode = 0
-offset_left = 227.00002
+[node name="Divider" type="Control" parent="." unique_id=139568755]
+anchors_preset = 0
+offset_left = 227.0
 offset_top = 4.0
-offset_right = 231.00002
-offset_bottom = 134.33334
-scale = Vector2(3, 3)
+offset_right = 233.0
+offset_bottom = 392.0
+script = ExtResource("2")
+color = Color(0.278, 0.208, 0.122, 0.55)
 
-[node name="DetailArea" type="HBoxContainer" parent="." unique_id=749066466]
-layout_mode = 0
-offset_left = 258.0
+[node name="DetailArea" type="Control" parent="." unique_id=749066466]
+anchors_preset = 0
+offset_left = 234.0
 offset_right = 856.0
 offset_bottom = 396.0
-theme_override_constants/separation = 16
 
-[node name="LeftCol" type="VBoxContainer" parent="DetailArea" unique_id=749066500]
-layout_mode = 2
-custom_minimum_size = Vector2(160, 0)
-theme_override_constants/separation = 4
+[node name="LeftCol" type="Control" parent="DetailArea" unique_id=749066500]
+anchors_preset = 0
+offset_left = 23.0
+offset_right = 183.0
+offset_bottom = 396.0
 
 [node name="HeroNameLbl" type="Label" parent="DetailArea/LeftCol" unique_id=1795674335]
-layout_mode = 2
+layout_mode = 0
+offset_left = -2.0
+offset_top = 8.0
+offset_right = 158.0
+offset_bottom = 34.0
 text = "—"
 label_settings = SubResource("LabelSettings_title")
 horizontal_alignment = 1
 
 [node name="AvatarRect" type="TextureRect" parent="DetailArea/LeftCol" unique_id=938276760]
-layout_mode = 2
 custom_minimum_size = Vector2(128, 140)
+layout_mode = 0
+offset_left = 12.0
+offset_top = 38.0
+offset_right = 140.0
+offset_bottom = 178.0
 expand_mode = 1
 stretch_mode = 5
 
 [node name="AvatarStarsBox" type="HBoxContainer" parent="DetailArea/LeftCol" unique_id=938276801]
-layout_mode = 2
-alignment = 1
+layout_mode = 0
+offset_left = -4.0
+offset_top = 173.0
+offset_right = 156.0
+offset_bottom = 193.0
 theme_override_constants/separation = 3
+alignment = 1
 
 [node name="AvatarExpLbl" type="Label" parent="DetailArea/LeftCol" unique_id=938276802]
-layout_mode = 2
+layout_mode = 0
+offset_left = -5.0
+offset_top = 200.0
+offset_right = 155.0
+offset_bottom = 222.0
 text = "Lv.1"
 label_settings = SubResource("LabelSettings_green")
 horizontal_alignment = 1
 
 [node name="ExpBarContainer" type="Control" parent="DetailArea/LeftCol" unique_id=938276810]
-layout_mode = 2
-custom_minimum_size = Vector2(0, 16)
+anchors_preset = 0
+offset_top = 234.0
+offset_right = 160.0
+offset_bottom = 250.0
 
 [node name="AvatarExpBar" type="ProgressBar" parent="DetailArea/LeftCol/ExpBarContainer" unique_id=938276803]
 layout_mode = 0
-offset_right = 160.0
-offset_bottom = 16.0
-value = 0.0
+offset_left = -5.0
+offset_top = -6.0
+offset_right = 155.0
+offset_bottom = 10.0
 show_percentage = false
 
 [node name="ExpBarLbl" type="Label" parent="DetailArea/LeftCol/ExpBarContainer" unique_id=938276804]
 layout_mode = 0
-offset_right = 160.0
-offset_bottom = 16.0
+offset_left = -5.0
+offset_top = -6.0
+offset_right = 155.0
+offset_bottom = 12.0
 text = "0/0"
 label_settings = SubResource("LabelSettings_detail")
 horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="AttrBox" type="VBoxContainer" parent="DetailArea/LeftCol" unique_id=415995048]
-layout_mode = 2
+layout_mode = 0
+offset_left = -4.0
+offset_top = 258.0
+offset_right = 156.0
+offset_bottom = 396.0
 theme_override_constants/separation = 4
 
 [node name="AttrHp" type="RichTextLabel" parent="DetailArea/LeftCol/AttrBox" unique_id=857581670]
-layout_mode = 2
 custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
 bbcode_enabled = true
 text = "生命：—"
 fit_content = true
 scroll_active = false
 
 [node name="AttrAtk" type="RichTextLabel" parent="DetailArea/LeftCol/AttrBox" unique_id=91370472]
-layout_mode = 2
 custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
 bbcode_enabled = true
 text = "攻击：—"
 fit_content = true
 scroll_active = false
 
 [node name="AttrDef" type="RichTextLabel" parent="DetailArea/LeftCol/AttrBox" unique_id=1742139028]
-layout_mode = 2
 custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
 bbcode_enabled = true
 text = "防御：—"
 fit_content = true
 scroll_active = false
 
 [node name="AttrSpd" type="RichTextLabel" parent="DetailArea/LeftCol/AttrBox" unique_id=629480196]
-layout_mode = 2
 custom_minimum_size = Vector2(0, 22)
+layout_mode = 2
 bbcode_enabled = true
 text = "速度：—"
 fit_content = true
 scroll_active = false
 
 [node name="RightCol" type="VBoxContainer" parent="DetailArea" unique_id=749066501]
-layout_mode = 2
-size_flags_horizontal = 3
+layout_mode = 0
+offset_left = 260.0
+offset_right = 622.0
+offset_bottom = 396.0
 theme_override_constants/separation = 8
 
 [node name="EquipLbl" type="Label" parent="DetailArea/RightCol" unique_id=749066502]
@@ -162,9 +191,13 @@ label_settings = SubResource("LabelSettings_title")
 
 [node name="EquipGrid" type="GridContainer" parent="DetailArea/RightCol" unique_id=749066503]
 layout_mode = 2
-columns = 4
 theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
+columns = 4
+
+[node name="SkillSpacer" type="Control" parent="DetailArea/RightCol" unique_id=200000002]
+custom_minimum_size = Vector2(0, 4)
+layout_mode = 2
 
 [node name="SkillLbl" type="Label" parent="DetailArea/RightCol" unique_id=1068237476]
 layout_mode = 2
@@ -173,6 +206,25 @@ label_settings = SubResource("LabelSettings_title")
 
 [node name="SkillGrid" type="GridContainer" parent="DetailArea/RightCol" unique_id=1670286639]
 layout_mode = 2
-columns = 4
 theme_override_constants/h_separation = 6
 theme_override_constants/v_separation = 6
+columns = 4
+
+[node name="Divider2" type="Control" parent="." unique_id=1402076937]
+anchors_preset = 0
+offset_left = 430.0
+offset_top = 4.0
+offset_right = 436.0
+offset_bottom = 392.0
+script = ExtResource("2")
+color = Color(0.278, 0.208, 0.122, 0.55)
+
+[node name="EquipSkillDivider" type="Control" parent="." unique_id=200000001]
+anchors_preset = 0
+offset_left = 439.0
+offset_top = 188.0
+offset_right = 853.0
+offset_bottom = 194.0
+script = ExtResource("2")
+is_vertical = false
+color = Color(0.278, 0.208, 0.122, 0.55)

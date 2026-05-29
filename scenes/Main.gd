@@ -1413,6 +1413,7 @@ func _show_hero_detail(rid: String) -> void:
 		if rtl:
 			rtl.add_theme_font_override("normal_font", font)
 			rtl.add_theme_font_size_override("normal_font_size", 17)
+			rtl.add_theme_color_override("default_color", Color(0.22, 0.13, 0.06, 1))
 	if attr_hp:  attr_hp.text  = "生命：[color=#2ebf40]%d[/color]"  % attrs.hp
 	if attr_atk: attr_atk.text = "攻击：[color=#2ebf40]%d[/color]"  % attrs.atk
 	if attr_def: attr_def.text = "防御：[color=#2ebf40]%d[/color]"  % attrs.def
@@ -1430,7 +1431,7 @@ func _show_hero_detail(rid: String) -> void:
 				ss.border_width_bottom = 1
 				ss.border_color = Color(0.5, 0.4, 0.2, 0.5)
 				slot.add_theme_stylebox_override("panel", ss)
-				slot.custom_minimum_size = Vector2(64, 64)
+				slot.custom_minimum_size = Vector2(72, 72)
 				var lbl := Label.new()
 				lbl.text = "空"
 				lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -2019,7 +2020,14 @@ func _handle_click(pos: Vector2) -> void:
 		var entry = _team_slots[i]
 		var slot: Node2D = entry["slot"]
 		if pos.distance_to(slot.position) < 60.0:
-			_switch_role_action(i)
+			var rid: String = String(entry.get("role_id", ""))
+			_panel_key = "home"
+			_refresh_panel()
+			_reposition_panel("home")
+			_load_function_panel("home")
+			_set_panel_visible(true)
+			if not rid.is_empty():
+				_show_hero_detail(rid)
 			return
 
 	for key in _building_nodes:
