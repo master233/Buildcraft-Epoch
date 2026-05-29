@@ -19,5 +19,6 @@ asserts/image/role/role_tmp/
 asserts/image/role/role_video/
 asserts/image/monster/monster_tmp/
 asserts/image/ui/skill/skill_tmp/
+asserts/image/ui/equipment/equipment_tmp/
 
 *.bak

@@ -2146,27 +2146,37 @@ func _get_team_ids() -> Array:
 	return result
 
 # 从存档读取角色已学技能；找不到则回退到默认技能。槽位数 = 角色星数
+# 技能等级统一取全局 research_levels，角色身上只记录装备了哪些技能 id
 func _get_role_skills(rid: String) -> Array:
 	var star: int = 1
 	var skills_raw: Array = []
+	var research_levels: Dictionary = {}
 	var save_path := "user://savegame.json"
 	if FileAccess.file_exists(save_path):
 		var file := FileAccess.open(save_path, FileAccess.READ)
 		if file:
 			var parsed = JSON.parse_string(file.get_as_text())
 			file.close()
-			if parsed is Dictionary and parsed.has("roles") and parsed["roles"] is Dictionary:
-				var rs: Dictionary = parsed["roles"]
-				if rs.has(rid) and rs[rid] is Dictionary:
-					var rd: Dictionary = rs[rid]
-					star = int(rd.get("star", 1))
-					if rd.has("skills") and rd["skills"] is Array:
-						for s in rd["skills"]:
-							if s is Dictionary and int(s.get("id", 0)) > 0:
-								skills_raw.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
+			if parsed is Dictionary:
+				if parsed.has("research_levels") and parsed["research_levels"] is Dictionary:
+					for k in parsed["research_levels"]:
+						research_levels[int(k)] = int(parsed["research_levels"][k])
+				if parsed.has("roles") and parsed["roles"] is Dictionary:
+					var rs: Dictionary = parsed["roles"]
+					if rs.has(rid) and rs[rid] is Dictionary:
+						var rd: Dictionary = rs[rid]
+						star = int(rd.get("star", 1))
+						if rd.has("skills") and rd["skills"] is Array:
+							for s in rd["skills"]:
+								if s is Dictionary and int(s.get("id", 0)) > 0:
+									var sid: int = int(s.get("id", 0))
+									var lv: int = int(research_levels.get(sid, 1))
+									skills_raw.append({"id": sid, "level": lv})
 	if skills_raw.is_empty():
 		for s in DEFAULT_SKILLS:
-			skills_raw.append({"id": int(s.id), "level": int(s.level)})
+			var sid: int = int(s.id)
+			var lv: int = int(research_levels.get(sid, 1))
+			skills_raw.append({"id": sid, "level": lv})
 	var slots: int = max(1, star)
 	if skills_raw.size() > slots:
 		skills_raw.resize(slots)
