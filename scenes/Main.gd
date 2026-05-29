@@ -34,6 +34,7 @@ const PRODUCE_RATES := [3, 6, 12]
 const SAVE_PATH := "user://savegame.json"
 const LEVELS_TABLE_PATH := "res://asserts/table/levels.txt"
 const CHAT_TABLE_PATH := "res://asserts/table/chat.txt"
+const CHAT_KEYWORDS_PATH := "res://asserts/table/chat_keywords.txt"
 const FIRST_LEVEL_ID := 10101
 
 # 远征队伍由 _resolve_team_from_owned() 根据 owned 角色列表推导：
@@ -146,6 +147,7 @@ var _role_levels: Dictionary = {}  # rid:String → int
 var _role_stars: Dictionary = {}   # rid:String → int
 var _role_exps: Dictionary = {}    # rid:String → int
 var _role_skills: Dictionary = {}  # rid:String → Array[{id:int, level:int}]
+var _skill_table: Dictionary = {}  # {skill_id}_{level} → {name, desc, param1, param2, icon}
 const DEFAULT_SKILLS: Array = []
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
@@ -169,6 +171,12 @@ var _chat_messages: Array = []
 var _chat_index: int = 0
 var _chat_play_timer: float = 0.0
 var _chat_next_delay: float = 1.5
+
+# 聊天关键字回复
+var _chat_keywords: Dictionary = {}  # {keyword: [{speaker, content}, ...]}
+var _chat_keyword_queue: Array = []  # 当前正在播放的关键字回复队列
+var _chat_keyword_index: int = 0
+var _chat_keyword_playing: bool = false
 
 func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.wav")
@@ -221,6 +229,7 @@ func _setup() -> void:
 	_load_roles_table()
 	_load_role_attrs_table()
 	_load_level_up_table()
+	_load_skill_table()
 	_load_team_layout()
 	_load_role_lines()
 	_resolve_team_from_owned()
@@ -450,6 +459,34 @@ func _ensure_role_data(rid: String) -> void:
 		_role_skills[rid] = initial_skills
 	else:
 		_ensure_default_skill(rid)
+
+func _load_skill_table() -> void:
+	_skill_table.clear()
+	var text := _read_table_text("res://asserts/table/skill.txt")
+	if text.is_empty():
+		return
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 6:
+			continue
+		var sid_s: String = (parts[0] as String).strip_edges()
+		var lv_s: String = (parts[1] as String).strip_edges()
+		if not sid_s.is_valid_int() or not lv_s.is_valid_int():
+			continue
+		var key := "%s_%s" % [sid_s, lv_s]
+		var desc_raw: String = parts[3] if parts.size() > 3 else ""
+		var p1: String = parts[4] if parts.size() > 4 else "0"
+		var p2: String = parts[5] if parts.size() > 5 else "0"
+		var desc_bbcode := desc_raw.replace("{p1}", "[color=#2ebf40]" + p1 + "[/color]").replace("{p2}", "[color=#2ebf40]" + p2 + "[/color]")
+		_skill_table[key] = {
+			"name": parts[2] if parts.size() > 2 else "",
+			"desc": desc_bbcode,
+			"icon": parts[6] if parts.size() > 6 else "",
+		}
 
 func _load_all_skill_ids() -> Array:
 	var text := _read_table_text("res://asserts/table/skill.txt")
@@ -1201,43 +1238,6 @@ func _connect_hero_panel() -> void:
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var star_tex: Texture2D = load(STAR_ICON_PATH)
 
-	# 一次性连接升级/升星按钮（按钮随 panel 销毁，无需断开）
-	var lv_btn: Button = _hero_panel_get_node("DetailArea/RightCol/LevelRow/LevelUpBtn")
-	if lv_btn:
-		lv_btn.add_theme_font_override("font", font)
-		lv_btn.add_theme_font_size_override("font_size", 16)
-		lv_btn.pressed.connect(func() -> void:
-			var rid := _hero_panel_rid
-			if rid.is_empty():
-				return
-			var cur_lv: int = int(_role_levels.get(rid, 1))
-			var need_exp: int = int(_level_up_table.get(cur_lv, 0))
-			var cur_exp: int  = int(_role_exps.get(rid, 0))
-			if need_exp > 0 and cur_exp >= need_exp:
-				_role_levels[rid] = cur_lv + 1
-				_role_exps[rid]   = cur_exp - need_exp
-				_save_game()
-				_refresh_role_label_for(rid)
-				_show_hero_detail(rid)
-		)
-
-	var star_btn: Button = _hero_panel_get_node("DetailArea/RightCol/StarRow/StarUpBtn")
-	if star_btn:
-		star_btn.add_theme_font_override("font", font)
-		star_btn.add_theme_font_size_override("font_size", 16)
-		star_btn.pressed.connect(func() -> void:
-			var rid := _hero_panel_rid
-			if rid.is_empty():
-				return
-			var cur_star: int = int(_role_stars.get(rid, 1))
-			if cur_star < GlobalConfig.get_int("max_star_level", 6):
-				_role_stars[rid] = cur_star + 1
-				_save_game()
-				_refresh_role_label_for(rid)
-				_show_hero_detail(rid)
-				_hero_rebuild_list_card_stars(rid)
-		)
-
 	# 左侧列表：每个已拥有英雄一张卡片
 	var vbox := _hero_panel_get_node("HeroList/HeroListVBox")
 	if vbox == null:
@@ -1353,12 +1353,12 @@ func _show_hero_detail(rid: String) -> void:
 	var max_star: int = GlobalConfig.get_int("max_star_level", 6)
 
 	# 名字
-	var name_lbl: Label = _hero_panel_get_node("DetailArea/HeroNameLbl")
+	var name_lbl: Label = _hero_panel_get_node("DetailArea/LeftCol/HeroNameLbl")
 	if name_lbl:
 		name_lbl.text = String(rd.get("name", rid))
 
 	# 头像
-	var avatar_rect: TextureRect = _hero_panel_get_node("DetailArea/AvatarRect")
+	var avatar_rect: TextureRect = _hero_panel_get_node("DetailArea/LeftCol/AvatarRect")
 	if avatar_rect:
 		var role_idx: int = int(rid) - 10000
 		var ap := "res://asserts/image/role/role%d_avatar.png" % role_idx
@@ -1367,59 +1367,93 @@ func _show_hero_detail(rid: String) -> void:
 		else:
 			avatar_rect.texture = null
 
-	# 等级标签
-	var lv_lbl: Label = _hero_panel_get_node("DetailArea/RightCol/LevelRow/LevelLbl")
-	if lv_lbl:
-		lv_lbl.text = "等级: Lv.%d" % lv
-
-	# 升级按钮
-	var lv_btn: Button = _hero_panel_get_node("DetailArea/RightCol/LevelRow/LevelUpBtn")
-	if lv_btn:
-		lv_btn.disabled = (max_exp == 0 or exp < max_exp)
-
-	# 星级
-	var stars_box: HBoxContainer = _hero_panel_get_node("DetailArea/RightCol/StarRow/StarsBox")
-	if stars_box:
-		for c in stars_box.get_children():
-			stars_box.remove_child(c)
+	# 头像下方星级
+	var avatar_stars: HBoxContainer = _hero_panel_get_node("DetailArea/LeftCol/AvatarStarsBox")
+	if avatar_stars:
+		for c in avatar_stars.get_children():
+			avatar_stars.remove_child(c)
 			c.queue_free()
 		var star_tex: Texture2D = load(STAR_ICON_PATH)
 		for _s in maxi(star, 0):
 			var sr := TextureRect.new()
 			sr.texture = star_tex
-			sr.custom_minimum_size = Vector2(18, 18)
+			sr.custom_minimum_size = Vector2(22, 22)
 			sr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			sr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			stars_box.add_child(sr)
+			avatar_stars.add_child(sr)
 
-	var star_btn: Button = _hero_panel_get_node("DetailArea/RightCol/StarRow/StarUpBtn")
-	if star_btn:
-		star_btn.disabled = (star >= max_star)
+	# 星星下方等级标签
+	var exp_lbl: Label = _hero_panel_get_node("DetailArea/LeftCol/AvatarExpLbl")
+	if exp_lbl:
+		exp_lbl.text = "Lv.%d" % lv
+	# 经验条
+	var exp_bar: ProgressBar = _hero_panel_get_node("DetailArea/LeftCol/ExpBarContainer/AvatarExpBar")
+	if exp_bar:
+		if max_exp > 0:
+			exp_bar.max_value = max_exp
+			exp_bar.value = exp
+		else:
+			exp_bar.max_value = 1
+			exp_bar.value = 1
+	# 经验条内数值
+	var exp_bar_lbl: Label = _hero_panel_get_node("DetailArea/LeftCol/ExpBarContainer/ExpBarLbl")
+	if exp_bar_lbl:
+		if max_exp > 0:
+			exp_bar_lbl.text = "%d/%d" % [exp, max_exp]
+		else:
+			exp_bar_lbl.text = "MAX"
 
-	# 基础属性
+	# 基础属性（属性名默认色，数值绿色）
 	var attrs := _hero_calc_attrs(rid)
-	var attr_hp: Label  = _hero_panel_get_node("DetailArea/AttrBox/AttrHp")
-	var attr_atk: Label = _hero_panel_get_node("DetailArea/AttrBox/AttrAtk")
-	var attr_def: Label = _hero_panel_get_node("DetailArea/AttrBox/AttrDef")
-	var attr_spd: Label = _hero_panel_get_node("DetailArea/AttrBox/AttrSpd")
-	if attr_hp:  attr_hp.text  = "生命：%d"  % attrs.hp
-	if attr_atk: attr_atk.text = "攻击：%d"  % attrs.atk
-	if attr_def: attr_def.text = "防御：%d"  % attrs.def
-	if attr_spd: attr_spd.text = "速度：%d"  % attrs.spd
+	var attr_hp: RichTextLabel  = _hero_panel_get_node("DetailArea/LeftCol/AttrBox/AttrHp")
+	var attr_atk: RichTextLabel = _hero_panel_get_node("DetailArea/LeftCol/AttrBox/AttrAtk")
+	var attr_def: RichTextLabel = _hero_panel_get_node("DetailArea/LeftCol/AttrBox/AttrDef")
+	var attr_spd: RichTextLabel = _hero_panel_get_node("DetailArea/LeftCol/AttrBox/AttrSpd")
+	for rtl in [attr_hp, attr_atk, attr_def, attr_spd]:
+		if rtl:
+			rtl.add_theme_font_override("normal_font", font)
+			rtl.add_theme_font_size_override("normal_font_size", 17)
+	if attr_hp:  attr_hp.text  = "生命：[color=#2ebf40]%d[/color]"  % attrs.hp
+	if attr_atk: attr_atk.text = "攻击：[color=#2ebf40]%d[/color]"  % attrs.atk
+	if attr_def: attr_def.text = "防御：[color=#2ebf40]%d[/color]"  % attrs.def
+	if attr_spd: attr_spd.text = "速度：[color=#2ebf40]%d[/color]"  % attrs.spd
+
+	# 装备占位
+	var equip_grid: GridContainer = _hero_panel_get_node("DetailArea/RightCol/EquipGrid")
+	if equip_grid:
+		if equip_grid.get_child_count() == 0:
+			for i in 8:
+				var slot := PanelContainer.new()
+				var ss := StyleBoxFlat.new()
+				ss.bg_color = Color(0.20, 0.15, 0.08, 0.35)
+				ss.set_corner_radius_all(6)
+				ss.border_width_bottom = 1
+				ss.border_color = Color(0.5, 0.4, 0.2, 0.5)
+				slot.add_theme_stylebox_override("panel", ss)
+				slot.custom_minimum_size = Vector2(64, 64)
+				var lbl := Label.new()
+				lbl.text = "空"
+				lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+				lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+				lbl.label_settings = _make_hero_label_settings(font, 13)
+				slot.add_child(lbl)
+				equip_grid.add_child(slot)
 
 	# 技能槽
-	var skill_row: HBoxContainer = _hero_panel_get_node("DetailArea/RightCol/SkillRow")
+	var skill_row: GridContainer = _hero_panel_get_node("DetailArea/RightCol/SkillGrid")
 	if skill_row:
 		for c in skill_row.get_children():
 			skill_row.remove_child(c)
 			c.queue_free()
 		var skills: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
-		var max_skill_slots: int = star
-		for i in max_skill_slots:
+		var total_slots: int = 8
+		for i in total_slots:
 			var slot_panel := PanelContainer.new()
 			var slot_style := StyleBoxFlat.new()
 			slot_style.set_corner_radius_all(6)
-			slot_panel.custom_minimum_size = Vector2(56, 56)
+			slot_panel.custom_minimum_size = Vector2(72, 72)
 			if i < skills.size():
 				var sk = skills[i]
 				var sid: int = int(sk.get("id", 0))
@@ -1429,10 +1463,9 @@ func _show_hero_detail(rid: String) -> void:
 				icon_vbox.add_theme_constant_override("separation", 2)
 				slot_panel.add_child(icon_vbox)
 				var icon_rect := TextureRect.new()
-				icon_rect.custom_minimum_size = Vector2(40, 40)
+				icon_rect.custom_minimum_size = Vector2(56, 56)
 				icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 				icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-				# 尝试加载图标
 				var icon_path := _get_skill_icon_path(rid, sid)
 				if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
 					icon_rect.texture = load(icon_path)
@@ -1442,20 +1475,114 @@ func _show_hero_detail(rid: String) -> void:
 				lv_badge.label_settings = _make_hero_label_settings(font, 16)
 				lv_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				icon_vbox.add_child(lv_badge)
-			else:
+				var skill_btn := Button.new()
+				skill_btn.flat = true
+				skill_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+				skill_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+				slot_panel.add_child(skill_btn)
+				var captured_sid := sid
+				var captured_slv := slv
+				skill_btn.pressed.connect(func(): _show_skill_tip(captured_sid, captured_slv))
+			elif i < star:
 				slot_style.bg_color = Color(0.20, 0.15, 0.08, 0.35)
 				slot_style.border_width_bottom = 1
 				slot_style.border_color = Color(0.5, 0.4, 0.2, 0.5)
 				slot_panel.add_theme_stylebox_override("panel", slot_style)
+				var empty_lbl := Label.new()
+				empty_lbl.text = "空"
+				empty_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				empty_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+				empty_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				empty_lbl.size_flags_vertical   = Control.SIZE_EXPAND_FILL
+				empty_lbl.label_settings = _make_hero_label_settings(font, 13)
+				slot_panel.add_child(empty_lbl)
+			else:
+				slot_style.bg_color = Color(0.12, 0.10, 0.06, 0.3)
+				slot_style.border_width_bottom = 1
+				slot_style.border_color = Color(0.35, 0.3, 0.15, 0.4)
+				slot_panel.add_theme_stylebox_override("panel", slot_style)
 				var lock_lbl := Label.new()
-				lock_lbl.text = "未解锁"
+				lock_lbl.text = "%d星解锁" % (i + 1)
 				lock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				lock_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 				lock_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 				lock_lbl.size_flags_vertical   = Control.SIZE_EXPAND_FILL
-				lock_lbl.label_settings = _make_hero_label_settings(font, 13)
+				lock_lbl.label_settings = _make_hero_label_settings(font, 12)
+				lock_lbl.modulate = Color(1, 1, 1, 0.5)
 				slot_panel.add_child(lock_lbl)
 			skill_row.add_child(slot_panel)
+
+func _show_skill_tip(sid: int, slv: int) -> void:
+	var key := "%d_%d" % [sid, slv]
+	var info: Dictionary = _skill_table.get(key, {})
+	var sk_name: String = info.get("name", "未知技能")
+	var sk_desc: String = info.get("desc", "")
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.layer = 128
+	add_child(canvas_layer)
+
+	var overlay := ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.5)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas_layer.add_child(overlay)
+
+	var panel := Panel.new()
+	var panel_w := 320.0
+	var panel_h := 180.0
+	panel.position = Vector2((1280 - panel_w) / 2.0, (720 - panel_h) / 2.0)
+	panel.size = Vector2(panel_w, panel_h)
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.12, 0.08, 0.04, 0.95)
+	ps.set_corner_radius_all(10)
+	ps.border_width_bottom = 2
+	ps.border_width_top = 2
+	ps.border_width_left = 2
+	ps.border_width_right = 2
+	ps.border_color = Color(0.85, 0.65, 0.2, 0.9)
+	panel.add_theme_stylebox_override("panel", ps)
+	overlay.add_child(panel)
+
+	var title_lbl := Label.new()
+	title_lbl.text = "%s  Lv.%d" % [sk_name, slv]
+	title_lbl.position = Vector2(16, 16)
+	title_lbl.size = Vector2(panel_w - 32, 30)
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var title_ls := LabelSettings.new()
+	title_ls.font = font
+	title_ls.font_size = 22
+	title_ls.font_color = Color(1, 0.85, 0.3, 1)
+	title_ls.outline_size = 2
+	title_ls.outline_color = Color(0, 0, 0, 0.8)
+	title_lbl.label_settings = title_ls
+	panel.add_child(title_lbl)
+
+	var desc_rtl := RichTextLabel.new()
+	desc_rtl.bbcode_enabled = true
+	desc_rtl.text = sk_desc
+	desc_rtl.position = Vector2(16, 56)
+	desc_rtl.size = Vector2(panel_w - 32, 80)
+	desc_rtl.fit_content = true
+	desc_rtl.scroll_active = false
+	desc_rtl.add_theme_font_override("normal_font", font)
+	desc_rtl.add_theme_font_size_override("normal_font_size", 18)
+	desc_rtl.add_theme_color_override("default_color", Color(0.95, 0.92, 0.85, 1))
+	panel.add_child(desc_rtl)
+
+	var close_btn := Button.new()
+	close_btn.text = "确定"
+	close_btn.position = Vector2((panel_w - 80) / 2.0, panel_h - 44)
+	close_btn.size = Vector2(80, 32)
+	close_btn.add_theme_font_override("font", font)
+	close_btn.add_theme_font_size_override("font_size", 18)
+	panel.add_child(close_btn)
+	close_btn.pressed.connect(func(): canvas_layer.queue_free())
+
+	overlay.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			canvas_layer.queue_free()
+	)
 
 func _get_skill_icon_path(rid: String, sid: int) -> String:
 	# default skill: per-role icon
@@ -2689,6 +2816,7 @@ func _spawn_chat_box() -> void:
 
 	# 加载聊天表 + 回放历史（保留索引前 5 条）
 	_load_chat_table()
+	_load_chat_keywords()
 	if _chat_index > 0 and not _chat_messages.is_empty():
 		var start_i: int = max(0, _chat_index - 5)
 		var end_i: int = min(_chat_index, _chat_messages.size())
@@ -2727,6 +2855,7 @@ func _chat_send_current() -> void:
 		return
 	_chat_input.text = ""
 	_chat_add_message("玩家", t)
+	_check_chat_keyword(t)
 
 func _chat_add_message(speaker: String, content: String) -> void:
 	if _chat_msg_box == null:
@@ -2787,6 +2916,36 @@ func _load_chat_table() -> void:
 		_chat_messages.append({"speaker": parts[1], "content": parts[2]})
 	f.close()
 
+func _load_chat_keywords() -> void:
+	_chat_keywords.clear()
+	var f := FileAccess.open(CHAT_KEYWORDS_PATH, FileAccess.READ)
+	if f == null:
+		return
+	while not f.eof_reached():
+		var ln := f.get_line()
+		if ln.is_empty():
+			continue
+		if ln.begins_with("#") or ln.begins_with("keyword\t"):
+			continue
+		var parts := ln.split("\t")
+		if parts.size() < 3:
+			continue
+		var kw: String = parts[0]
+		if not _chat_keywords.has(kw):
+			_chat_keywords[kw] = []
+		_chat_keywords[kw].append({"speaker": parts[1], "content": parts[2]})
+	f.close()
+
+func _check_chat_keyword(text: String) -> void:
+	for kw in _chat_keywords.keys():
+		if text.contains(kw):
+			_chat_keyword_queue = _chat_keywords[kw].duplicate()
+			_chat_keyword_index = 0
+			_chat_keyword_playing = true
+			_chat_play_timer = 0.0
+			_chat_next_delay = randf_range(0.5, 2.0)
+			break
+
 func _tick_chat(delta: float) -> void:
 	if _chat_messages.is_empty():
 		return
@@ -2797,6 +2956,16 @@ func _tick_chat(delta: float) -> void:
 		return
 	_chat_play_timer = 0.0
 	_chat_next_delay = randf_range(0.5, 3.0)
+	if _chat_keyword_playing:
+		if _chat_keyword_index < _chat_keyword_queue.size():
+			var m: Dictionary = _chat_keyword_queue[_chat_keyword_index]
+			_chat_add_message(m["speaker"], m["content"])
+			_chat_keyword_index += 1
+		else:
+			_chat_keyword_playing = false
+			_chat_keyword_queue.clear()
+			_chat_keyword_index = 0
+		return
 	var m: Dictionary = _chat_messages[_chat_index]
 	_chat_add_message(m["speaker"], m["content"])
 	_chat_index = (_chat_index + 1) % _chat_messages.size()
