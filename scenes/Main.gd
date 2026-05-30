@@ -8,12 +8,12 @@ extends Node2D
 @onready var _panel_dim: ColorRect = $UI/PanelDim
 @onready var _panel_bg: TextureRect = $UI/BuildingPanel
 @onready var _panel_name_lbl: Label = $UI/BuildingPanel/PanelNameLbl
-@onready var _panel_info_lbl: Label = $UI/BuildingPanel/PanelInfoLbl
+@onready var _panel_info_lbl: RichTextLabel = $UI/BuildingPanel/PanelInfoLbl
 @onready var _upgrade_btn: TextureRect = $UI/BuildingPanel/UpgradeBtn
 @onready var _upgrade_lbl: Label = $UI/BuildingPanel/UpgradeLbl
 @warning_ignore("unused_private_class_variable")
 @onready var _close_btn: TextureRect = $UI/BuildingPanel/CloseBtn
-@onready var _panel_extra_lbl: Label = $UI/BuildingPanel/PanelExtraLbl if $UI/BuildingPanel.has_node("PanelExtraLbl") else null
+@onready var _panel_extra_lbl: RichTextLabel = $UI/BuildingPanel/PanelExtraLbl if $UI/BuildingPanel.has_node("PanelExtraLbl") else null
 @warning_ignore("unused_private_class_variable")
 @onready var _panel_info_bg: ColorRect = $UI/BuildingPanel/PanelInfoBg if $UI/BuildingPanel.has_node("PanelInfoBg") else null
 @warning_ignore("unused_private_class_variable")
@@ -61,49 +61,37 @@ const BUILDINGS := {
 		"ref_size": Vector2(350, 324),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/home1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(640, 375), "display": "主基地", "y_adj": 25,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
-		"produces": "",
-		"desc": "村庄的核心，限制其他建筑可达的最高等级。"
+		"produces": "gold",
 	},
 	"tower": {
 		"ref_size": Vector2(350, 310),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tower1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
-		"desc": "远眺地平线，规划下一次远征与探索。"
 	},
 	"lumberyard": {
 		"ref_size": Vector2(288, 324),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/lumberyard1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "wood",
-		"desc": "持续产出木材，等级越高产能越强。"
 	},
 	"mine": {
 		"ref_size": Vector2(288, 313),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/mine1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "ore",
-		"desc": "持续开采矿石，等级越高产能越强。"
 	},
 	"tavern": {
 		"ref_size": Vector2(350, 313),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tavern1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
-		"desc": "招募旅途中遇见的英雄与冒险者。"
 	},
 	"research": {
 		"ref_size": Vector2(288, 310),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/research1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
-		"desc": "钻研未知，解锁更强力的科技。"
 	},
 }
 
@@ -154,6 +142,7 @@ var _skill_upgrade_cost: Dictionary = {}  # level(int) → cost(int)
 var _suit_table: Array = []  # 每个套装仅首条，用于 grid 显示
 var _suit_details: Dictionary = {}  # suit_id → [{require_count, effect_desc}]
 const SUIT_TABLE_PATH := "res://asserts/table/suit.txt"
+var _building_configs: Dictionary = {}  # key → [{level, wood_cost, ore_cost, desc}]
 const DEFAULT_SKILLS: Array = []
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
@@ -232,6 +221,7 @@ func _setup() -> void:
 	add_child(dust)
 
 	_place_buildings()
+	_load_building_configs()
 	_load_roles_table()
 	_load_role_attrs_table()
 	_load_level_up_table()
@@ -542,6 +532,36 @@ func _load_suit_table() -> void:
 		if not _suit_details.has(suit_id):
 			_suit_details[suit_id] = []
 		_suit_details[suit_id].append({"require_count": entry["require_count"], "effect_desc": entry["effect_desc"]})
+
+func _load_building_configs() -> void:
+	_building_configs.clear()
+	for key in BUILDINGS.keys():
+		var path := "res://asserts/table/build_%s.txt" % key
+		var text := _read_table_text(path)
+		if text.is_empty():
+			continue
+		var raw := text.split("\n", false)
+		if raw.size() < 1:
+			continue
+		var headers := (raw[0] as String).strip_edges().split("\t")
+		var levels: Array = []
+		for i in range(1, raw.size()):
+			var line: String = (raw[i] as String).strip_edges()
+			if line.is_empty() or line.begins_with("#"):
+				continue
+			var parts := line.split("\t")
+			if parts.size() < 4:
+				continue
+			var entry := {}
+			for j in min(parts.size(), headers.size()):
+				var h: String = (headers[j] as String).strip_edges()
+				var v: String = (parts[j] as String).strip_edges()
+				if h in ["level", "wood_cost", "ore_cost", "gold_cost", "skill_max_lv"]:
+					entry[h] = int(v)
+				else:
+					entry[h] = v
+			levels.append(entry)
+		_building_configs[key] = levels
 
 func _load_all_skill_ids() -> Array:
 	var text := _read_table_text("res://asserts/table/skill.txt")
@@ -1779,6 +1799,11 @@ func _show_suit_tip(suit_id: String, suit_name: String, suit_icon: String) -> vo
 			canvas_layer.queue_free()
 	)
 
+func _get_skill_max_level() -> int:
+	var research_lv: int = _building_nodes["research"]["level"] if _building_nodes.has("research") else 1
+	var lv_data: Dictionary = _get_building_level_data("research", research_lv)
+	return int(lv_data.get("skill_max_lv", 5))
+
 func _show_skill_tip(sid: int, slv: int) -> void:
 	var key := "%d_%d" % [sid, slv]
 	var info: Dictionary = _skill_table.get(key, {})
@@ -1787,7 +1812,8 @@ func _show_skill_tip(sid: int, slv: int) -> void:
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var next_lv: int = slv + 1
 	var upgrade_cost: int = int(_skill_upgrade_cost.get(next_lv, 0))
-	var max_lv: bool = not _skill_table.has("%d_%d" % [sid, next_lv])
+	var skill_cap: int = _get_skill_max_level()
+	var max_lv: bool = not _skill_table.has("%d_%d" % [sid, next_lv]) or slv >= skill_cap
 
 	var canvas_layer := CanvasLayer.new()
 	canvas_layer.layer = 128
@@ -1843,7 +1869,10 @@ func _show_skill_tip(sid: int, slv: int) -> void:
 	# 升级费用
 	var cost_lbl := Label.new()
 	if max_lv:
-		cost_lbl.text = "已满级"
+		if slv >= skill_cap:
+			cost_lbl.text = "已达研究院等级上限 (Lv.%d)" % skill_cap
+		else:
+			cost_lbl.text = "已满级"
 	else:
 		cost_lbl.text = "升级费用：%d 金币" % upgrade_cost
 	cost_lbl.position = Vector2(16, 140)
@@ -1882,7 +1911,10 @@ func _show_skill_tip(sid: int, slv: int) -> void:
 	upgrade_btn.pressed.connect(func():
 		var cur_lv: int = int(_research_levels.get(captured_sid, 1))
 		var nxt: int = cur_lv + 1
+		var cap: int = _get_skill_max_level()
 		var cost: int = int(_skill_upgrade_cost.get(nxt, 0))
+		if cur_lv >= cap:
+			return
 		if _skill_table.has("%d_%d" % [captured_sid, nxt]) and _gold >= cost:
 			_gold -= cost
 			_research_levels[captured_sid] = nxt
@@ -2399,6 +2431,13 @@ func _reposition_panel(_key: String) -> void:
 	_upgrade_rect = Rect2(360, 93, 560, 150)
 	_close_rect   = Rect2(1090, 10, 85, 80)
 
+func _get_building_level_data(key: String, lv: int) -> Dictionary:
+	var levels: Array = _building_configs.get(key, [])
+	for entry in levels:
+		if int(entry["level"]) == lv:
+			return entry
+	return {}
+
 func _refresh_panel() -> void:
 	if _panel_key == "":
 		return
@@ -2406,29 +2445,46 @@ func _refresh_panel() -> void:
 	var cfg = BUILDINGS[_panel_key]
 	var lv: int = state["level"]
 	_panel_name_lbl.text = "%s  Lv.%d" % [cfg["display"], lv]
-	var desc: String = cfg.get("desc", "")
+	var _font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	_panel_info_lbl.add_theme_font_override("normal_font", _font)
+	_panel_info_lbl.add_theme_font_size_override("normal_font_size", 20)
+	_panel_info_lbl.add_theme_color_override("default_color", Color(0.22, 0.13, 0.06, 1))
+	if _panel_extra_lbl and is_instance_valid(_panel_extra_lbl):
+		_panel_extra_lbl.add_theme_font_override("normal_font", _font)
+		_panel_extra_lbl.add_theme_font_size_override("normal_font_size", 20)
+		_panel_extra_lbl.add_theme_color_override("default_color", Color(0.22, 0.13, 0.06, 1))
+	var lv_data: Dictionary = _get_building_level_data(_panel_key, lv)
+	var desc: String = lv_data.get("desc", "")
+	if _panel_key == "research":
+		var skill_cap: int = int(lv_data.get("skill_max_lv", 5))
+		desc += "\n当前技能最大等级：[color=#2ebf40]%d[/color]" % skill_cap
 	var produces: String = cfg.get("produces", "")
-	var prod_info := ""
 	if produces != "":
-		var res_name := "木材" if produces == "wood" else "矿石"
-		prod_info = "当前产量：%d %s / %d 秒" % [PRODUCE_RATES[lv - 1], res_name, int(PRODUCE_INTERVAL)]
+		var res_name := "金币" if produces == "gold" else ("木材" if produces == "wood" else "矿石")
+		desc += "\n当前产量：[color=#2ebf40]%d[/color] %s / %d 秒" % [PRODUCE_RATES[lv - 1], res_name, int(PRODUCE_INTERVAL)]
 		if lv < 3:
-			prod_info += "\n下一级产量：%d %s / %d 秒" % [PRODUCE_RATES[lv], res_name, int(PRODUCE_INTERVAL)]
+			desc += "\n下一级产量：[color=#2ebf40]%d[/color] %s / %d 秒" % [PRODUCE_RATES[lv], res_name, int(PRODUCE_INTERVAL)]
 	_panel_info_lbl.text = desc
 	var extra_text := ""
 	if lv >= 3:
-		extra_text = prod_info + ("\n\n" if prod_info != "" else "") + "已达最高等级"
+		extra_text = "已达最高等级"
 		_upgrade_disabled = true
 	else:
-		var cost = cfg["upgrade_cost"][lv - 1]
+		var next_data: Dictionary = _get_building_level_data(_panel_key, lv + 1)
+		var wood_cost: int = int(next_data.get("wood_cost", 0))
+		var ore_cost: int = int(next_data.get("ore_cost", 0))
 		var home_lv: int = _building_nodes["home"]["level"]
 		if _panel_key != "home" and lv >= home_lv:
-			extra_text = prod_info + ("\n\n" if prod_info != "" else "") + "需先升级主基地至 Lv.%d" % (lv + 1)
+			extra_text = "需先升级主基地至 Lv.%d" % (lv + 1)
 			_upgrade_disabled = true
 		else:
-			var ok: bool = _wood >= int(cost["wood"]) and _ore >= int(cost["ore"])
-			extra_text = prod_info + ("\n\n" if prod_info != "" else "") + "升级消耗：木材 %d  矿石 %d" % [int(cost["wood"]), int(cost["ore"])]
-			_upgrade_disabled = not ok
+			var gold_cost: int = int(next_data.get("gold_cost", 0))
+			var wood_color: String = "#2ebf40" if _wood >= wood_cost else "#e6331a"
+			var ore_color: String = "#2ebf40" if _ore >= ore_cost else "#e6331a"
+			var gold_color: String = "#2ebf40" if _gold >= gold_cost else "#e6331a"
+			var pad := "[color=#00000000]升级消耗：[/color]"
+			extra_text = "升级消耗：木材 [color=%s]%d[/color]\n%s矿石 [color=%s]%d[/color]\n%s金币 [color=%s]%d[/color]" % [wood_color, wood_cost, pad, ore_color, ore_cost, pad, gold_color, gold_cost]
+			_upgrade_disabled = not (_wood >= wood_cost and _ore >= ore_cost and _gold >= gold_cost)
 	if _panel_extra_lbl and is_instance_valid(_panel_extra_lbl):
 		_panel_extra_lbl.text = extra_text
 	var a: float = _upgrade_btn.modulate.a
@@ -2445,11 +2501,15 @@ func _on_upgrade_pressed() -> void:
 		return
 	if _panel_key != "home" and lv >= _building_nodes["home"]["level"]:
 		return
-	var cost = BUILDINGS[_panel_key]["upgrade_cost"][lv - 1]
-	if _wood < int(cost["wood"]) or _ore < int(cost["ore"]):
+	var next_data: Dictionary = _get_building_level_data(_panel_key, lv + 1)
+	var wood_cost: int = int(next_data.get("wood_cost", 0))
+	var ore_cost: int = int(next_data.get("ore_cost", 0))
+	var gold_cost: int = int(next_data.get("gold_cost", 0))
+	if _wood < wood_cost or _ore < ore_cost or _gold < gold_cost:
 		return
-	_wood -= int(cost["wood"])
-	_ore -= int(cost["ore"])
+	_wood -= wood_cost
+	_ore -= ore_cost
+	_gold -= gold_cost
 	upgrade_building(_panel_key)
 	_refresh_hud()
 	_refresh_panel()
@@ -2498,17 +2558,23 @@ func _apply_anim_sheet(key: String, lv: int) -> void:
 	anim_sprite.play("idle")
 
 func _tick_production() -> void:
-	for key in ["lumberyard", "mine"]:
+	for key in ["lumberyard", "mine", "home"]:
 		if not _building_nodes.has(key):
+			continue
+		var produces: String = BUILDINGS[key]["produces"]
+		if produces.is_empty():
 			continue
 		var lv: int = _building_nodes[key]["level"]
 		var amount: int = PRODUCE_RATES[lv - 1]
-		if BUILDINGS[key]["produces"] == "wood":
+		if produces == "wood":
 			_wood += amount
 			_spawn_float_text(key, amount, "wood")
-		else:
+		elif produces == "ore":
 			_ore += amount
 			_spawn_float_text(key, amount, "ore")
+		elif produces == "gold":
+			_gold += amount
+			_spawn_float_text(key, amount, "gold")
 	_refresh_hud()
 	_save_game()
 
@@ -2526,7 +2592,12 @@ func _spawn_float_text(key: String, amount: int, resource_type: String) -> void:
 	var ls := LabelSettings.new()
 	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	ls.font_size = 24
-	ls.font_color = Color(1.0, 0.88, 0.3) if resource_type == "wood" else Color(0.55, 0.85, 1.0)
+	if resource_type == "wood":
+		ls.font_color = Color(0.18, 0.75, 0.25)
+	elif resource_type == "ore":
+		ls.font_color = Color(0.1, 0.1, 0.1)
+	else:
+		ls.font_color = Color(1.0, 0.82, 0.2)
 	ls.outline_size = 3
 	ls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
 	lbl.label_settings = ls

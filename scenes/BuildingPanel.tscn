@@ -46,16 +46,16 @@ label_settings = SubResource("LabelSettings_name")
 horizontal_alignment = 1
 vertical_alignment = 1
 
-[node name="PanelInfoLbl" type="Label" parent="." unique_id=1286159422]
+[node name="PanelInfoLbl" type="RichTextLabel" parent="." unique_id=1286159422]
 layout_mode = 0
 offset_left = 230.0
 offset_top = 120.0
 offset_right = 550.0
 offset_bottom = 210.0
+bbcode_enabled = true
 text = "建筑描述"
-label_settings = SubResource("LabelSettings_info")
-vertical_alignment = 1
-autowrap_mode = 2
+fit_content = true
+scroll_active = false
 
 [node name="UpgradeBtn" type="TextureRect" parent="." unique_id=1759783224]
 layout_mode = 0
@@ -96,13 +96,12 @@ offset_top = 242.0
 offset_right = 1067.0
 offset_bottom = 638.0
 
-[node name="PanelExtraLbl" type="Label" parent="." unique_id=1016490544]
+[node name="PanelExtraLbl" type="RichTextLabel" parent="." unique_id=1016490544]
 layout_mode = 0
 offset_left = 730.0
 offset_top = 120.0
 offset_right = 1050.0
 offset_bottom = 210.0
-label_settings = SubResource("LabelSettings_info")
-horizontal_alignment = 2
-vertical_alignment = 1
-autowrap_mode = 2
+bbcode_enabled = true
+fit_content = true
+scroll_active = false
