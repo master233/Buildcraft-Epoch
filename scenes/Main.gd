@@ -24,6 +24,7 @@ const BUILDING_FUNCTION_SCENES := {
 	"tower": "res://scenes/building_panels/TowerPanel.tscn",
 	"home":  "res://scenes/building_panels/HeroPanel.tscn",
 	"research": "res://scenes/building_panels/ResearchPanel.tscn",
+	"tavern": "res://scenes/building_panels/TavernPanel.tscn",
 }
 
 var _function_panel_node: Node = null
@@ -177,6 +178,15 @@ var _chat_next_delay: float = 1.5
 
 # 聊天关键字回复
 var _chat_keywords: Dictionary = {}  # {keyword: [{speaker, content}, ...]}
+
+# 酒馆招募
+const TAVERN_RECRUIT_COST := 50
+const TAVERN_REFRESH_COST := 100
+const TAVERN_AUTO_REFRESH_INTERVAL := 3600.0
+const TAVERN_MAX_FREE_REFRESHES := 3
+var _tavern_pool: Array = []
+var _tavern_auto_timer: float = 0.0
+var _tavern_free_refreshes: int = 3
 var _chat_keyword_queue: Array = []  # 当前正在播放的关键字回复队列
 var _chat_keyword_index: int = 0
 var _chat_keyword_playing: bool = false
@@ -655,6 +665,7 @@ func _process(delta: float) -> void:
 		_speech_timer = 0.0
 		_tick_speech()
 	_tick_chat(delta)
+	_tick_tavern_auto_refresh(delta)
 	if _gm_style != null:
 		var hov := _gm_rect.has_point(get_viewport().get_mouse_position())
 		if hov != _gm_hovering:
@@ -1178,6 +1189,8 @@ func _load_function_panel(key: String) -> void:
 		_connect_hero_panel()
 	elif key == "research":
 		_connect_research_panel()
+	elif key == "tavern":
+		_connect_tavern_panel()
 
 func _unload_function_panel() -> void:
 	if _function_panel_node and is_instance_valid(_function_panel_node):
@@ -1804,6 +1817,171 @@ func _make_hero_label_settings(font: Font, size: int) -> LabelSettings:
 	ls.outline_color = Color(1, 0.96, 0.85, 0.4)
 	return ls
 
+# ─── 酒馆面板 ────────────────────────────────────────────────────────────────
+
+func _tavern_all_hero_ids() -> Array:
+	var ids := []
+	for rid in _roles.keys():
+		if int(rid) >= 10001 and int(rid) <= 19999:
+			ids.append(rid)
+	return ids
+
+func _tavern_roll_pool() -> void:
+	var tavern_lv: int = _building_nodes.get("tavern", {}).get("level", 1)
+	var available := _tavern_all_hero_ids()
+	available.shuffle()
+	_tavern_pool = []
+	for i in 3:
+		if i < tavern_lv and i < available.size():
+			_tavern_pool.append(available[i])
+		else:
+			_tavern_pool.append("")
+
+func _tavern_panel_node(path: String) -> Node:
+	return _function_panel_node.get_node_or_null(path) if _function_panel_node and is_instance_valid(_function_panel_node) else null
+
+func _connect_tavern_panel() -> void:
+	if _tavern_pool.is_empty():
+		_tavern_roll_pool()
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var coin_tex: Texture2D = load("res://asserts/image/ui/icon_coin.png") if ResourceLoader.exists("res://asserts/image/ui/icon_coin.png") else null
+	var tavern_lv: int = _building_nodes.get("tavern", {}).get("level", 1)
+
+	for i in 3:
+		var card: Panel = _tavern_panel_node("CardRow/Card%d" % i)
+		if card == null:
+			continue
+		var is_unlocked := tavern_lv >= i + 1
+		var overlay: Panel = _tavern_panel_node("CardRow/Card%d/LockedOverlay%d" % [i, i])
+		if overlay:
+			overlay.visible = not is_unlocked
+			var lbl: Label = overlay.get_node_or_null("LockedLbl%d" % i)
+			if lbl: lbl.label_settings = _make_hero_label_settings(font, 22)
+		# 잠금 시 영웅 콘텐츠 숨기기 (LvLbl은 이미 삭제됨)
+		for ctrl_name in ["AvatarRect%d" % i, "NameLbl%d" % i,
+				"CostIcon%d" % i, "CostLbl%d" % i, "RecruitBtn%d" % i]:
+			var ctrl := _tavern_panel_node("CardRow/Card%d/%s" % [i, ctrl_name])
+			if ctrl: ctrl.visible = is_unlocked
+		if not is_unlocked:
+			continue
+
+		var rid: String = _tavern_pool[i] if i < _tavern_pool.size() else ""
+		var avatar_rect: TextureRect  = _tavern_panel_node("CardRow/Card%d/AvatarRect%d" % [i, i])
+		var name_lbl: Label           = _tavern_panel_node("CardRow/Card%d/NameLbl%d" % [i, i])
+		var cost_icon: TextureRect    = _tavern_panel_node("CardRow/Card%d/CostIcon%d" % [i, i])
+		var cost_lbl: Label           = _tavern_panel_node("CardRow/Card%d/CostLbl%d" % [i, i])
+		var recruit_btn: Button       = _tavern_panel_node("CardRow/Card%d/RecruitBtn%d" % [i, i])
+
+		if name_lbl: name_lbl.label_settings = _make_hero_label_settings(font, 22)
+		if cost_lbl: cost_lbl.label_settings = _make_hero_label_settings(font, 22)
+
+		if rid.is_empty():
+			if avatar_rect: avatar_rect.texture = null
+			if name_lbl: name_lbl.text = "待刷新"
+			if cost_icon: cost_icon.visible = false
+			if cost_lbl: cost_lbl.text = ""
+			if recruit_btn: recruit_btn.visible = false
+		else:
+			var rd: Dictionary = _roles.get(rid, {})
+			var role_idx: int = int(rid) - 10000
+			if avatar_rect:
+				var ap := "res://asserts/image/role/role%d_avatar.png" % role_idx
+				avatar_rect.texture = load(ap) if ResourceLoader.exists(ap) else null
+			if name_lbl: name_lbl.text = String(rd.get("name", rid))
+			if cost_icon:
+				cost_icon.texture = coin_tex
+				cost_icon.visible = true
+			if cost_lbl: cost_lbl.text = str(TAVERN_RECRUIT_COST)
+			if recruit_btn:
+				recruit_btn.visible = true
+				recruit_btn.text = "招募"
+				recruit_btn.disabled = _gold < TAVERN_RECRUIT_COST
+				_style_tower_btn(recruit_btn, Color(0.55, 0.22, 0.06), Color(0.90, 0.45, 0.15), Color(1.0, 0.88, 0.55))
+				var captured_rid := rid
+				var captured_i := i
+				recruit_btn.pressed.connect(func() -> void:
+					_tavern_recruit(captured_rid, captured_i))
+
+	var cost_row_icon: TextureRect = _tavern_panel_node("BottomRow/RefreshCostRow/RefreshCostIcon")
+	var cost_row_lbl: Label        = _tavern_panel_node("BottomRow/RefreshCostRow/RefreshCostLbl")
+	var refresh_btn: Button        = _tavern_panel_node("BottomRow/RefreshBtn")
+	var auto_lbl: Label            = _tavern_panel_node("BottomRow/AutoRefreshLbl")
+	if cost_row_icon and coin_tex: cost_row_icon.texture = coin_tex
+	if cost_row_lbl:
+		cost_row_lbl.label_settings = _make_hero_label_settings(font, 22)
+		cost_row_lbl.text = "刷新消耗：%d" % TAVERN_REFRESH_COST
+	if auto_lbl: auto_lbl.label_settings = _make_hero_label_settings(font, 22)
+	if refresh_btn:
+		refresh_btn.text = "刷新"
+		refresh_btn.disabled = _gold < TAVERN_REFRESH_COST
+		_style_tower_btn(refresh_btn, Color(0.10, 0.28, 0.48), Color(0.25, 0.55, 0.85), Color(0.75, 0.92, 1.0))
+		refresh_btn.pressed.connect(func() -> void: _tavern_manual_refresh())
+	_tavern_update_auto_label()
+
+func _tavern_recruit(rid: String, slot_idx: int) -> void:
+	if _gold < TAVERN_RECRUIT_COST:
+		return
+	_gold -= TAVERN_RECRUIT_COST
+	var is_new := not _owned_role_ids.has(rid)
+	if is_new:
+		_owned_role_ids.append(rid)
+		_ensure_role_data(rid)
+	else:
+		var max_star: int = GlobalConfig.get_int("max_star_level", 6)
+		var cur_star: int = int(_role_stars.get(rid, 1))
+		if cur_star < max_star:
+			_role_stars[rid] = cur_star + 1
+	if slot_idx < _tavern_pool.size():
+		_tavern_pool[slot_idx] = ""
+	_refresh_hud()
+	_save_game()
+	if is_new and _expedition_team_ids.size() < MAX_EXPEDITION_SIZE:
+		_expedition_team_ids.append(rid)
+		_clear_team_nodes()
+		_place_expedition_team()
+	_tavern_reload_panel()
+	_tavern_reload_panel()
+
+func _tavern_manual_refresh() -> void:
+	if _gold < TAVERN_REFRESH_COST:
+		return
+	_gold -= TAVERN_REFRESH_COST
+	_refresh_hud()
+	_tavern_roll_pool()
+	_save_game()
+	_tavern_reload_panel()
+
+func _tavern_reload_panel() -> void:
+	_unload_function_panel()
+	_function_panel_node = load("res://scenes/building_panels/TavernPanel.tscn").instantiate()
+	_function_area.add_child(_function_panel_node)
+	if _function_panel_node is Control:
+		(_function_panel_node as Control).set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_connect_tavern_panel()
+
+func _tavern_update_auto_label() -> void:
+	if not (_function_panel_node and is_instance_valid(_function_panel_node) and _panel_key == "tavern"):
+		return
+	var auto_lbl: Label = _tavern_panel_node("BottomRow/AutoRefreshLbl")
+	if auto_lbl == null:
+		return
+	var remaining := maxf(0.0, TAVERN_AUTO_REFRESH_INTERVAL - _tavern_auto_timer)
+	var h := int(remaining) / 3600
+	var m := (int(remaining) % 3600) / 60
+	var s := int(remaining) % 60
+	auto_lbl.text = "下次自动刷新：%02d:%02d:%02d" % [h, m, s]
+
+func _tick_tavern_auto_refresh(delta: float) -> void:
+	_tavern_auto_timer += delta
+	if _tavern_auto_timer >= TAVERN_AUTO_REFRESH_INTERVAL:
+		_tavern_auto_timer = 0.0
+		_tavern_free_refreshes = mini(_tavern_free_refreshes + 1, TAVERN_MAX_FREE_REFRESHES)
+		_tavern_roll_pool()
+		_save_game()
+		if _panel_key == "tavern" and _panel_visible:
+			_tavern_reload_panel()
+	_tavern_update_auto_label()
+
 func _connect_tower_buttons() -> void:
 	_build_level_track()
 	_refresh_level_info()
@@ -2295,6 +2473,9 @@ func upgrade_building(key: String) -> void:
 			if k != "home":
 				_refresh_label(k)
 	_play_upgrade_fx(BUILDINGS[key]["pos"])
+	if key == "tavern" and _panel_key == "tavern" and _panel_visible:
+		_tavern_roll_pool()
+		_tavern_reload_panel()
 
 func _apply_anim_sheet(key: String, lv: int) -> void:
 	var cfg = BUILDINGS[key]
@@ -2424,6 +2605,9 @@ func _save_game() -> void:
 		}
 	if not _research_levels.is_empty():
 		data["research_levels"] = _research_levels.duplicate()
+	data["tavern_pool"] = _tavern_pool.duplicate()
+	data["tavern_auto_timer"] = _tavern_auto_timer
+	data["tavern_free_refreshes"] = _tavern_free_refreshes
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		return
@@ -2487,6 +2671,14 @@ func _load_game() -> void:
 	if data.has("research_levels") and data["research_levels"] is Dictionary:
 		for k in (data["research_levels"] as Dictionary).keys():
 			_research_levels[int(k)] = int(data["research_levels"][k])
+	if data.has("tavern_pool") and data["tavern_pool"] is Array:
+		_tavern_pool = []
+		for v in (data["tavern_pool"] as Array):
+			_tavern_pool.append(String(v))
+	if data.has("tavern_auto_timer"):
+		_tavern_auto_timer = float(data["tavern_auto_timer"])
+	if data.has("tavern_free_refreshes"):
+		_tavern_free_refreshes = int(data["tavern_free_refreshes"])
 	# 读档后用 formation_id 查名字并刷新按钮
 	_formation_name = _query_formation_name(_formation_id)
 	_refresh_formation_btn()

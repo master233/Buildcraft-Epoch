@@ -1,0 +1,280 @@
+[gd_scene format=3 uid="uid://31bpx407npqe"]
+
+[sub_resource type="StyleBoxFlat" id="CardStyle"]
+bg_color = Color(0.52, 0.36, 0.14, 0.75)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="LockedStyle"]
+bg_color = Color(0.52, 0.36, 0.14, 0.75)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[node name="TavernPanel" type="Control" unique_id=799688916]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="CardRow" type="HBoxContainer" parent="." unique_id=1071375735]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 12.0
+offset_right = 844.0
+offset_bottom = 310.0
+theme_override_constants/separation = 10
+
+[node name="Card0" type="Panel" parent="CardRow" unique_id=201736400]
+custom_minimum_size = Vector2(260, 296)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("CardStyle")
+
+[node name="AvatarRect0" type="TextureRect" parent="CardRow/Card0" unique_id=404691904]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 252.0
+offset_bottom = 168.0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="NameLbl0" type="Label" parent="CardRow/Card0" unique_id=1581701005]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 172.0
+offset_right = 252.0
+offset_bottom = 196.0
+text = "—"
+horizontal_alignment = 1
+
+[node name="CostIcon0" type="TextureRect" parent="CardRow/Card0" unique_id=1608905388]
+layout_mode = 0
+offset_left = 90.0
+offset_top = 210.0
+offset_right = 122.0
+offset_bottom = 242.0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="CostLbl0" type="Label" parent="CardRow/Card0" unique_id=151897649]
+layout_mode = 0
+offset_left = 126.0
+offset_top = 212.0
+offset_right = 190.0
+offset_bottom = 242.0
+text = "50"
+
+[node name="RecruitBtn0" type="Button" parent="CardRow/Card0" unique_id=857775185]
+layout_mode = 0
+offset_left = 85.0
+offset_top = 252.0
+offset_right = 165.0
+offset_bottom = 283.0
+text = "招募"
+
+[node name="LockedOverlay0" type="Panel" parent="CardRow/Card0" unique_id=577350436]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("LockedStyle")
+
+[node name="LockedLbl0" type="Label" parent="CardRow/Card0/LockedOverlay0" unique_id=1092655862]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "酒馆1级解锁"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Card1" type="Panel" parent="CardRow" unique_id=1091191593]
+custom_minimum_size = Vector2(260, 296)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("CardStyle")
+
+[node name="AvatarRect1" type="TextureRect" parent="CardRow/Card1" unique_id=1381671668]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 252.0
+offset_bottom = 168.0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="NameLbl1" type="Label" parent="CardRow/Card1" unique_id=1374608323]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 172.0
+offset_right = 252.0
+offset_bottom = 196.0
+text = "—"
+horizontal_alignment = 1
+
+[node name="CostIcon1" type="TextureRect" parent="CardRow/Card1" unique_id=93437224]
+layout_mode = 0
+offset_left = 84.0
+offset_top = 211.0
+offset_right = 116.0
+offset_bottom = 243.0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="CostLbl1" type="Label" parent="CardRow/Card1" unique_id=76599480]
+layout_mode = 0
+offset_left = 120.0
+offset_top = 213.0
+offset_right = 184.0
+offset_bottom = 239.0
+text = "50"
+
+[node name="RecruitBtn1" type="Button" parent="CardRow/Card1" unique_id=1462624572]
+layout_mode = 0
+offset_left = 86.0
+offset_top = 251.0
+offset_right = 166.0
+offset_bottom = 282.0
+text = "招募"
+
+[node name="LockedOverlay1" type="Panel" parent="CardRow/Card1" unique_id=825029770]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("LockedStyle")
+
+[node name="LockedLbl1" type="Label" parent="CardRow/Card1/LockedOverlay1" unique_id=1449977653]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "酒馆2级解锁"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Card2" type="Panel" parent="CardRow" unique_id=783385900]
+custom_minimum_size = Vector2(260, 296)
+layout_mode = 2
+size_flags_horizontal = 0
+theme_override_styles/panel = SubResource("CardStyle")
+
+[node name="AvatarRect2" type="TextureRect" parent="CardRow/Card2" unique_id=228515161]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 252.0
+offset_bottom = 168.0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="NameLbl2" type="Label" parent="CardRow/Card2" unique_id=2028914866]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 172.0
+offset_right = 252.0
+offset_bottom = 196.0
+text = "—"
+horizontal_alignment = 1
+
+[node name="CostIcon2" type="TextureRect" parent="CardRow/Card2" unique_id=1441274300]
+layout_mode = 0
+offset_left = 95.0
+offset_top = 210.0
+offset_right = 127.0
+offset_bottom = 242.0
+expand_mode = 1
+stretch_mode = 5
+
+[node name="CostLbl2" type="Label" parent="CardRow/Card2" unique_id=687192100]
+layout_mode = 0
+offset_left = 131.0
+offset_top = 212.0
+offset_right = 195.0
+offset_bottom = 238.0
+text = "50"
+
+[node name="RecruitBtn2" type="Button" parent="CardRow/Card2" unique_id=650636145]
+layout_mode = 0
+offset_left = 88.0
+offset_top = 251.0
+offset_right = 168.0
+offset_bottom = 282.0
+text = "招募"
+
+[node name="LockedOverlay2" type="Panel" parent="CardRow/Card2" unique_id=1240267585]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_styles/panel = SubResource("LockedStyle")
+
+[node name="LockedLbl2" type="Label" parent="CardRow/Card2/LockedOverlay2" unique_id=819449906]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "酒馆3级解锁"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="BottomRow" type="Control" parent="." unique_id=380159444]
+anchors_preset = 0
+offset_left = 12.0
+offset_top = 318.0
+offset_right = 844.0
+offset_bottom = 358.0
+
+[node name="RefreshCostRow" type="HBoxContainer" parent="BottomRow" unique_id=2027465587]
+layout_mode = 0
+offset_left = 48.0
+offset_top = 25.0
+offset_right = 208.0
+offset_bottom = 57.0
+theme_override_constants/separation = 4
+
+[node name="RefreshCostIcon" type="TextureRect" parent="BottomRow/RefreshCostRow" unique_id=517066049]
+custom_minimum_size = Vector2(32, 32)
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 5
+
+[node name="RefreshCostLbl" type="Label" parent="BottomRow/RefreshCostRow" unique_id=1756827089]
+layout_mode = 2
+text = "刷新消耗：10"
+
+[node name="RefreshBtn" type="Button" parent="BottomRow" unique_id=1723055589]
+layout_mode = 0
+offset_left = 336.0
+offset_top = 20.0
+offset_right = 456.0
+offset_bottom = 56.0
+text = "刷新 (3/3)"
+
+[node name="AutoRefreshLbl" type="Label" parent="BottomRow" unique_id=1042223921]
+layout_mode = 0
+offset_left = 579.0
+offset_top = 32.0
+offset_right = 767.0
+offset_bottom = 64.0
+text = "下次自动刷新：00:59:30"
