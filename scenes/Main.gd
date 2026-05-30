@@ -8,12 +8,12 @@ extends Node2D
 @onready var _panel_dim: ColorRect = $UI/PanelDim
 @onready var _panel_bg: TextureRect = $UI/BuildingPanel
 @onready var _panel_name_lbl: Label = $UI/BuildingPanel/PanelNameLbl
-@onready var _panel_info_lbl: Label = $UI/BuildingPanel/PanelInfoLbl
+@onready var _panel_info_lbl: RichTextLabel = $UI/BuildingPanel/PanelInfoLbl
 @onready var _upgrade_btn: TextureRect = $UI/BuildingPanel/UpgradeBtn
 @onready var _upgrade_lbl: Label = $UI/BuildingPanel/UpgradeLbl
 @warning_ignore("unused_private_class_variable")
 @onready var _close_btn: TextureRect = $UI/BuildingPanel/CloseBtn
-@onready var _panel_extra_lbl: Label = $UI/BuildingPanel/PanelExtraLbl if $UI/BuildingPanel.has_node("PanelExtraLbl") else null
+@onready var _panel_extra_lbl: RichTextLabel = $UI/BuildingPanel/PanelExtraLbl if $UI/BuildingPanel.has_node("PanelExtraLbl") else null
 @warning_ignore("unused_private_class_variable")
 @onready var _panel_info_bg: ColorRect = $UI/BuildingPanel/PanelInfoBg if $UI/BuildingPanel.has_node("PanelInfoBg") else null
 @warning_ignore("unused_private_class_variable")
@@ -62,49 +62,37 @@ const BUILDINGS := {
 		"ref_size": Vector2(350, 324),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/home1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/home3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(640, 375), "display": "主基地", "y_adj": 25,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
-		"produces": "",
-		"desc": "村庄的核心，限制其他建筑可达的最高等级。"
+		"produces": "gold",
 	},
 	"tower": {
 		"ref_size": Vector2(350, 310),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tower1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tower3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(640, 150), "display": "远征塔", "y_adj": 0,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
-		"desc": "远眺地平线，规划下一次远征与探索。"
 	},
 	"lumberyard": {
 		"ref_size": Vector2(288, 324),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/lumberyard1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/lumberyard3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(210, 275), "display": "伐木场", "y_adj": 25,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "wood",
-		"desc": "持续产出木材，等级越高产能越强。"
 	},
 	"mine": {
 		"ref_size": Vector2(288, 313),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/mine1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/mine3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(1070, 275), "display": "矿石场", "y_adj": 0,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "ore",
-		"desc": "持续开采矿石，等级越高产能越强。"
 	},
 	"tavern": {
 		"ref_size": Vector2(350, 313),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/tavern1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/tavern3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(270, 510), "display": "酒馆", "y_adj": 0,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
-		"desc": "招募旅途中遇见的英雄与冒险者。"
 	},
 	"research": {
 		"ref_size": Vector2(288, 310),
 		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/research1_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research2_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/research3_anim_sheet.png"], "n_frames": 8,
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
-		"upgrade_cost": [{"wood": 10, "ore": 10}, {"wood": 20, "ore": 20}],
 		"produces": "",
-		"desc": "钻研未知，解锁更强力的科技。"
 	},
 }
 
@@ -152,6 +140,10 @@ var _role_skills: Dictionary = {}  # rid:String → Array[{id:int, level:int}]
 var _skill_table: Dictionary = {}  # {skill_id}_{level} → {name, desc, param1, param2, icon}
 var _research_levels: Dictionary = {}  # skill_id(int) → current research level(int)
 var _skill_upgrade_cost: Dictionary = {}  # level(int) → cost(int)
+var _suit_table: Array = []  # 每个套装仅首条，用于 grid 显示
+var _suit_details: Dictionary = {}  # suit_id → [{require_count, effect_desc}]
+const SUIT_TABLE_PATH := "res://asserts/table/suit.txt"
+var _building_configs: Dictionary = {}  # key → [{level, wood_cost, ore_cost, desc}]
 const DEFAULT_SKILLS: Array = []
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
@@ -239,11 +231,13 @@ func _setup() -> void:
 	add_child(dust)
 
 	_place_buildings()
+	_load_building_configs()
 	_load_roles_table()
 	_load_role_attrs_table()
 	_load_level_up_table()
 	_load_skill_table()
 	_load_skill_upgrade_cost()
+	_load_suit_table()
 	_load_team_layout()
 	_load_role_lines()
 	_resolve_team_from_owned()
@@ -519,6 +513,66 @@ func _load_skill_upgrade_cost() -> void:
 		var cost := int((parts[1] as String).strip_edges())
 		_skill_upgrade_cost[lv] = cost
 
+func _load_suit_table() -> void:
+	_suit_table.clear()
+	_suit_details.clear()
+	var text := _read_table_text(SUIT_TABLE_PATH)
+	if text.is_empty():
+		return
+	var raw := text.split("\n", false)
+	var seen_suits: Dictionary = {}
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 6:
+			continue
+		var suit_id: String = (parts[1] as String).strip_edges()
+		var entry := {
+			"suit_id": suit_id,
+			"name": (parts[2] as String).strip_edges(),
+			"icon": (parts[3] as String).strip_edges(),
+			"require_count": int((parts[4] as String).strip_edges()),
+			"effect_desc": (parts[5] as String).strip_edges(),
+		}
+		if not seen_suits.has(suit_id):
+			seen_suits[suit_id] = true
+			_suit_table.append(entry)
+		if not _suit_details.has(suit_id):
+			_suit_details[suit_id] = []
+		_suit_details[suit_id].append({"require_count": entry["require_count"], "effect_desc": entry["effect_desc"]})
+
+func _load_building_configs() -> void:
+	_building_configs.clear()
+	for key in BUILDINGS.keys():
+		var path := "res://asserts/table/build_%s.txt" % key
+		var text := _read_table_text(path)
+		if text.is_empty():
+			continue
+		var raw := text.split("\n", false)
+		if raw.size() < 1:
+			continue
+		var headers := (raw[0] as String).strip_edges().split("\t")
+		var levels: Array = []
+		for i in range(1, raw.size()):
+			var line: String = (raw[i] as String).strip_edges()
+			if line.is_empty() or line.begins_with("#"):
+				continue
+			var parts := line.split("\t")
+			if parts.size() < 4:
+				continue
+			var entry := {}
+			for j in min(parts.size(), headers.size()):
+				var h: String = (headers[j] as String).strip_edges()
+				var v: String = (parts[j] as String).strip_edges()
+				if h in ["level", "wood_cost", "ore_cost", "gold_cost", "skill_max_lv"]:
+					entry[h] = int(v)
+				else:
+					entry[h] = v
+			levels.append(entry)
+		_building_configs[key] = levels
+
 func _load_all_skill_ids() -> Array:
 	var text := _read_table_text("res://asserts/table/skill.txt")
 	if text.is_empty():
@@ -635,11 +689,19 @@ func _clear_team_nodes() -> void:
 			node.queue_free()
 	_team_slots.clear()
 
+func _has_popup_layer() -> bool:
+	for child in get_children():
+		if child is CanvasLayer and child.layer >= 128:
+			return true
+	return false
+
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
 		bgm.play()
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			if _has_popup_layer():
+				return
 			if _panel_visible and _upgrade_rect.has_point(event.position) and not _upgrade_disabled:
 				_upgrade_pressing = true
 				_upgrade_btn.pivot_offset = _upgrade_btn.size / 2
@@ -1270,13 +1332,20 @@ func _hero_calc_attrs(rid: String) -> Dictionary:
 func _connect_research_panel() -> void:
 	if _function_panel_node == null or not is_instance_valid(_function_panel_node):
 		return
-	var talent_grid: GridContainer = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/TalentGrid")
-	var common_grid: GridContainer = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/CommonGrid")
-	if talent_grid == null or common_grid == null:
+	var skill_grid: GridContainer = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/SkillGrid")
+	if skill_grid == null:
 		return
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var all_ids := _load_all_skill_ids()
+	var talent_ids: Array = []
+	var common_ids: Array = []
 	for sid in all_ids:
+		if int(sid) >= 40000:
+			talent_ids.append(sid)
+		else:
+			common_ids.append(sid)
+	var sorted_ids: Array = talent_ids + common_ids
+	for sid in sorted_ids:
 		var lv: int = int(_research_levels.get(sid, 1))
 		var key := "%d_%d" % [sid, lv]
 		var info: Dictionary = _skill_table.get(key, {})
@@ -1331,10 +1400,54 @@ func _connect_research_panel() -> void:
 		wrapper.custom_minimum_size = Vector2(80, 100)
 		wrapper.add_child(slot_vbox)
 		wrapper.add_child(btn)
-		if int(sid) >= 40000:
-			talent_grid.add_child(wrapper)
-		else:
-			common_grid.add_child(wrapper)
+		skill_grid.add_child(wrapper)
+
+	# ─── 套装效果 Grid ───
+	var suit_grid: GridContainer = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/SuitGrid")
+	if suit_grid == null:
+		return
+	for entry in _suit_table:
+		var s_name: String = entry["name"]
+		var s_icon: String = entry["icon"]
+
+		var slot_vbox2 := VBoxContainer.new()
+		slot_vbox2.add_theme_constant_override("separation", 2)
+		slot_vbox2.custom_minimum_size = Vector2(80, 100)
+
+		var icon_rect2 := TextureRect.new()
+		icon_rect2.custom_minimum_size = Vector2(64, 64)
+		icon_rect2.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect2.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		if not s_icon.is_empty() and ResourceLoader.exists(s_icon):
+			icon_rect2.texture = load(s_icon)
+		slot_vbox2.add_child(icon_rect2)
+
+		var name_lbl2 := Label.new()
+		name_lbl2.text = s_name
+		name_lbl2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var name_ls2 := LabelSettings.new()
+		name_ls2.font = font
+		name_ls2.font_size = 13
+		name_ls2.font_color = Color(0.22, 0.13, 0.06, 1)
+		name_ls2.outline_size = 1
+		name_ls2.outline_color = Color(1, 0.96, 0.85, 0.4)
+		name_lbl2.label_settings = name_ls2
+		slot_vbox2.add_child(name_lbl2)
+
+		var btn2 := Button.new()
+		btn2.flat = true
+		btn2.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		btn2.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		var captured_suit_id: String = entry["suit_id"]
+		var captured_suit_name: String = s_name
+		var captured_suit_icon: String = s_icon
+		btn2.pressed.connect(func(): _show_suit_tip(captured_suit_id, captured_suit_name, captured_suit_icon))
+
+		var wrapper2 := Control.new()
+		wrapper2.custom_minimum_size = Vector2(80, 100)
+		wrapper2.add_child(slot_vbox2)
+		wrapper2.add_child(btn2)
+		suit_grid.add_child(wrapper2)
 
 func _hero_panel_get_node(path: String) -> Node:
 	return _function_panel_node.get_node_or_null(path) if _function_panel_node and is_instance_valid(_function_panel_node) else null
@@ -1531,10 +1644,13 @@ func _show_hero_detail(rid: String) -> void:
 			for i in 8:
 				var slot := PanelContainer.new()
 				var ss := StyleBoxFlat.new()
-				ss.bg_color = Color(0.20, 0.15, 0.08, 0.35)
 				ss.set_corner_radius_all(6)
-				ss.border_width_bottom = 1
-				ss.border_color = Color(0.5, 0.4, 0.2, 0.5)
+				ss.bg_color = Color(0.08, 0.1, 0.15, 0.25)
+				ss.border_width_bottom = 2
+				ss.border_width_top = 2
+				ss.border_width_left = 2
+				ss.border_width_right = 2
+				ss.border_color = Color(0.4, 0.65, 0.85, 0.4)
 				slot.add_theme_stylebox_override("panel", ss)
 				slot.custom_minimum_size = Vector2(72, 72)
 				var lbl := Label.new()
@@ -1554,44 +1670,73 @@ func _show_hero_detail(rid: String) -> void:
 			skill_row.remove_child(c)
 			c.queue_free()
 		var skills: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
+		var role_data: Dictionary = _roles.get(rid, {})
+		var default_sid: int = int(role_data.get("default_skill", 0))
 		var total_slots: int = 8
 		for i in total_slots:
 			var slot_panel := PanelContainer.new()
 			var slot_style := StyleBoxFlat.new()
 			slot_style.set_corner_radius_all(6)
 			slot_panel.custom_minimum_size = Vector2(72, 72)
-			if i < skills.size():
+			if i < skills.size() and skills[i] is Dictionary:
 				var sk = skills[i]
 				var sid: int = int(sk.get("id", 0))
 				var slv: int = int(_research_levels.get(sid, 1))
-				slot_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-				var icon_vbox := VBoxContainer.new()
-				icon_vbox.add_theme_constant_override("separation", 2)
-				slot_panel.add_child(icon_vbox)
+				var is_talent: bool = sid == default_sid and sid > 0
+				var sk_style := StyleBoxFlat.new()
+				sk_style.set_corner_radius_all(6)
+				if is_talent:
+					sk_style.bg_color = Color(0.15, 0.1, 0.02, 0.4)
+					sk_style.border_color = Color(0.9, 0.6, 0.1, 0.8)
+				else:
+					sk_style.bg_color = Color(0.08, 0.1, 0.15, 0.4)
+					sk_style.border_color = Color(0.4, 0.65, 0.85, 0.7)
+				sk_style.border_width_bottom = 2
+				sk_style.border_width_top = 2
+				sk_style.border_width_left = 2
+				sk_style.border_width_right = 2
+				slot_panel.add_theme_stylebox_override("panel", sk_style)
+				var icon_container := Control.new()
+				icon_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+				slot_panel.add_child(icon_container)
 				var icon_rect := TextureRect.new()
-				icon_rect.custom_minimum_size = Vector2(56, 56)
+				icon_rect.position = Vector2.ZERO
+				icon_rect.size = Vector2(72, 72)
 				icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 				icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 				var icon_path := _get_skill_icon_path(rid, sid)
 				if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
 					icon_rect.texture = load(icon_path)
-				icon_vbox.add_child(icon_rect)
+				icon_container.add_child(icon_rect)
 				var lv_badge := Label.new()
 				lv_badge.text = "Lv.%d" % slv
-				lv_badge.label_settings = _make_hero_label_settings(font, 16)
+				var lv_ls := LabelSettings.new()
+				lv_ls.font = font
+				lv_ls.font_size = 14
+				lv_ls.font_color = Color(0.18, 0.75, 0.25, 1)
+				lv_ls.outline_size = 2
+				lv_ls.outline_color = Color(0, 0, 0, 0.8)
+				lv_badge.label_settings = lv_ls
 				lv_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-				icon_vbox.add_child(lv_badge)
+				lv_badge.position = Vector2(0, 52)
+				lv_badge.size = Vector2(72, 20)
+				icon_container.add_child(lv_badge)
 				var skill_btn := Button.new()
 				skill_btn.flat = true
 				skill_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 				skill_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 				slot_panel.add_child(skill_btn)
 				var captured_sid := sid
-				skill_btn.pressed.connect(func(): _show_skill_tip(captured_sid, int(_research_levels.get(captured_sid, 1))))
+				var captured_slot_idx := i if not is_talent else -1
+				skill_btn.pressed.connect(func(): _show_skill_tip(captured_sid, int(_research_levels.get(captured_sid, 1)), captured_slot_idx))
 			elif i < star:
-				slot_style.bg_color = Color(0.20, 0.15, 0.08, 0.35)
-				slot_style.border_width_bottom = 1
-				slot_style.border_color = Color(0.5, 0.4, 0.2, 0.5)
+				slot_style.set_corner_radius_all(6)
+				slot_style.bg_color = Color(0.08, 0.1, 0.15, 0.25)
+				slot_style.border_width_bottom = 2
+				slot_style.border_width_top = 2
+				slot_style.border_width_left = 2
+				slot_style.border_width_right = 2
+				slot_style.border_color = Color(0.4, 0.65, 0.85, 0.4)
 				slot_panel.add_theme_stylebox_override("panel", slot_style)
 				var empty_lbl := Label.new()
 				empty_lbl.text = "空"
@@ -1601,10 +1746,22 @@ func _show_hero_detail(rid: String) -> void:
 				empty_lbl.size_flags_vertical   = Control.SIZE_EXPAND_FILL
 				empty_lbl.label_settings = _make_hero_label_settings(font, 13)
 				slot_panel.add_child(empty_lbl)
+				var empty_btn := Button.new()
+				empty_btn.flat = true
+				empty_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+				empty_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+				slot_panel.add_child(empty_btn)
+				var captured_rid := rid
+				var captured_idx := i
+				empty_btn.pressed.connect(func(): _show_skill_bag(captured_rid, captured_idx))
 			else:
-				slot_style.bg_color = Color(0.12, 0.10, 0.06, 0.3)
-				slot_style.border_width_bottom = 1
-				slot_style.border_color = Color(0.35, 0.3, 0.15, 0.4)
+				slot_style.set_corner_radius_all(6)
+				slot_style.bg_color = Color(0.08, 0.08, 0.08, 0.3)
+				slot_style.border_width_bottom = 2
+				slot_style.border_width_top = 2
+				slot_style.border_width_left = 2
+				slot_style.border_width_right = 2
+				slot_style.border_color = Color(0.35, 0.35, 0.35, 0.4)
 				slot_panel.add_theme_stylebox_override("panel", slot_style)
 				var lock_lbl := Label.new()
 				lock_lbl.text = "%d星解锁" % (i + 1)
@@ -1617,7 +1774,242 @@ func _show_hero_detail(rid: String) -> void:
 				slot_panel.add_child(lock_lbl)
 			skill_row.add_child(slot_panel)
 
-func _show_skill_tip(sid: int, slv: int) -> void:
+func _equip_skill_to_slot(rid: String, slot_idx: int, sid: int) -> void:
+	var cur: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
+	if slot_idx < cur.size():
+		cur[slot_idx] = {"id": sid, "level": 1}
+	elif slot_idx == cur.size():
+		cur.append({"id": sid, "level": 1})
+	else:
+		while cur.size() < slot_idx:
+			cur.append(null)
+		cur.append({"id": sid, "level": 1})
+	_role_skills[rid] = cur
+	_save_game()
+	_show_hero_detail(rid)
+
+func _show_skill_bag(rid: String, slot_idx: int) -> void:
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.layer = 128
+	add_child(canvas_layer)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas_layer.add_child(dim)
+
+	var bg_scale := 0.6
+	var bg_w := 1360.0 * bg_scale
+	var bg_h := 768.0 * bg_scale
+	var bg_x := (1280.0 - bg_w) / 2.0
+	var bg_y := (720.0 - bg_h) / 2.0
+	var bg := TextureRect.new()
+	bg.texture = load("res://asserts/image/ui/skill/skill_bag.png")
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	bg.position = Vector2(bg_x, bg_y)
+	bg.size = Vector2(bg_w, bg_h)
+	canvas_layer.add_child(bg)
+
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = Vector2(bg_x + bg_w - 48, bg_y + 8)
+	close_btn.size = Vector2(40, 40)
+	canvas_layer.add_child(close_btn)
+	close_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+	)
+	dim.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.pressed:
+			remove_child(canvas_layer)
+			canvas_layer.queue_free()
+	)
+
+	var owned_ids: Dictionary = {}
+	var cur_skills: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
+	for s in cur_skills:
+		if s is Dictionary:
+			owned_ids[int(s.get("id", 0))] = true
+
+	# 格子区域：原图格子从 (140,112) 到 (1160,656)，列间距20，行间距4
+	var grid_x := bg_x + 140.0 * bg_scale
+	var grid_y := bg_y + 130.0 * bg_scale
+	var grid_w := 1020.0 * bg_scale
+	var grid_h := 544.0 * bg_scale
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.position = Vector2(grid_x, grid_y)
+	scroll.size = Vector2(grid_w, grid_h)
+	canvas_layer.add_child(scroll)
+
+	var grid := GridContainer.new()
+	grid.columns = 7
+	var h_sep := int(20.0 * bg_scale)
+	var v_sep := int(4.0 * bg_scale)
+	grid.add_theme_constant_override("h_separation", h_sep)
+	grid.add_theme_constant_override("v_separation", v_sep)
+	scroll.add_child(grid)
+
+	var slot_w := int(130.0 * bg_scale)
+	var slot_h := int(134.0 * bg_scale)
+	var all_ids := _load_all_skill_ids()
+	for sid in all_ids:
+		if int(sid) >= 40000:
+			continue
+		var lv: int = int(_research_levels.get(sid, 1))
+		var key := "%d_%d" % [sid, lv]
+		var info: Dictionary = _skill_table.get(key, {})
+		var sk_name: String = info.get("name", "")
+		var icon_path: String = info.get("icon", "")
+		var is_owned: bool = owned_ids.has(int(sid))
+
+		var wrapper := Control.new()
+		wrapper.custom_minimum_size = Vector2(slot_w, slot_h)
+
+		var icon_rect := TextureRect.new()
+		icon_rect.custom_minimum_size = Vector2(slot_w, slot_h)
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+			icon_rect.texture = load(icon_path)
+		if is_owned:
+			icon_rect.modulate = Color(0.4, 0.4, 0.4, 0.6)
+		wrapper.add_child(icon_rect)
+
+		var name_lbl := Label.new()
+		name_lbl.text = "%s Lv.%d" % [sk_name, lv]
+		var name_ls := LabelSettings.new()
+		name_ls.font = font
+		name_ls.font_size = 13
+		name_ls.font_color = Color(0.18, 0.75, 0.25, 1) if not is_owned else Color(0.3, 0.5, 0.3, 0.6)
+		name_ls.outline_size = 2
+		name_ls.outline_color = Color(0, 0, 0, 0.7)
+		name_lbl.label_settings = name_ls
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.position = Vector2(0, slot_h - 20)
+		name_lbl.size = Vector2(slot_w, 20)
+		wrapper.add_child(name_lbl)
+
+		if not is_owned:
+			var btn := Button.new()
+			btn.flat = true
+			btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			var captured_sid: int = int(sid)
+			var captured_canvas := canvas_layer
+			var captured_rid := rid
+			var captured_slot := slot_idx
+			btn.pressed.connect(func():
+				_show_skill_tip_with_learn(captured_sid, int(_research_levels.get(captured_sid, 1)), captured_rid, captured_slot, captured_canvas)
+			)
+			wrapper.add_child(btn)
+
+		grid.add_child(wrapper)
+
+func _show_suit_tip(suit_id: String, suit_name: String, suit_icon: String) -> void:
+	var details: Array = _suit_details.get(suit_id, [])
+	if details.is_empty():
+		return
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.layer = 128
+	add_child(canvas_layer)
+
+	var overlay := ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.5)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas_layer.add_child(overlay)
+
+	var panel_w := 380.0
+	var panel_h := 320.0
+	var panel := Panel.new()
+	panel.position = Vector2((1280 - panel_w) / 2.0, (720 - panel_h) / 2.0)
+	panel.size = Vector2(panel_w, panel_h)
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.12, 0.08, 0.04, 0.95)
+	ps.set_corner_radius_all(10)
+	ps.border_width_bottom = 2
+	ps.border_width_top = 2
+	ps.border_width_left = 2
+	ps.border_width_right = 2
+	ps.border_color = Color(0.85, 0.65, 0.2, 0.9)
+	panel.add_theme_stylebox_override("panel", ps)
+	overlay.add_child(panel)
+
+	# 标题行：图标 + 套装名
+	var icon_rect := TextureRect.new()
+	icon_rect.custom_minimum_size = Vector2(40, 40)
+	icon_rect.position = Vector2(16, 12)
+	icon_rect.size = Vector2(40, 40)
+	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	if not suit_icon.is_empty() and ResourceLoader.exists(suit_icon):
+		icon_rect.texture = load(suit_icon)
+	panel.add_child(icon_rect)
+
+	var title_lbl := Label.new()
+	title_lbl.text = suit_name + " 套装"
+	title_lbl.position = Vector2(64, 16)
+	title_lbl.size = Vector2(panel_w - 80, 30)
+	var title_ls := LabelSettings.new()
+	title_ls.font = font
+	title_ls.font_size = 22
+	title_ls.font_color = Color(1, 0.85, 0.3, 1)
+	title_ls.outline_size = 2
+	title_ls.outline_color = Color(0, 0, 0, 0.8)
+	title_lbl.label_settings = title_ls
+	panel.add_child(title_lbl)
+
+	# 进度效果列表
+	var y_offset := 60.0
+	for d in details:
+		var req: int = d["require_count"]
+		var desc: String = d["effect_desc"]
+		var line_lbl := Label.new()
+		line_lbl.text = "%d 件：%s" % [req, desc]
+		line_lbl.position = Vector2(24, y_offset)
+		line_lbl.size = Vector2(panel_w - 48, 40)
+		line_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var line_ls := LabelSettings.new()
+		line_ls.font = font
+		line_ls.font_size = 17
+		line_ls.font_color = Color(0.95, 0.92, 0.85, 1)
+		line_ls.outline_size = 1
+		line_ls.outline_color = Color(0, 0, 0, 0.5)
+		line_lbl.label_settings = line_ls
+		panel.add_child(line_lbl)
+		y_offset += 50.0
+
+	# 右上角红色关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = Vector2(panel_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
+	panel.add_child(close_btn)
+	close_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+	)
+
+	overlay.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			remove_child(canvas_layer)
+			canvas_layer.queue_free()
+	)
+
+func _get_skill_max_level() -> int:
+	var research_lv: int = _building_nodes["research"]["level"] if _building_nodes.has("research") else 1
+	var lv_data: Dictionary = _get_building_level_data("research", research_lv)
+	return int(lv_data.get("skill_max_lv", 5))
+
+func _show_skill_tip(sid: int, slv: int, slot_idx: int = -1) -> void:
 	var key := "%d_%d" % [sid, slv]
 	var info: Dictionary = _skill_table.get(key, {})
 	var sk_name: String = info.get("name", "未知技能")
@@ -1625,7 +2017,8 @@ func _show_skill_tip(sid: int, slv: int) -> void:
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var next_lv: int = slv + 1
 	var upgrade_cost: int = int(_skill_upgrade_cost.get(next_lv, 0))
-	var max_lv: bool = not _skill_table.has("%d_%d" % [sid, next_lv])
+	var skill_cap: int = _get_skill_max_level()
+	var max_lv: bool = not _skill_table.has("%d_%d" % [sid, next_lv]) or slv >= skill_cap
 
 	var canvas_layer := CanvasLayer.new()
 	canvas_layer.layer = 128
@@ -1681,7 +2074,10 @@ func _show_skill_tip(sid: int, slv: int) -> void:
 	# 升级费用
 	var cost_lbl := Label.new()
 	if max_lv:
-		cost_lbl.text = "已满级"
+		if slv >= skill_cap:
+			cost_lbl.text = "已达研究院等级上限 (Lv.%d)" % skill_cap
+		else:
+			cost_lbl.text = "已满级"
 	else:
 		cost_lbl.text = "升级费用：%d 金币" % upgrade_cost
 	cost_lbl.position = Vector2(16, 140)
@@ -1696,64 +2092,193 @@ func _show_skill_tip(sid: int, slv: int) -> void:
 	cost_lbl.label_settings = cost_ls
 	panel.add_child(cost_lbl)
 
+	# 右上角红色关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = Vector2(panel_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
+	panel.add_child(close_btn)
+	close_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+	)
+
 	# 底部按钮行
 	var btn_y := panel_h - 48.0
+	if slot_idx >= 0:
+		var unequip_btn := Button.new()
+		unequip_btn.text = "卸载"
+		unequip_btn.position = Vector2(panel_w / 2.0 - 90, btn_y)
+		unequip_btn.size = Vector2(80, 34)
+		unequip_btn.add_theme_font_override("font", font)
+		unequip_btn.add_theme_font_size_override("font_size", 18)
+		panel.add_child(unequip_btn)
+		var captured_unequip_rid := _hero_panel_rid
+		var captured_unequip_slot := slot_idx
+		unequip_btn.pressed.connect(func():
+			if captured_unequip_rid.is_empty() or captured_unequip_slot < 0:
+				return
+			var cur: Array = _role_skills.get(captured_unequip_rid, []) if _role_skills.get(captured_unequip_rid, null) is Array else []
+			if captured_unequip_slot < cur.size():
+				cur[captured_unequip_slot] = null
+				_role_skills[captured_unequip_rid] = cur
+				_save_game()
+				_show_hero_detail(captured_unequip_rid)
+			remove_child(canvas_layer)
+			canvas_layer.queue_free()
+		)
+
 	var upgrade_btn := Button.new()
 	upgrade_btn.text = "升级"
-	upgrade_btn.position = Vector2(panel_w / 2.0 - 90, btn_y)
+	if slot_idx >= 0:
+		upgrade_btn.position = Vector2(panel_w / 2.0 + 10, btn_y)
+	else:
+		upgrade_btn.position = Vector2((panel_w - 80) / 2.0, btn_y)
 	upgrade_btn.size = Vector2(80, 34)
 	upgrade_btn.add_theme_font_override("font", font)
 	upgrade_btn.add_theme_font_size_override("font_size", 18)
 	upgrade_btn.disabled = max_lv or _gold < upgrade_cost
 	panel.add_child(upgrade_btn)
 
-	var close_btn := Button.new()
-	close_btn.text = "关闭"
-	close_btn.position = Vector2(panel_w / 2.0 + 10, btn_y)
-	close_btn.size = Vector2(80, 34)
-	close_btn.add_theme_font_override("font", font)
-	close_btn.add_theme_font_size_override("font_size", 18)
-	panel.add_child(close_btn)
-	close_btn.pressed.connect(func(): canvas_layer.queue_free())
-
 	var captured_sid: int = sid
 	upgrade_btn.pressed.connect(func():
 		var cur_lv: int = int(_research_levels.get(captured_sid, 1))
 		var nxt: int = cur_lv + 1
+		var cap: int = _get_skill_max_level()
 		var cost: int = int(_skill_upgrade_cost.get(nxt, 0))
+		if cur_lv >= cap:
+			return
 		if _skill_table.has("%d_%d" % [captured_sid, nxt]) and _gold >= cost:
 			_gold -= cost
 			_research_levels[captured_sid] = nxt
 			_save_game()
 			_refresh_hud()
 			_refresh_skill_display_after_upgrade()
+			remove_child(canvas_layer)
 			canvas_layer.queue_free()
-			_show_skill_tip(captured_sid, nxt)
+			_show_skill_tip(captured_sid, nxt, slot_idx)
 	)
 
 	overlay.gui_input.connect(func(event: InputEvent):
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			remove_child(canvas_layer)
+			canvas_layer.queue_free()
+	)
+
+func _show_skill_tip_with_learn(sid: int, slv: int, rid: String, slot_idx: int, bag_canvas: CanvasLayer) -> void:
+	var key := "%d_%d" % [sid, slv]
+	var info: Dictionary = _skill_table.get(key, {})
+	var sk_name: String = info.get("name", "未知技能")
+	var sk_desc: String = info.get("desc", "")
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.layer = 129
+	add_child(canvas_layer)
+
+	var overlay := ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.5)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas_layer.add_child(overlay)
+
+	var panel_w := 340.0
+	var panel_h := 200.0
+	var panel := Panel.new()
+	panel.position = Vector2((1280 - panel_w) / 2.0, (720 - panel_h) / 2.0)
+	panel.size = Vector2(panel_w, panel_h)
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.12, 0.08, 0.04, 0.95)
+	ps.set_corner_radius_all(10)
+	ps.border_width_bottom = 2
+	ps.border_width_top = 2
+	ps.border_width_left = 2
+	ps.border_width_right = 2
+	ps.border_color = Color(0.85, 0.65, 0.2, 0.9)
+	panel.add_theme_stylebox_override("panel", ps)
+	overlay.add_child(panel)
+
+	var title_lbl := Label.new()
+	title_lbl.text = "%s  Lv.%d" % [sk_name, slv]
+	title_lbl.position = Vector2(16, 14)
+	title_lbl.size = Vector2(panel_w - 32, 30)
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var title_ls := LabelSettings.new()
+	title_ls.font = font
+	title_ls.font_size = 22
+	title_ls.font_color = Color(1, 0.85, 0.3, 1)
+	title_ls.outline_size = 2
+	title_ls.outline_color = Color(0, 0, 0, 0.8)
+	title_lbl.label_settings = title_ls
+	panel.add_child(title_lbl)
+
+	var desc_rtl := RichTextLabel.new()
+	desc_rtl.bbcode_enabled = true
+	desc_rtl.text = sk_desc
+	desc_rtl.position = Vector2(16, 50)
+	desc_rtl.size = Vector2(panel_w - 32, 80)
+	desc_rtl.fit_content = true
+	desc_rtl.scroll_active = false
+	desc_rtl.add_theme_font_override("normal_font", font)
+	desc_rtl.add_theme_font_size_override("normal_font_size", 18)
+	desc_rtl.add_theme_color_override("default_color", Color(0.95, 0.92, 0.85, 1))
+	panel.add_child(desc_rtl)
+
+	# 右上角关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = Vector2(panel_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
+	panel.add_child(close_btn)
+	close_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+	)
+
+	# 学习按钮
+	var learn_btn := Button.new()
+	learn_btn.text = "学习"
+	learn_btn.position = Vector2((panel_w - 80) / 2.0, panel_h - 48.0)
+	learn_btn.size = Vector2(80, 34)
+	learn_btn.add_theme_font_override("font", font)
+	learn_btn.add_theme_font_size_override("font_size", 18)
+	panel.add_child(learn_btn)
+	learn_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+		remove_child(bag_canvas)
+		bag_canvas.queue_free()
+		_equip_skill_to_slot(rid, slot_idx, sid)
+	)
+
+	overlay.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			remove_child(canvas_layer)
 			canvas_layer.queue_free()
 	)
 
 func _refresh_skill_display_after_upgrade() -> void:
 	if _function_panel_node == null or not is_instance_valid(_function_panel_node):
 		return
-	# 研究院面板：重建 TalentGrid / CommonGrid
-	var talent_grid: GridContainer = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/TalentGrid")
-	var common_grid: GridContainer = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/CommonGrid")
-	if talent_grid and common_grid:
-		for c in talent_grid.get_children():
-			talent_grid.remove_child(c)
+	# 研究院面板：重建 SkillGrid + SuitGrid
+	var skill_grid: GridContainer = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/SkillGrid")
+	if skill_grid:
+		for c in skill_grid.get_children():
+			skill_grid.remove_child(c)
 			c.queue_free()
-		for c in common_grid.get_children():
-			common_grid.remove_child(c)
-			c.queue_free()
+		var suit_grid: GridContainer = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/SuitGrid")
+		if suit_grid:
+			for c in suit_grid.get_children():
+				suit_grid.remove_child(c)
+				c.queue_free()
 		_connect_research_panel()
 		return
 	# 英雄面板：刷新技能栏
-	var skill_grid: GridContainer = _hero_panel_get_node("DetailArea/RightCol/SkillGrid")
-	if skill_grid and not _hero_panel_rid.is_empty():
+	var hero_skill_grid: GridContainer = _hero_panel_get_node("DetailArea/RightCol/SkillGrid")
+	if hero_skill_grid and not _hero_panel_rid.is_empty():
 		_show_hero_detail(_hero_panel_rid)
 
 func _get_skill_icon_path(rid: String, sid: int) -> String:
@@ -2401,6 +2926,13 @@ func _reposition_panel(_key: String) -> void:
 	_upgrade_rect = Rect2(360, 93, 560, 150)
 	_close_rect   = Rect2(1090, 10, 85, 80)
 
+func _get_building_level_data(key: String, lv: int) -> Dictionary:
+	var levels: Array = _building_configs.get(key, [])
+	for entry in levels:
+		if int(entry["level"]) == lv:
+			return entry
+	return {}
+
 func _refresh_panel() -> void:
 	if _panel_key == "":
 		return
@@ -2408,29 +2940,46 @@ func _refresh_panel() -> void:
 	var cfg = BUILDINGS[_panel_key]
 	var lv: int = state["level"]
 	_panel_name_lbl.text = "%s  Lv.%d" % [cfg["display"], lv]
-	var desc: String = cfg.get("desc", "")
+	var _font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	_panel_info_lbl.add_theme_font_override("normal_font", _font)
+	_panel_info_lbl.add_theme_font_size_override("normal_font_size", 20)
+	_panel_info_lbl.add_theme_color_override("default_color", Color(0.22, 0.13, 0.06, 1))
+	if _panel_extra_lbl and is_instance_valid(_panel_extra_lbl):
+		_panel_extra_lbl.add_theme_font_override("normal_font", _font)
+		_panel_extra_lbl.add_theme_font_size_override("normal_font_size", 20)
+		_panel_extra_lbl.add_theme_color_override("default_color", Color(0.22, 0.13, 0.06, 1))
+	var lv_data: Dictionary = _get_building_level_data(_panel_key, lv)
+	var desc: String = lv_data.get("desc", "")
+	if _panel_key == "research":
+		var skill_cap: int = int(lv_data.get("skill_max_lv", 5))
+		desc += "\n当前技能最大等级：[color=#2ebf40]%d[/color]" % skill_cap
 	var produces: String = cfg.get("produces", "")
-	var prod_info := ""
 	if produces != "":
-		var res_name := "木材" if produces == "wood" else "矿石"
-		prod_info = "当前产量：%d %s / %d 秒" % [PRODUCE_RATES[lv - 1], res_name, int(PRODUCE_INTERVAL)]
+		var res_name := "金币" if produces == "gold" else ("木材" if produces == "wood" else "矿石")
+		desc += "\n当前产量：[color=#2ebf40]%d[/color] %s / %d 秒" % [PRODUCE_RATES[lv - 1], res_name, int(PRODUCE_INTERVAL)]
 		if lv < 3:
-			prod_info += "\n下一级产量：%d %s / %d 秒" % [PRODUCE_RATES[lv], res_name, int(PRODUCE_INTERVAL)]
+			desc += "\n下一级产量：[color=#2ebf40]%d[/color] %s / %d 秒" % [PRODUCE_RATES[lv], res_name, int(PRODUCE_INTERVAL)]
 	_panel_info_lbl.text = desc
 	var extra_text := ""
 	if lv >= 3:
-		extra_text = prod_info + ("\n\n" if prod_info != "" else "") + "已达最高等级"
+		extra_text = "已达最高等级"
 		_upgrade_disabled = true
 	else:
-		var cost = cfg["upgrade_cost"][lv - 1]
+		var next_data: Dictionary = _get_building_level_data(_panel_key, lv + 1)
+		var wood_cost: int = int(next_data.get("wood_cost", 0))
+		var ore_cost: int = int(next_data.get("ore_cost", 0))
 		var home_lv: int = _building_nodes["home"]["level"]
 		if _panel_key != "home" and lv >= home_lv:
-			extra_text = prod_info + ("\n\n" if prod_info != "" else "") + "需先升级主基地至 Lv.%d" % (lv + 1)
+			extra_text = "需先升级主基地至 Lv.%d" % (lv + 1)
 			_upgrade_disabled = true
 		else:
-			var ok: bool = _wood >= int(cost["wood"]) and _ore >= int(cost["ore"])
-			extra_text = prod_info + ("\n\n" if prod_info != "" else "") + "升级消耗：木材 %d  矿石 %d" % [int(cost["wood"]), int(cost["ore"])]
-			_upgrade_disabled = not ok
+			var gold_cost: int = int(next_data.get("gold_cost", 0))
+			var wood_color: String = "#2ebf40" if _wood >= wood_cost else "#e6331a"
+			var ore_color: String = "#2ebf40" if _ore >= ore_cost else "#e6331a"
+			var gold_color: String = "#2ebf40" if _gold >= gold_cost else "#e6331a"
+			var pad := "[color=#00000000]升级消耗：[/color]"
+			extra_text = "升级消耗：木材 [color=%s]%d[/color]\n%s矿石 [color=%s]%d[/color]\n%s金币 [color=%s]%d[/color]" % [wood_color, wood_cost, pad, ore_color, ore_cost, pad, gold_color, gold_cost]
+			_upgrade_disabled = not (_wood >= wood_cost and _ore >= ore_cost and _gold >= gold_cost)
 	if _panel_extra_lbl and is_instance_valid(_panel_extra_lbl):
 		_panel_extra_lbl.text = extra_text
 	var a: float = _upgrade_btn.modulate.a
@@ -2447,11 +2996,15 @@ func _on_upgrade_pressed() -> void:
 		return
 	if _panel_key != "home" and lv >= _building_nodes["home"]["level"]:
 		return
-	var cost = BUILDINGS[_panel_key]["upgrade_cost"][lv - 1]
-	if _wood < int(cost["wood"]) or _ore < int(cost["ore"]):
+	var next_data: Dictionary = _get_building_level_data(_panel_key, lv + 1)
+	var wood_cost: int = int(next_data.get("wood_cost", 0))
+	var ore_cost: int = int(next_data.get("ore_cost", 0))
+	var gold_cost: int = int(next_data.get("gold_cost", 0))
+	if _wood < wood_cost or _ore < ore_cost or _gold < gold_cost:
 		return
-	_wood -= int(cost["wood"])
-	_ore -= int(cost["ore"])
+	_wood -= wood_cost
+	_ore -= ore_cost
+	_gold -= gold_cost
 	upgrade_building(_panel_key)
 	_refresh_hud()
 	_refresh_panel()
@@ -2503,17 +3056,23 @@ func _apply_anim_sheet(key: String, lv: int) -> void:
 	anim_sprite.play("idle")
 
 func _tick_production() -> void:
-	for key in ["lumberyard", "mine"]:
+	for key in ["lumberyard", "mine", "home"]:
 		if not _building_nodes.has(key):
+			continue
+		var produces: String = BUILDINGS[key]["produces"]
+		if produces.is_empty():
 			continue
 		var lv: int = _building_nodes[key]["level"]
 		var amount: int = PRODUCE_RATES[lv - 1]
-		if BUILDINGS[key]["produces"] == "wood":
+		if produces == "wood":
 			_wood += amount
 			_spawn_float_text(key, amount, "wood")
-		else:
+		elif produces == "ore":
 			_ore += amount
 			_spawn_float_text(key, amount, "ore")
+		elif produces == "gold":
+			_gold += amount
+			_spawn_float_text(key, amount, "gold")
 	_refresh_hud()
 	_save_game()
 
@@ -2531,7 +3090,12 @@ func _spawn_float_text(key: String, amount: int, resource_type: String) -> void:
 	var ls := LabelSettings.new()
 	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	ls.font_size = 24
-	ls.font_color = Color(1.0, 0.88, 0.3) if resource_type == "wood" else Color(0.55, 0.85, 1.0)
+	if resource_type == "wood":
+		ls.font_color = Color(0.18, 0.75, 0.25)
+	elif resource_type == "ore":
+		ls.font_color = Color(0.1, 0.1, 0.1)
+	else:
+		ls.font_color = Color(1.0, 0.82, 0.2)
 	ls.outline_size = 3
 	ls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
 	lbl.label_settings = ls
@@ -2578,6 +3142,11 @@ func _parse_skills_array(raw) -> Array:
 	for s in raw:
 		if s is Dictionary and int(s.get("id", 0)) > 0:
 			out.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
+		else:
+			out.append(null)
+	# 去掉末尾连续的 null
+	while out.size() > 0 and out.back() == null:
+		out.pop_back()
 	if out.is_empty():
 		return _default_skills_copy()
 	return out

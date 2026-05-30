@@ -9,13 +9,6 @@ font_color = Color(0.22, 0.13, 0.06, 1)
 outline_size = 2
 outline_color = Color(1, 0.96, 0.85, 0.5)
 
-[sub_resource type="LabelSettings" id="LabelSettings_section"]
-font = ExtResource("1")
-font_size = 17
-font_color = Color(0.55, 0.35, 0.12, 1)
-outline_size = 1
-outline_color = Color(1, 0.96, 0.85, 0.4)
-
 [node name="ResearchPanel" type="Control"]
 layout_mode = 3
 anchors_preset = 0
@@ -43,23 +36,18 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 12
 
-[node name="TalentLbl" type="Label" parent="SkillScroll/ContentVBox"]
-layout_mode = 2
-text = "角色天赋技能"
-label_settings = SubResource("LabelSettings_section")
-
-[node name="TalentGrid" type="GridContainer" parent="SkillScroll/ContentVBox"]
+[node name="SkillGrid" type="GridContainer" parent="SkillScroll/ContentVBox"]
 layout_mode = 2
 columns = 8
 theme_override_constants/h_separation = 10
 theme_override_constants/v_separation = 10
 
-[node name="CommonLbl" type="Label" parent="SkillScroll/ContentVBox"]
+[node name="SuitTitleLbl" type="Label" parent="SkillScroll/ContentVBox"]
 layout_mode = 2
-text = "通用技能"
-label_settings = SubResource("LabelSettings_section")
+text = "套装效果"
+label_settings = SubResource("LabelSettings_title")
 
-[node name="CommonGrid" type="GridContainer" parent="SkillScroll/ContentVBox"]
+[node name="SuitGrid" type="GridContainer" parent="SkillScroll/ContentVBox"]
 layout_mode = 2
 columns = 8
 theme_override_constants/h_separation = 10
