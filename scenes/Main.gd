@@ -679,11 +679,19 @@ func _clear_team_nodes() -> void:
 			node.queue_free()
 	_team_slots.clear()
 
+func _has_popup_layer() -> bool:
+	for child in get_children():
+		if child is CanvasLayer and child.layer >= 128:
+			return true
+	return false
+
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
 		bgm.play()
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
+			if _has_popup_layer():
+				return
 			if _panel_visible and _upgrade_rect.has_point(event.position) and not _upgrade_disabled:
 				_upgrade_pressing = true
 				_upgrade_btn.pivot_offset = _upgrade_btn.size / 2
@@ -1623,10 +1631,13 @@ func _show_hero_detail(rid: String) -> void:
 			for i in 8:
 				var slot := PanelContainer.new()
 				var ss := StyleBoxFlat.new()
-				ss.bg_color = Color(0.20, 0.15, 0.08, 0.35)
 				ss.set_corner_radius_all(6)
-				ss.border_width_bottom = 1
-				ss.border_color = Color(0.5, 0.4, 0.2, 0.5)
+				ss.bg_color = Color(0.08, 0.1, 0.15, 0.25)
+				ss.border_width_bottom = 2
+				ss.border_width_top = 2
+				ss.border_width_left = 2
+				ss.border_width_right = 2
+				ss.border_color = Color(0.4, 0.65, 0.85, 0.4)
 				slot.add_theme_stylebox_override("panel", ss)
 				slot.custom_minimum_size = Vector2(72, 72)
 				var lbl := Label.new()
@@ -1646,44 +1657,73 @@ func _show_hero_detail(rid: String) -> void:
 			skill_row.remove_child(c)
 			c.queue_free()
 		var skills: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
+		var role_data: Dictionary = _roles.get(rid, {})
+		var default_sid: int = int(role_data.get("default_skill", 0))
 		var total_slots: int = 8
 		for i in total_slots:
 			var slot_panel := PanelContainer.new()
 			var slot_style := StyleBoxFlat.new()
 			slot_style.set_corner_radius_all(6)
 			slot_panel.custom_minimum_size = Vector2(72, 72)
-			if i < skills.size():
+			if i < skills.size() and skills[i] is Dictionary:
 				var sk = skills[i]
 				var sid: int = int(sk.get("id", 0))
 				var slv: int = int(_research_levels.get(sid, 1))
-				slot_panel.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-				var icon_vbox := VBoxContainer.new()
-				icon_vbox.add_theme_constant_override("separation", 2)
-				slot_panel.add_child(icon_vbox)
+				var is_talent: bool = sid == default_sid and sid > 0
+				var sk_style := StyleBoxFlat.new()
+				sk_style.set_corner_radius_all(6)
+				if is_talent:
+					sk_style.bg_color = Color(0.15, 0.1, 0.02, 0.4)
+					sk_style.border_color = Color(0.9, 0.6, 0.1, 0.8)
+				else:
+					sk_style.bg_color = Color(0.08, 0.1, 0.15, 0.4)
+					sk_style.border_color = Color(0.4, 0.65, 0.85, 0.7)
+				sk_style.border_width_bottom = 2
+				sk_style.border_width_top = 2
+				sk_style.border_width_left = 2
+				sk_style.border_width_right = 2
+				slot_panel.add_theme_stylebox_override("panel", sk_style)
+				var icon_container := Control.new()
+				icon_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+				slot_panel.add_child(icon_container)
 				var icon_rect := TextureRect.new()
-				icon_rect.custom_minimum_size = Vector2(56, 56)
+				icon_rect.position = Vector2.ZERO
+				icon_rect.size = Vector2(72, 72)
 				icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 				icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 				var icon_path := _get_skill_icon_path(rid, sid)
 				if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
 					icon_rect.texture = load(icon_path)
-				icon_vbox.add_child(icon_rect)
+				icon_container.add_child(icon_rect)
 				var lv_badge := Label.new()
 				lv_badge.text = "Lv.%d" % slv
-				lv_badge.label_settings = _make_hero_label_settings(font, 16)
+				var lv_ls := LabelSettings.new()
+				lv_ls.font = font
+				lv_ls.font_size = 14
+				lv_ls.font_color = Color(0.18, 0.75, 0.25, 1)
+				lv_ls.outline_size = 2
+				lv_ls.outline_color = Color(0, 0, 0, 0.8)
+				lv_badge.label_settings = lv_ls
 				lv_badge.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-				icon_vbox.add_child(lv_badge)
+				lv_badge.position = Vector2(0, 52)
+				lv_badge.size = Vector2(72, 20)
+				icon_container.add_child(lv_badge)
 				var skill_btn := Button.new()
 				skill_btn.flat = true
 				skill_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 				skill_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 				slot_panel.add_child(skill_btn)
 				var captured_sid := sid
-				skill_btn.pressed.connect(func(): _show_skill_tip(captured_sid, int(_research_levels.get(captured_sid, 1))))
+				var captured_slot_idx := i if not is_talent else -1
+				skill_btn.pressed.connect(func(): _show_skill_tip(captured_sid, int(_research_levels.get(captured_sid, 1)), captured_slot_idx))
 			elif i < star:
-				slot_style.bg_color = Color(0.20, 0.15, 0.08, 0.35)
-				slot_style.border_width_bottom = 1
-				slot_style.border_color = Color(0.5, 0.4, 0.2, 0.5)
+				slot_style.set_corner_radius_all(6)
+				slot_style.bg_color = Color(0.08, 0.1, 0.15, 0.25)
+				slot_style.border_width_bottom = 2
+				slot_style.border_width_top = 2
+				slot_style.border_width_left = 2
+				slot_style.border_width_right = 2
+				slot_style.border_color = Color(0.4, 0.65, 0.85, 0.4)
 				slot_panel.add_theme_stylebox_override("panel", slot_style)
 				var empty_lbl := Label.new()
 				empty_lbl.text = "空"
@@ -1693,10 +1733,22 @@ func _show_hero_detail(rid: String) -> void:
 				empty_lbl.size_flags_vertical   = Control.SIZE_EXPAND_FILL
 				empty_lbl.label_settings = _make_hero_label_settings(font, 13)
 				slot_panel.add_child(empty_lbl)
+				var empty_btn := Button.new()
+				empty_btn.flat = true
+				empty_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+				empty_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+				slot_panel.add_child(empty_btn)
+				var captured_rid := rid
+				var captured_idx := i
+				empty_btn.pressed.connect(func(): _show_skill_bag(captured_rid, captured_idx))
 			else:
-				slot_style.bg_color = Color(0.12, 0.10, 0.06, 0.3)
-				slot_style.border_width_bottom = 1
-				slot_style.border_color = Color(0.35, 0.3, 0.15, 0.4)
+				slot_style.set_corner_radius_all(6)
+				slot_style.bg_color = Color(0.08, 0.08, 0.08, 0.3)
+				slot_style.border_width_bottom = 2
+				slot_style.border_width_top = 2
+				slot_style.border_width_left = 2
+				slot_style.border_width_right = 2
+				slot_style.border_color = Color(0.35, 0.35, 0.35, 0.4)
 				slot_panel.add_theme_stylebox_override("panel", slot_style)
 				var lock_lbl := Label.new()
 				lock_lbl.text = "%d星解锁" % (i + 1)
@@ -1708,6 +1760,142 @@ func _show_hero_detail(rid: String) -> void:
 				lock_lbl.modulate = Color(1, 1, 1, 0.5)
 				slot_panel.add_child(lock_lbl)
 			skill_row.add_child(slot_panel)
+
+func _equip_skill_to_slot(rid: String, slot_idx: int, sid: int) -> void:
+	var cur: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
+	if slot_idx < cur.size():
+		cur[slot_idx] = {"id": sid, "level": 1}
+	elif slot_idx == cur.size():
+		cur.append({"id": sid, "level": 1})
+	else:
+		while cur.size() < slot_idx:
+			cur.append(null)
+		cur.append({"id": sid, "level": 1})
+	_role_skills[rid] = cur
+	_save_game()
+	_show_hero_detail(rid)
+
+func _show_skill_bag(rid: String, slot_idx: int) -> void:
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.layer = 128
+	add_child(canvas_layer)
+
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.55)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas_layer.add_child(dim)
+
+	var bg_scale := 0.6
+	var bg_w := 1360.0 * bg_scale
+	var bg_h := 768.0 * bg_scale
+	var bg_x := (1280.0 - bg_w) / 2.0
+	var bg_y := (720.0 - bg_h) / 2.0
+	var bg := TextureRect.new()
+	bg.texture = load("res://asserts/image/ui/skill/skill_bag.png")
+	bg.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	bg.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	bg.position = Vector2(bg_x, bg_y)
+	bg.size = Vector2(bg_w, bg_h)
+	canvas_layer.add_child(bg)
+
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = Vector2(bg_x + bg_w - 48, bg_y + 8)
+	close_btn.size = Vector2(40, 40)
+	canvas_layer.add_child(close_btn)
+	close_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+	)
+	dim.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.pressed:
+			remove_child(canvas_layer)
+			canvas_layer.queue_free()
+	)
+
+	var owned_ids: Dictionary = {}
+	var cur_skills: Array = _role_skills.get(rid, []) if _role_skills.get(rid, null) is Array else []
+	for s in cur_skills:
+		if s is Dictionary:
+			owned_ids[int(s.get("id", 0))] = true
+
+	# 格子区域：原图格子从 (140,112) 到 (1160,656)，列间距20，行间距4
+	var grid_x := bg_x + 140.0 * bg_scale
+	var grid_y := bg_y + 130.0 * bg_scale
+	var grid_w := 1020.0 * bg_scale
+	var grid_h := 544.0 * bg_scale
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.position = Vector2(grid_x, grid_y)
+	scroll.size = Vector2(grid_w, grid_h)
+	canvas_layer.add_child(scroll)
+
+	var grid := GridContainer.new()
+	grid.columns = 7
+	var h_sep := int(20.0 * bg_scale)
+	var v_sep := int(4.0 * bg_scale)
+	grid.add_theme_constant_override("h_separation", h_sep)
+	grid.add_theme_constant_override("v_separation", v_sep)
+	scroll.add_child(grid)
+
+	var slot_w := int(130.0 * bg_scale)
+	var slot_h := int(134.0 * bg_scale)
+	var all_ids := _load_all_skill_ids()
+	for sid in all_ids:
+		if int(sid) >= 40000:
+			continue
+		var lv: int = int(_research_levels.get(sid, 1))
+		var key := "%d_%d" % [sid, lv]
+		var info: Dictionary = _skill_table.get(key, {})
+		var sk_name: String = info.get("name", "")
+		var icon_path: String = info.get("icon", "")
+		var is_owned: bool = owned_ids.has(int(sid))
+
+		var wrapper := Control.new()
+		wrapper.custom_minimum_size = Vector2(slot_w, slot_h)
+
+		var icon_rect := TextureRect.new()
+		icon_rect.custom_minimum_size = Vector2(slot_w, slot_h)
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+			icon_rect.texture = load(icon_path)
+		if is_owned:
+			icon_rect.modulate = Color(0.4, 0.4, 0.4, 0.6)
+		wrapper.add_child(icon_rect)
+
+		var name_lbl := Label.new()
+		name_lbl.text = "%s Lv.%d" % [sk_name, lv]
+		var name_ls := LabelSettings.new()
+		name_ls.font = font
+		name_ls.font_size = 13
+		name_ls.font_color = Color(0.18, 0.75, 0.25, 1) if not is_owned else Color(0.3, 0.5, 0.3, 0.6)
+		name_ls.outline_size = 2
+		name_ls.outline_color = Color(0, 0, 0, 0.7)
+		name_lbl.label_settings = name_ls
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.position = Vector2(0, slot_h - 20)
+		name_lbl.size = Vector2(slot_w, 20)
+		wrapper.add_child(name_lbl)
+
+		if not is_owned:
+			var btn := Button.new()
+			btn.flat = true
+			btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			var captured_sid: int = int(sid)
+			var captured_canvas := canvas_layer
+			var captured_rid := rid
+			var captured_slot := slot_idx
+			btn.pressed.connect(func():
+				_show_skill_tip_with_learn(captured_sid, int(_research_levels.get(captured_sid, 1)), captured_rid, captured_slot, captured_canvas)
+			)
+			wrapper.add_child(btn)
+
+		grid.add_child(wrapper)
 
 func _show_suit_tip(suit_id: String, suit_name: String, suit_icon: String) -> void:
 	var details: Array = _suit_details.get(suit_id, [])
@@ -1784,18 +1972,22 @@ func _show_suit_tip(suit_id: String, suit_name: String, suit_icon: String) -> vo
 		panel.add_child(line_lbl)
 		y_offset += 50.0
 
-	# 关闭按钮
-	var close_btn := Button.new()
-	close_btn.text = "关闭"
-	close_btn.position = Vector2((panel_w - 80) / 2.0, panel_h - 48.0)
-	close_btn.size = Vector2(80, 34)
-	close_btn.add_theme_font_override("font", font)
-	close_btn.add_theme_font_size_override("font_size", 18)
+	# 右上角红色关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = Vector2(panel_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
 	panel.add_child(close_btn)
-	close_btn.pressed.connect(func(): canvas_layer.queue_free())
+	close_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+	)
 
 	overlay.gui_input.connect(func(event: InputEvent):
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			remove_child(canvas_layer)
 			canvas_layer.queue_free()
 	)
 
@@ -1804,7 +1996,7 @@ func _get_skill_max_level() -> int:
 	var lv_data: Dictionary = _get_building_level_data("research", research_lv)
 	return int(lv_data.get("skill_max_lv", 5))
 
-func _show_skill_tip(sid: int, slv: int) -> void:
+func _show_skill_tip(sid: int, slv: int, slot_idx: int = -1) -> void:
 	var key := "%d_%d" % [sid, slv]
 	var info: Dictionary = _skill_table.get(key, {})
 	var sk_name: String = info.get("name", "未知技能")
@@ -1887,20 +2079,50 @@ func _show_skill_tip(sid: int, slv: int) -> void:
 	cost_lbl.label_settings = cost_ls
 	panel.add_child(cost_lbl)
 
-	# 底部按钮行：关闭在左，升级在右
-	var btn_y := panel_h - 48.0
-	var close_btn := Button.new()
-	close_btn.text = "关闭"
-	close_btn.position = Vector2(panel_w / 2.0 - 90, btn_y)
-	close_btn.size = Vector2(80, 34)
-	close_btn.add_theme_font_override("font", font)
-	close_btn.add_theme_font_size_override("font_size", 18)
+	# 右上角红色关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = Vector2(panel_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
 	panel.add_child(close_btn)
-	close_btn.pressed.connect(func(): canvas_layer.queue_free())
+	close_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+	)
+
+	# 底部按钮行
+	var btn_y := panel_h - 48.0
+	if slot_idx >= 0:
+		var unequip_btn := Button.new()
+		unequip_btn.text = "卸载"
+		unequip_btn.position = Vector2(panel_w / 2.0 - 90, btn_y)
+		unequip_btn.size = Vector2(80, 34)
+		unequip_btn.add_theme_font_override("font", font)
+		unequip_btn.add_theme_font_size_override("font_size", 18)
+		panel.add_child(unequip_btn)
+		var captured_unequip_rid := _hero_panel_rid
+		var captured_unequip_slot := slot_idx
+		unequip_btn.pressed.connect(func():
+			if captured_unequip_rid.is_empty() or captured_unequip_slot < 0:
+				return
+			var cur: Array = _role_skills.get(captured_unequip_rid, []) if _role_skills.get(captured_unequip_rid, null) is Array else []
+			if captured_unequip_slot < cur.size():
+				cur[captured_unequip_slot] = null
+				_role_skills[captured_unequip_rid] = cur
+				_save_game()
+				_show_hero_detail(captured_unequip_rid)
+			remove_child(canvas_layer)
+			canvas_layer.queue_free()
+		)
 
 	var upgrade_btn := Button.new()
 	upgrade_btn.text = "升级"
-	upgrade_btn.position = Vector2(panel_w / 2.0 + 10, btn_y)
+	if slot_idx >= 0:
+		upgrade_btn.position = Vector2(panel_w / 2.0 + 10, btn_y)
+	else:
+		upgrade_btn.position = Vector2((panel_w - 80) / 2.0, btn_y)
 	upgrade_btn.size = Vector2(80, 34)
 	upgrade_btn.add_theme_font_override("font", font)
 	upgrade_btn.add_theme_font_size_override("font_size", 18)
@@ -1921,12 +2143,107 @@ func _show_skill_tip(sid: int, slv: int) -> void:
 			_save_game()
 			_refresh_hud()
 			_refresh_skill_display_after_upgrade()
+			remove_child(canvas_layer)
 			canvas_layer.queue_free()
-			_show_skill_tip(captured_sid, nxt)
+			_show_skill_tip(captured_sid, nxt, slot_idx)
 	)
 
 	overlay.gui_input.connect(func(event: InputEvent):
 		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			remove_child(canvas_layer)
+			canvas_layer.queue_free()
+	)
+
+func _show_skill_tip_with_learn(sid: int, slv: int, rid: String, slot_idx: int, bag_canvas: CanvasLayer) -> void:
+	var key := "%d_%d" % [sid, slv]
+	var info: Dictionary = _skill_table.get(key, {})
+	var sk_name: String = info.get("name", "未知技能")
+	var sk_desc: String = info.get("desc", "")
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.layer = 129
+	add_child(canvas_layer)
+
+	var overlay := ColorRect.new()
+	overlay.color = Color(0, 0, 0, 0.5)
+	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas_layer.add_child(overlay)
+
+	var panel_w := 340.0
+	var panel_h := 200.0
+	var panel := Panel.new()
+	panel.position = Vector2((1280 - panel_w) / 2.0, (720 - panel_h) / 2.0)
+	panel.size = Vector2(panel_w, panel_h)
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.12, 0.08, 0.04, 0.95)
+	ps.set_corner_radius_all(10)
+	ps.border_width_bottom = 2
+	ps.border_width_top = 2
+	ps.border_width_left = 2
+	ps.border_width_right = 2
+	ps.border_color = Color(0.85, 0.65, 0.2, 0.9)
+	panel.add_theme_stylebox_override("panel", ps)
+	overlay.add_child(panel)
+
+	var title_lbl := Label.new()
+	title_lbl.text = "%s  Lv.%d" % [sk_name, slv]
+	title_lbl.position = Vector2(16, 14)
+	title_lbl.size = Vector2(panel_w - 32, 30)
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var title_ls := LabelSettings.new()
+	title_ls.font = font
+	title_ls.font_size = 22
+	title_ls.font_color = Color(1, 0.85, 0.3, 1)
+	title_ls.outline_size = 2
+	title_ls.outline_color = Color(0, 0, 0, 0.8)
+	title_lbl.label_settings = title_ls
+	panel.add_child(title_lbl)
+
+	var desc_rtl := RichTextLabel.new()
+	desc_rtl.bbcode_enabled = true
+	desc_rtl.text = sk_desc
+	desc_rtl.position = Vector2(16, 50)
+	desc_rtl.size = Vector2(panel_w - 32, 80)
+	desc_rtl.fit_content = true
+	desc_rtl.scroll_active = false
+	desc_rtl.add_theme_font_override("normal_font", font)
+	desc_rtl.add_theme_font_size_override("normal_font_size", 18)
+	desc_rtl.add_theme_color_override("default_color", Color(0.95, 0.92, 0.85, 1))
+	panel.add_child(desc_rtl)
+
+	# 右上角关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = Vector2(panel_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
+	panel.add_child(close_btn)
+	close_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+	)
+
+	# 学习按钮
+	var learn_btn := Button.new()
+	learn_btn.text = "学习"
+	learn_btn.position = Vector2((panel_w - 80) / 2.0, panel_h - 48.0)
+	learn_btn.size = Vector2(80, 34)
+	learn_btn.add_theme_font_override("font", font)
+	learn_btn.add_theme_font_size_override("font_size", 18)
+	panel.add_child(learn_btn)
+	learn_btn.pressed.connect(func():
+		remove_child(canvas_layer)
+		canvas_layer.queue_free()
+		remove_child(bag_canvas)
+		bag_canvas.queue_free()
+		_equip_skill_to_slot(rid, slot_idx, sid)
+	)
+
+	overlay.gui_input.connect(func(event: InputEvent):
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			remove_child(canvas_layer)
 			canvas_layer.queue_free()
 	)
 
@@ -2644,6 +2961,11 @@ func _parse_skills_array(raw) -> Array:
 	for s in raw:
 		if s is Dictionary and int(s.get("id", 0)) > 0:
 			out.append({"id": int(s.get("id", 0)), "level": int(s.get("level", 1))})
+		else:
+			out.append(null)
+	# 去掉末尾连续的 null
+	while out.size() > 0 and out.back() == null:
+		out.pop_back()
 	if out.is_empty():
 		return _default_skills_copy()
 	return out
