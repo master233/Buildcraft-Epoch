@@ -10,6 +10,7 @@ const LEVEL_UP_TABLE_PATH   := "res://asserts/table/level_up.txt"
 const SKILL_TABLE_PATH      := "res://asserts/table/skill.txt"
 const SKILL_UPGRADE_COST_PATH := "res://asserts/table/skill_upgrade_cost.txt"
 const FORMATION_BONUS_PATH   := "res://asserts/table/formation_bonus.txt"
+const EQUIPMENT_TABLE_PATH   := "res://asserts/table/equipment.txt"
 const DEFAULT_SKILLS: Array = []
 const GRID_ROWS := 7
 const GRID_COLS := 12
@@ -1152,17 +1153,19 @@ func _end_battle(victory: bool) -> void:
 	var title_color := Color(1.0, 0.9, 0.2) if victory else Color(1.0, 0.3, 0.3)
 
 	var exp_rows: Array = clear_info.get("rows", []) if victory else []
+	var drop_item: Dictionary = clear_info.get("drop", {}) if victory else {}
 	var avatar_size := 72.0
 	var cell_w := 100.0
 	var cell_gap := 28.0
 	var rows_area_h: float = 0.0
 	if exp_rows.size() > 0:
 		rows_area_h = 16.0 + avatar_size + 6.0 + 22.0 + 4.0 + 18.0 + 4.0 + 22.0 + 16.0
+	var drop_area_h: float = 95.0 if not drop_item.is_empty() else 0.0
 	var min_panel_w := 460.0
 	var gap_count: int = max(0, exp_rows.size() - 1)
 	var needed_w: float = float(exp_rows.size()) * cell_w + float(gap_count) * cell_gap + 56.0
 	var panel_w: float = max(min_panel_w, needed_w)
-	var panel_h: float = 200.0 + rows_area_h
+	var panel_h: float = 200.0 + rows_area_h + drop_area_h
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.12, 0.16, 0.30, 0.95)
 	style.set_corner_radius_all(16)
@@ -1316,7 +1319,52 @@ func _end_battle(victory: bool) -> void:
 			exp_lbl.label_settings = ls2
 			ui.add_child(exp_lbl)
 
-	var btn_y: float = panel.position.y + 110.0 + rows_area_h
+	# 装备掉落显示（标签 + 图标 + 装备名）
+	if not drop_item.is_empty():
+		var drop_y: float = panel.position.y + 96.0 + rows_area_h
+		var icon_size := 64.0
+		var drop_lbl := Label.new()
+		drop_lbl.text = "获得装备:"
+		var dls := LabelSettings.new()
+		dls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+		dls.font_size = 18
+		dls.font_color = Color(0.9, 0.92, 0.85)
+		dls.outline_size = 2
+		dls.outline_color = Color(0, 0, 0, 0.8)
+		drop_lbl.label_settings = dls
+		drop_lbl.position = Vector2(panel.position.x + panel_w * 0.5 - 70, drop_y + 31)
+		ui.add_child(drop_lbl)
+		var drop_icon_path: String = String(drop_item.get("icon", ""))
+		if not drop_icon_path.is_empty() and ResourceLoader.exists(drop_icon_path):
+			var icon_pos := Vector2(panel.position.x + panel_w * 0.5 + 40, drop_y + 8)
+			var drop_icon := TextureRect.new()
+			drop_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			drop_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			drop_icon.custom_minimum_size = Vector2(icon_size, icon_size)
+			drop_icon.size = Vector2(icon_size, icon_size)
+			drop_icon.position = icon_pos
+			drop_icon.texture = load(drop_icon_path)
+			drop_icon.mouse_filter = Control.MOUSE_FILTER_STOP
+			drop_icon.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			drop_icon.gui_input.connect(_on_drop_item_click.bind(drop_item, ui))
+			ui.add_child(drop_icon)
+			var equip_name: String = String(drop_item.get("name", ""))
+			if not equip_name.is_empty():
+				var name_lbl := Label.new()
+				name_lbl.text = equip_name
+				name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				name_lbl.size = Vector2(icon_size + 40, 22.0)
+				name_lbl.position = Vector2(icon_pos.x - 20, icon_pos.y + icon_size + 4)
+				var nls := LabelSettings.new()
+				nls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+				nls.font_size = 14
+				nls.font_color = Color(1.0, 0.85, 0.4)
+				nls.outline_size = 2
+				nls.outline_color = Color(0, 0, 0, 0.9)
+				name_lbl.label_settings = nls
+				ui.add_child(name_lbl)
+
+	var btn_y: float = panel.position.y + 110.0 + rows_area_h + drop_area_h
 	var back_btn := _make_button("返回", Vector2(panel.position.x + (panel_w - 120) * 0.5, btn_y), Vector2(120, 52))
 	ui.add_child(back_btn.panel)
 	ui.add_child(back_btn.label)
@@ -1679,6 +1727,14 @@ func _record_level_cleared() -> Dictionary:
 		data["cleared_level"] = cleared_id
 	result["rows"] = _grant_exp_to_team(data, cleared_id)
 
+	# 胜利必定掉落一件装备
+	var drop := _generate_equipment_drop(data)
+	if not drop.is_empty():
+		result["drop"] = drop
+		var inv: Array = data.get("inventory", []) if data.get("inventory", null) is Array else []
+		inv.append(drop)
+		data["inventory"] = inv
+
 	var wf := FileAccess.open(save_path, FileAccess.WRITE)
 	if wf == null:
 		return result
@@ -1737,6 +1793,63 @@ func _grant_exp_to_team(data: Dictionary, cleared_id: int) -> Array:
 		})
 	data["roles"] = roles_state
 	return rows
+
+func _generate_equipment_drop(data: Dictionary) -> Dictionary:
+	var equip_table := _load_equipment_table()
+	if equip_table.is_empty():
+		return {}
+	var tower_lv: int = 1
+	if data.has("levels") and data["levels"] is Dictionary:
+		tower_lv = int((data["levels"] as Dictionary).get("tower", 1))
+	var equip_level: int = tower_lv * 10
+	var ids := equip_table.keys()
+	var eid: int = ids[randi() % ids.size()]
+	var tpl: Dictionary = equip_table[eid]
+	var scale: float = 1.0 + (equip_level - 10) * 0.10
+	return {
+		"id": eid,
+		"level": equip_level,
+		"name": tpl["name"],
+		"slot": tpl["slot"],
+		"icon": tpl["icon"],
+		"atk": int(randi_range(tpl["atk_min"], tpl["atk_max"]) * scale),
+		"def": int(randi_range(tpl["def_min"], tpl["def_max"]) * scale),
+		"hp": int(randi_range(tpl["hp_min"], tpl["hp_max"]) * scale),
+		"speed": int(randi_range(tpl["speed_min"], tpl["speed_max"]) * scale),
+		"crit": int(randi_range(tpl["crit_min"], tpl["crit_max"]) * scale),
+		"dodge": int(randi_range(tpl["dodge_min"], tpl["dodge_max"]) * scale),
+	}
+
+func _load_equipment_table() -> Dictionary:
+	var result := {}
+	var file := FileAccess.open(EQUIPMENT_TABLE_PATH, FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 16:
+			continue
+		var eid := int((parts[0] as String).strip_edges())
+		result[eid] = {
+			"name": (parts[1] as String).strip_edges(),
+			"slot": (parts[2] as String).strip_edges(),
+			"icon": (parts[3] as String).strip_edges(),
+			"atk_min": int(parts[4]), "atk_max": int(parts[5]),
+			"def_min": int(parts[6]), "def_max": int(parts[7]),
+			"hp_min": int(parts[8]), "hp_max": int(parts[9]),
+			"speed_min": int(parts[10]), "speed_max": int(parts[11]),
+			"crit_min": int(parts[12]), "crit_max": int(parts[13]),
+			"dodge_min": int(parts[14]), "dodge_max": int(parts[15]),
+		}
+	return result
 
 # 把 (level, exp) 按 level_up.txt 推进到稳定状态。max_exp <= 0 视为已满级。
 func _apply_level_up(level: int, cur_exp: int, level_up: Dictionary) -> Dictionary:
@@ -2396,7 +2509,7 @@ func _get_role_skills(rid: String) -> Array:
 			var sid: int = int(s.id)
 			var lv: int = int(research_levels.get(sid, 1))
 			skills_raw.append({"id": sid, "level": lv})
-	var slots: int = max(1, star)
+	var slots: int = star + 1
 	if skills_raw.size() > slots:
 		skills_raw.resize(slots)
 	return skills_raw
@@ -2411,6 +2524,85 @@ static func mirror_col(col: int) -> int:
 static func _default_if_empty(v, default_str: String) -> String:
 	var s := String(v)
 	return default_str if s.is_empty() else s
+
+func _on_drop_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLayer) -> void:
+	if not (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
+		return
+	var vp := get_viewport_rect().size
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var popup_w := 280.0
+	var popup_h := 300.0
+	var container := Control.new()
+	container.size = vp
+	parent_ui.add_child(container)
+	var popup := Panel.new()
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.1, 0.12, 0.22, 0.97)
+	ps.set_corner_radius_all(12)
+	ps.border_width_top = 2
+	ps.border_width_bottom = 2
+	ps.border_width_left = 2
+	ps.border_width_right = 2
+	ps.border_color = Color(1.0, 0.65, 0.0, 0.8)
+	ps.shadow_color = Color(0, 0, 0, 0.6)
+	ps.shadow_size = 8
+	popup.add_theme_stylebox_override("panel", ps)
+	popup.size = Vector2(popup_w, popup_h)
+	popup.position = (vp - Vector2(popup_w, popup_h)) * 0.5
+	container.add_child(popup)
+	var slot_names := {"weapon": "武器", "helmet": "头盔", "chest": "胸甲", "gloves": "手套", "pants": "裤子", "boots": "鞋子", "necklace": "项链", "ring": "戒指"}
+	var slot_cn: String = slot_names.get(String(item.get("slot", "")), "")
+	var icon_path: String = String(item.get("icon", ""))
+	if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+		var icon_rect := TextureRect.new()
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.custom_minimum_size = Vector2(64, 64)
+		icon_rect.size = Vector2(64, 64)
+		icon_rect.position = popup.position + Vector2((popup_w - 64) * 0.5, 8)
+		icon_rect.texture = load(icon_path)
+		container.add_child(icon_rect)
+	var name_lbl := Label.new()
+	name_lbl.text = "%s" % String(item.get("name", ""))
+	name_lbl.size = Vector2(popup_w, 36.0)
+	name_lbl.position = popup.position + Vector2(0, 72)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var nls := LabelSettings.new()
+	nls.font = font
+	nls.font_size = 22
+	nls.font_color = Color(1.0, 0.65, 0.0)
+	nls.outline_size = 2
+	nls.outline_color = Color(0, 0, 0, 1.0)
+	name_lbl.label_settings = nls
+	container.add_child(name_lbl)
+	var info_text := "Lv.%d  [%s]\n" % [int(item.get("level", 10)), slot_cn]
+	var attrs := [["攻击", "atk"], ["防御", "def"], ["生命", "hp"], ["速度", "speed"], ["暴击", "crit"], ["闪避", "dodge"]]
+	for a in attrs:
+		var val: int = int(item.get(a[1], 0))
+		if val > 0:
+			info_text += "%s [color=#2ebf40]+%d[/color]\n" % [a[0], val]
+	var info_lbl := RichTextLabel.new()
+	info_lbl.bbcode_enabled = true
+	info_lbl.text = info_text
+	info_lbl.fit_content = true
+	info_lbl.scroll_active = false
+	info_lbl.size = Vector2(popup_w - 40, popup_h - 150)
+	info_lbl.position = popup.position + Vector2(20, 110)
+	info_lbl.add_theme_font_override("normal_font", font)
+	info_lbl.add_theme_font_size_override("normal_font_size", 18)
+	info_lbl.add_theme_color_override("default_color", Color(0.9, 0.92, 0.85))
+	container.add_child(info_lbl)
+	# 右上角红色关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = popup.position + Vector2(popup_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
+	close_btn.pressed.connect(func():
+		container.queue_free()
+	)
+	container.add_child(close_btn)
 
 func _on_exit_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
