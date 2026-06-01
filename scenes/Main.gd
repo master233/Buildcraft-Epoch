@@ -184,7 +184,7 @@ var _chat_keyword_index: int = 0
 var _chat_keyword_playing: bool = false
 
 func _ready() -> void:
-	bgm.stream = load("res://asserts/audio/bg1.wav")
+	bgm.stream = load("res://asserts/audio/bg1.ogg")
 	bgm.volume_db = 0.0
 	bgm.play()
 	_panel_nodes = []
@@ -1764,7 +1764,7 @@ func _show_hero_detail(rid: String) -> void:
 				slot_style.border_color = Color(0.35, 0.35, 0.35, 0.4)
 				slot_panel.add_theme_stylebox_override("panel", slot_style)
 				var lock_lbl := Label.new()
-				lock_lbl.text = "%d星解锁" % (i + 1)
+				lock_lbl.text = "锁"
 				lock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				lock_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 				lock_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL

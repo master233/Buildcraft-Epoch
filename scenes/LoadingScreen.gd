@@ -9,7 +9,7 @@ const TIP_FALLBACK := "感谢老板举办的活动 我们会好好利用这5W的
 # 与建筑等级无关的固定资源
 const BASE_PRELOAD: Array[String] = [
 	"res://asserts/fonts/ZCOOLKuaiLe.ttf",
-	"res://asserts/audio/bg1.wav",
+	"res://asserts/audio/bg1.ogg",
 	"res://asserts/image/backgroud/bg_test_1.jpg",
 	"res://asserts/image/animal/bird_sheet.png",
 	"res://asserts/image/animal/squirrel_sheet.png",

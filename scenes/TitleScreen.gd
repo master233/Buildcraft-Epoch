@@ -34,7 +34,7 @@ func _web_kickoff() -> void:
 func _preload_main_resources() -> void:
 	var paths := [
 		"res://asserts/fonts/ZCOOLKuaiLe.ttf",
-		"res://asserts/audio/bg1.wav",
+		"res://asserts/audio/bg1.ogg",
 		"res://asserts/image/backgroud/bg_test_1.jpg",
 		"res://asserts/image/animal/bird_sheet.png",
 		"res://asserts/image/animal/squirrel_sheet.png",
