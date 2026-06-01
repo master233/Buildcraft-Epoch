@@ -51,6 +51,13 @@ func _ready() -> void:
 func _build_ui() -> void:
 	var vp := get_viewport_rect().size
 
+	# 战斗背景音乐
+	var battle_bgm := AudioStreamPlayer.new()
+	battle_bgm.stream = load("res://asserts/audio/battle.ogg")
+	battle_bgm.volume_db = -3.0
+	battle_bgm.autoplay = true
+	add_child(battle_bgm)
+
 	var bg := Sprite2D.new()
 	bg.texture = load("res://asserts/image/backgroud/bg_battle.jpg")
 	var tex: Texture2D = bg.texture
@@ -2002,6 +2009,7 @@ func _load_roles_table() -> Dictionary:
 			"default_skill":   int(entry.get("default_skill",   "0")),
 			"flip_h":          int(entry.get("flip_h",          "0")) != 0,
 			"name":            String(entry.get("name",           "")),
+			"gender":          String(entry.get("gender",         "male")),
 		}
 	return result
 
@@ -2422,6 +2430,7 @@ class BattleUnit:
 	func play_hurt_then(dying: bool) -> void:
 		if not is_instance_valid(sprite):
 			return
+		_play_hurt_sfx()
 		var sf: SpriteFrames = sprite.sprite_frames
 		if sf and sf.has_animation("hurt"):
 			sprite.play("hurt")
@@ -2431,6 +2440,19 @@ class BattleUnit:
 			, CONNECT_ONE_SHOT)
 		else:
 			_after_hurt(sprite, dying)
+
+	func _play_hurt_sfx() -> void:
+		var gender: String = rd.get("gender", "male")
+		var path := "res://asserts/audio/hurt_man.ogg" if gender == "male" else "res://asserts/audio/hurt_woman.ogg"
+		var stream := load(path) as AudioStream
+		if not stream:
+			return
+		var player := AudioStreamPlayer.new()
+		player.stream = stream
+		player.volume_db = -5.0
+		sprite.add_child(player)
+		player.play()
+		player.finished.connect(player.queue_free)
 
 	func _after_hurt(s: AnimatedSprite2D, dying: bool) -> void:
 		if not is_instance_valid(s):
