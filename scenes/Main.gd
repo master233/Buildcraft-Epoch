@@ -33,6 +33,10 @@ const BUILDING_SCALE := 0.8
 const SQUIRREL_OBSTACLES := [[130.0, 410.0], [870.0, 1210.0]]
 const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
+const TOWER_EXP_INTERVAL := 30.0
+const TOWER_EXP_PER_LEVEL := 2
+const TOWER_DROP_CHANCE := 0.15
+const EQUIPMENT_TABLE_PATH := "res://asserts/table/equipment.txt"
 const SAVE_PATH := "user://savegame.json"
 const LEVELS_TABLE_PATH := "res://asserts/table/levels.txt"
 const CHAT_TABLE_PATH := "res://asserts/table/chat.txt"
@@ -145,6 +149,10 @@ var _suit_details: Dictionary = {}  # suit_id → [{require_count, effect_desc}]
 const SUIT_TABLE_PATH := "res://asserts/table/suit.txt"
 var _building_configs: Dictionary = {}  # key → [{level, wood_cost, ore_cost, desc}]
 const DEFAULT_SKILLS: Array = []
+var _equipment_table: Dictionary = {}  # equip_id(int) → {name, slot, atk_min, atk_max, ...}
+var _inventory: Array = []             # [{id, level, atk, def, hp, speed, crit, dodge, name, slot}]
+var _role_equips: Dictionary = {}      # rid → {slot_name: inventory_index}
+var _tower_exp_timer: float = 0.0
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
 var _last_speech_slot_idx: int = -1
@@ -172,7 +180,7 @@ var _chat_next_delay: float = 1.5
 var _chat_keywords: Dictionary = {}  # {keyword: [{speaker, content}, ...]}
 
 # 酒馆招募
-const TAVERN_RECRUIT_COST := 50
+const TAVERN_RECRUIT_COSTS := [50, 100, 200, 400, 800]
 const TAVERN_REFRESH_COST := 100
 const TAVERN_AUTO_REFRESH_INTERVAL := 3600.0
 const TAVERN_MAX_FREE_REFRESHES := 3
@@ -241,6 +249,7 @@ func _setup() -> void:
 	_load_suit_table()
 	_load_team_layout()
 	_load_role_lines()
+	_load_equipment_table()
 	_resolve_team_from_owned()
 	_place_expedition_team()
 	_load_level_ids()
@@ -676,6 +685,8 @@ func _reset_game() -> void:
 	_role_stars.clear()
 	_role_exps.clear()
 	_role_skills.clear()
+	_inventory.clear()
+	_role_equips.clear()
 	_resolve_team_from_owned()
 	_place_expedition_team()
 	_refresh_hud()
@@ -723,6 +734,10 @@ func _process(delta: float) -> void:
 	if _produce_timer >= PRODUCE_INTERVAL:
 		_produce_timer = 0.0
 		_tick_production()
+	_tower_exp_timer += delta
+	if _tower_exp_timer >= TOWER_EXP_INTERVAL:
+		_tower_exp_timer = 0.0
+		_tick_tower_exp()
 	_speech_timer += delta
 	if _speech_timer >= SPEECH_TICK_INTERVAL:
 		_speech_timer = 0.0
@@ -1318,6 +1333,31 @@ func _load_level_up_table() -> void:
 		var mx := int((parts[1] as String).strip_edges())
 		_level_up_table[lv] = mx
 
+func _load_equipment_table() -> void:
+	var text := _read_table_text(EQUIPMENT_TABLE_PATH)
+	if text.is_empty():
+		return
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 16:
+			continue
+		var eid := int((parts[0] as String).strip_edges())
+		_equipment_table[eid] = {
+			"name": (parts[1] as String).strip_edges(),
+			"slot": (parts[2] as String).strip_edges(),
+			"icon": (parts[3] as String).strip_edges(),
+			"atk_min": int(parts[4]), "atk_max": int(parts[5]),
+			"def_min": int(parts[6]), "def_max": int(parts[7]),
+			"hp_min": int(parts[8]), "hp_max": int(parts[9]),
+			"speed_min": int(parts[10]), "speed_max": int(parts[11]),
+			"crit_min": int(parts[12]), "crit_max": int(parts[13]),
+			"dodge_min": int(parts[14]), "dodge_max": int(parts[15]),
+		}
+
 func _hero_calc_attrs(rid: String) -> Dictionary:
 	var lv   := int(_role_levels.get(rid, 1))
 	var star := int(_role_stars.get(rid, 1))
@@ -1675,6 +1715,7 @@ func _show_hero_detail(rid: String) -> void:
 		var role_data: Dictionary = _roles.get(rid, {})
 		var default_sid: int = int(role_data.get("default_skill", 0))
 		var total_slots: int = 8
+		var unlocked_slots: int = int(_role_stars.get(rid, int(role_data.get("init_star", 1)))) + 1
 		for i in total_slots:
 			var slot_panel := PanelContainer.new()
 			var slot_style := StyleBoxFlat.new()
@@ -1731,7 +1772,7 @@ func _show_hero_detail(rid: String) -> void:
 				var captured_sid := sid
 				var captured_slot_idx := i if not is_talent else -1
 				skill_btn.pressed.connect(func(): _show_skill_tip(captured_sid, int(_research_levels.get(captured_sid, 1)), captured_slot_idx))
-			elif i < star:
+			elif i < unlocked_slots:
 				slot_style.set_corner_radius_all(6)
 				slot_style.bg_color = Color(0.08, 0.1, 0.15, 0.25)
 				slot_style.border_width_bottom = 2
@@ -2418,11 +2459,17 @@ func _connect_tavern_panel() -> void:
 			if cost_icon:
 				cost_icon.texture = coin_tex
 				cost_icon.visible = true
-			if cost_lbl: cost_lbl.text = str(TAVERN_RECRUIT_COST)
+			var recruit_cost: int = _tavern_recruit_cost(rid)
+			if cost_lbl:
+					cost_lbl.text = str(recruit_cost)
+					if _gold < recruit_cost:
+						cost_lbl.modulate = Color(0.85, 0.15, 0.15)
+					else:
+						cost_lbl.modulate = Color(0.18, 0.75, 0.25)
 			if recruit_btn:
 				recruit_btn.visible = true
 				recruit_btn.text = "招募"
-				recruit_btn.disabled = _gold < TAVERN_RECRUIT_COST
+				recruit_btn.disabled = _gold < recruit_cost
 				_style_tower_btn(recruit_btn, Color(0.55, 0.22, 0.06), Color(0.90, 0.45, 0.15), Color(1.0, 0.88, 0.55))
 				var captured_rid := rid
 				var captured_i := i
@@ -2435,7 +2482,12 @@ func _connect_tavern_panel() -> void:
 	var auto_lbl: Label            = _tavern_panel_node("BottomRow/AutoRefreshLbl")
 	if cost_row_icon and coin_tex: cost_row_icon.texture = coin_tex
 	if cost_row_lbl:
-		cost_row_lbl.label_settings = _make_hero_label_settings(font, 22)
+		var cost_ls := _make_hero_label_settings(font, 22)
+		if _gold < TAVERN_REFRESH_COST:
+			cost_ls.font_color = Color(0.85, 0.15, 0.15)
+		else:
+			cost_ls.font_color = Color(0.18, 0.75, 0.25)
+		cost_row_lbl.label_settings = cost_ls
 		cost_row_lbl.text = "刷新消耗：%d" % TAVERN_REFRESH_COST
 	if auto_lbl: auto_lbl.label_settings = _make_hero_label_settings(font, 22)
 	if refresh_btn:
@@ -2445,10 +2497,16 @@ func _connect_tavern_panel() -> void:
 		refresh_btn.pressed.connect(func() -> void: _tavern_manual_refresh())
 	_tavern_update_auto_label()
 
+func _tavern_recruit_cost(rid: String) -> int:
+	var star: int = int(_role_stars.get(rid, 1))
+	var idx: int = clampi(star - 1, 0, TAVERN_RECRUIT_COSTS.size() - 1)
+	return TAVERN_RECRUIT_COSTS[idx]
+
 func _tavern_recruit(rid: String, slot_idx: int) -> void:
-	if _gold < TAVERN_RECRUIT_COST:
+	var cost: int = _tavern_recruit_cost(rid)
+	if _gold < cost:
 		return
-	_gold -= TAVERN_RECRUIT_COST
+	_gold -= cost
 	var is_new := not _owned_role_ids.has(rid)
 	if is_new:
 		_owned_role_ids.append(rid)
@@ -2535,6 +2593,12 @@ func _connect_tower_buttons() -> void:
 			var scene := load(BATTLE_SCENE_PATH) as PackedScene
 			SceneTransition.change_to(scene)
 		)
+	var equip_bag_btn: Button = _function_panel_node.get_node_or_null("ActionRow/EquipBagBtn")
+	if equip_bag_btn:
+		_style_tower_btn(equip_bag_btn, Color(0.2, 0.4, 0.25), Color(0.35, 0.7, 0.4), Color(0.85, 1.0, 0.85))
+		equip_bag_btn.pressed.connect(func() -> void:
+			_show_equip_bag()
+		)
 
 func _style_tower_btn(btn: Button, bg_color: Color, border_color: Color, text_color: Color) -> void:
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
@@ -2586,6 +2650,298 @@ func _style_tower_btn(btn: Button, bg_color: Color, border_color: Color, text_co
 	btn.add_theme_color_override("font_pressed_color",  text_color.darkened(0.1))
 	btn.add_theme_color_override("font_outline_color",  Color(0, 0, 0, 0.8))
 	btn.add_theme_constant_override("outline_size", 3)
+
+func _show_equip_bag() -> void:
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.layer = 30
+	add_child(canvas_layer)
+	var panel: Control = load("res://scenes/EquipBagPanel.tscn").instantiate()
+	canvas_layer.add_child(panel)
+	var close_btn: TextureButton = panel.get_node("CloseBtn")
+	close_btn.pressed.connect(func():
+		canvas_layer.queue_free()
+	)
+	var grid_node: Control = panel.get_node("GridContainer")
+	var tab_highlight: Panel = panel.get_node("TabHighlight")
+	var hl_style := StyleBoxFlat.new()
+	hl_style.bg_color = Color(1.0, 0.85, 0.4, 0.2)
+	hl_style.set_corner_radius_all(4)
+	hl_style.border_width_top = 2
+	hl_style.border_width_bottom = 2
+	hl_style.border_width_left = 2
+	hl_style.border_width_right = 2
+	hl_style.border_color = Color(1.0, 0.75, 0.2, 0.9)
+	tab_highlight.add_theme_stylebox_override("panel", hl_style)
+	var tab_slots := ["weapon", "helmet", "chest", "pants", "boots", "gloves", "necklace", "ring"]
+	var tab_names := ["TabWeapon", "TabHelmet", "TabChest", "TabPants", "TabBoots", "TabGloves", "TabNecklace", "TabRing"]
+	var grid_cols := 8
+	var slot_size := 50.0
+	var slot_gap := 10.0
+	# 右上角数量标签
+	var count_lbl := Label.new()
+	count_lbl.size = Vector2(120.0, 24.0)
+	count_lbl.position = Vector2(grid_node.position.x + grid_node.size.x - 120, grid_node.position.y - 26)
+	count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var cls := LabelSettings.new()
+	cls.font = font
+	cls.font_size = 14
+	cls.font_color = Color(0.9, 0.88, 0.75)
+	cls.outline_size = 2
+	cls.outline_color = Color(0, 0, 0, 0.8)
+	count_lbl.label_settings = cls
+	panel.add_child(count_lbl)
+	var _refresh_grid := func(filter: String) -> void:
+		var count: int = 0
+		for it in _inventory:
+			if String(it.get("slot", "")) == filter:
+				count += 1
+		count_lbl.text = "%d / 32" % count
+		for c in grid_node.get_children():
+			c.queue_free()
+		var filtered: Array = []
+		for item in _inventory:
+			if String(item.get("slot", "")) == filter:
+				filtered.append(item)
+		if not filtered.is_empty():
+			for i in filtered.size():
+				var item2: Dictionary = filtered[i]
+				var col: int = i % grid_cols
+				var row: int = i / grid_cols
+				var sx: float = col * (slot_size + slot_gap)
+				var sy: float = row * (slot_size + slot_gap)
+				var icon_path: String = String(item2.get("icon", ""))
+				if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+					var icon := TextureRect.new()
+					icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+					icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+					icon.custom_minimum_size = Vector2(slot_size, slot_size)
+					icon.size = Vector2(slot_size, slot_size)
+					icon.position = Vector2(sx, sy)
+					icon.texture = load(icon_path)
+					icon.mouse_filter = Control.MOUSE_FILTER_STOP
+					icon.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+					icon.gui_input.connect(_on_bag_item_click.bind(item2, canvas_layer))
+					grid_node.add_child(icon)
+				var lv_lbl := Label.new()
+				lv_lbl.text = "Lv.%d" % int(item2.get("level", 10))
+				lv_lbl.size = Vector2(slot_size, 16.0)
+				lv_lbl.position = Vector2(sx, sy + slot_size - 16.0)
+				lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				var lv_ls := LabelSettings.new()
+				lv_ls.font = font
+				lv_ls.font_size = 11
+				lv_ls.font_color = Color(1.0, 1.0, 1.0)
+				lv_ls.outline_size = 2
+				lv_ls.outline_color = Color(0, 0, 0, 0.9)
+				lv_lbl.label_settings = lv_ls
+				grid_node.add_child(lv_lbl)
+	var state := {"tab": "weapon"}
+	for ti in tab_slots.size():
+		var tab_btn: Button = panel.get_node(tab_names[ti])
+		var captured_key: String = tab_slots[ti]
+		tab_btn.pressed.connect(func() -> void:
+			state["tab"] = captured_key
+			tab_highlight.position = tab_btn.position
+			tab_highlight.size = tab_btn.size
+			_refresh_grid.call(captured_key)
+		)
+	# 一键售出按钮
+	var sell_btn: Button = panel.get_node("SellBtn")
+	sell_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	sell_btn.pressed.connect(func() -> void:
+		var cur: String = state["tab"]
+		var to_remove: Array = []
+		for inv_item in _inventory:
+			if String(inv_item.get("slot", "")) == cur:
+				to_remove.append(inv_item)
+		_show_sell_confirm(to_remove, 0, cur, canvas_layer, _refresh_grid)
+	)
+	_refresh_grid.call("weapon")
+
+func _is_item_equipped(item: Dictionary) -> bool:
+	var idx: int = _inventory.find(item)
+	if idx < 0:
+		return false
+	for rid in _role_equips.keys():
+		var slots: Dictionary = _role_equips[rid]
+		for slot_key in slots.keys():
+			if int(slots[slot_key]) == idx:
+				return true
+	return false
+
+func _calc_sell_price(item: Dictionary) -> int:
+	var lv: int = maxi(1, int(item.get("level", 10)))
+	return maxi(1, lv * 2)
+
+func _show_sell_confirm(to_remove: Array, _unused: int, tab: String, parent_ui: CanvasLayer, refresh_fn: Callable) -> void:
+	var gold_gain: int = 0
+	for sell_item in to_remove:
+		gold_gain += _calc_sell_price(sell_item)
+	var vp := get_viewport_rect().size
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var confirm_layer := CanvasLayer.new()
+	confirm_layer.layer = 31
+	add_child(confirm_layer)
+	var container := Control.new()
+	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	confirm_layer.add_child(container)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.4)
+	dim.size = vp
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	container.add_child(dim)
+	var popup_w := 320.0
+	var popup_h := 180.0
+	var popup := Panel.new()
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.1, 0.12, 0.22, 0.97)
+	ps.set_corner_radius_all(12)
+	ps.border_width_top = 2
+	ps.border_width_bottom = 2
+	ps.border_width_left = 2
+	ps.border_width_right = 2
+	ps.border_color = Color(0.8, 0.6, 0.2, 0.9)
+	ps.shadow_color = Color(0, 0, 0, 0.6)
+	ps.shadow_size = 8
+	popup.add_theme_stylebox_override("panel", ps)
+	popup.size = Vector2(popup_w, popup_h)
+	popup.position = (vp - Vector2(popup_w, popup_h)) * 0.5
+	container.add_child(popup)
+	var msg_lbl := Label.new()
+	msg_lbl.text = "出售当前页所有未装备的装备"
+	msg_lbl.size = Vector2(popup_w, 30.0)
+	msg_lbl.position = popup.position + Vector2(0, 24)
+	msg_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var mls := LabelSettings.new()
+	mls.font = font
+	mls.font_size = 18
+	mls.font_color = Color(0.92, 0.9, 0.82)
+	mls.outline_size = 2
+	mls.outline_color = Color(0, 0, 0, 0.8)
+	msg_lbl.label_settings = mls
+	container.add_child(msg_lbl)
+	var gold_lbl := Label.new()
+	gold_lbl.text = "可获得金币: %d" % gold_gain
+	gold_lbl.size = Vector2(popup_w, 28.0)
+	gold_lbl.position = popup.position + Vector2(0, 62)
+	gold_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var gls := LabelSettings.new()
+	gls.font = font
+	gls.font_size = 20
+	gls.font_color = Color(1.0, 0.85, 0.2)
+	gls.outline_size = 2
+	gls.outline_color = Color(0, 0, 0, 0.9)
+	gold_lbl.label_settings = gls
+	container.add_child(gold_lbl)
+	# 确认按钮
+	var confirm_btn := Button.new()
+	confirm_btn.text = "确认"
+	confirm_btn.custom_minimum_size = Vector2(100, 38)
+	confirm_btn.size = Vector2(100, 38)
+	confirm_btn.position = popup.position + Vector2(popup_w * 0.25 - 50, popup_h - 56)
+	confirm_btn.add_theme_font_override("font", font)
+	confirm_btn.add_theme_font_size_override("font_size", 18)
+	confirm_btn.pressed.connect(func() -> void:
+		for item in to_remove:
+			_inventory.erase(item)
+		_gold += gold_gain
+		_refresh_hud()
+		_save_game()
+		refresh_fn.call(tab)
+		confirm_layer.queue_free()
+	)
+	container.add_child(confirm_btn)
+	# 取消按钮
+	var cancel_btn := Button.new()
+	cancel_btn.text = "取消"
+	cancel_btn.custom_minimum_size = Vector2(100, 38)
+	cancel_btn.size = Vector2(100, 38)
+	cancel_btn.position = popup.position + Vector2(popup_w * 0.75 - 50, popup_h - 56)
+	cancel_btn.add_theme_font_override("font", font)
+	cancel_btn.add_theme_font_size_override("font_size", 18)
+	cancel_btn.pressed.connect(func() -> void:
+		confirm_layer.queue_free()
+	)
+	container.add_child(cancel_btn)
+
+func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLayer) -> void:
+	if not (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
+		return
+	var vp := get_viewport_rect().size
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var popup_w := 280.0
+	var popup_h := 300.0
+	var container := Control.new()
+	container.size = vp
+	parent_ui.add_child(container)
+	var popup := Panel.new()
+	var pps := StyleBoxFlat.new()
+	pps.bg_color = Color(0.1, 0.12, 0.22, 0.97)
+	pps.set_corner_radius_all(12)
+	pps.border_width_top = 2
+	pps.border_width_bottom = 2
+	pps.border_width_left = 2
+	pps.border_width_right = 2
+	pps.border_color = Color(1.0, 0.65, 0.0, 0.8)
+	pps.shadow_color = Color(0, 0, 0, 0.6)
+	pps.shadow_size = 8
+	popup.add_theme_stylebox_override("panel", pps)
+	popup.size = Vector2(popup_w, popup_h)
+	popup.position = (vp - Vector2(popup_w, popup_h)) * 0.5
+	container.add_child(popup)
+	var slot_names := {"weapon": "武器", "helmet": "头盔", "chest": "胸甲", "gloves": "手套", "pants": "裤子", "boots": "鞋子", "necklace": "项链", "ring": "戒指"}
+	var slot_cn: String = slot_names.get(String(item.get("slot", "")), "")
+	var icon_path: String = String(item.get("icon", ""))
+	if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+		var icon_rect := TextureRect.new()
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.custom_minimum_size = Vector2(64, 64)
+		icon_rect.size = Vector2(64, 64)
+		icon_rect.position = popup.position + Vector2((popup_w - 64) * 0.5, 8)
+		icon_rect.texture = load(icon_path)
+		container.add_child(icon_rect)
+	var name_lbl := Label.new()
+	name_lbl.text = String(item.get("name", ""))
+	name_lbl.size = Vector2(popup_w, 36.0)
+	name_lbl.position = popup.position + Vector2(0, 72)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var nls := LabelSettings.new()
+	nls.font = font
+	nls.font_size = 22
+	nls.font_color = Color(1.0, 0.65, 0.0)
+	nls.outline_size = 2
+	nls.outline_color = Color(0, 0, 0, 1.0)
+	name_lbl.label_settings = nls
+	container.add_child(name_lbl)
+	var info_text := "Lv.%d  [%s]\n" % [int(item.get("level", 10)), slot_cn]
+	var attrs := [["攻击", "atk"], ["防御", "def"], ["生命", "hp"], ["速度", "speed"], ["暴击", "crit"], ["闪避", "dodge"]]
+	for a in attrs:
+		var val: int = int(item.get(a[1], 0))
+		if val > 0:
+			info_text += "%s [color=#2ebf40]+%d[/color]\n" % [a[0], val]
+	var info_lbl := RichTextLabel.new()
+	info_lbl.bbcode_enabled = true
+	info_lbl.text = info_text
+	info_lbl.fit_content = true
+	info_lbl.scroll_active = false
+	info_lbl.size = Vector2(popup_w - 40, popup_h - 150)
+	info_lbl.position = popup.position + Vector2(20, 110)
+	info_lbl.add_theme_font_override("normal_font", font)
+	info_lbl.add_theme_font_size_override("normal_font_size", 18)
+	info_lbl.add_theme_color_override("default_color", Color(0.9, 0.92, 0.85))
+	container.add_child(info_lbl)
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = popup.position + Vector2(popup_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
+	close_btn.pressed.connect(func():
+		container.queue_free()
+	)
+	container.add_child(close_btn)
 
 const LEVEL_TRACK_NODE_H  := 120.0  # 节点图片显示高度
 const LEVEL_TRACK_LINE_H  := 60.0   # 连接线显示高度（同行垂直居中）
@@ -2961,6 +3317,10 @@ func _refresh_panel() -> void:
 		desc += "\n当前产量：[color=#2ebf40]%d[/color] %s / %d 秒" % [PRODUCE_RATES[lv - 1], res_name, int(PRODUCE_INTERVAL)]
 		if lv < 3:
 			desc += "\n下一级产量：[color=#2ebf40]%d[/color] %s / %d 秒" % [PRODUCE_RATES[lv], res_name, int(PRODUCE_INTERVAL)]
+	if _panel_key == "tower":
+		var cleared_count: int = maxi(_cleared_level - FIRST_LEVEL_ID + 1, 0)
+		var tower_exp: int = cleared_count * TOWER_EXP_PER_LEVEL
+		desc += "\n经验产出：[color=#2ebf40]%d[/color] / %d 秒" % [tower_exp, int(TOWER_EXP_INTERVAL)]
 	_panel_info_lbl.text = desc
 	var extra_text := ""
 	if lv >= 3:
@@ -3079,6 +3439,104 @@ func _tick_production() -> void:
 	_refresh_hud()
 	_save_game()
 
+func _tick_tower_exp() -> void:
+	if _cleared_level <= 0:
+		return
+	var cleared_count: int = _cleared_level - FIRST_LEVEL_ID + 1
+	var exp_gain: int = cleared_count * TOWER_EXP_PER_LEVEL
+	if exp_gain <= 0:
+		return
+	var any_leveled_up := false
+	for rid in _expedition_team_ids:
+		if rid.is_empty():
+			continue
+		var lv: int = int(_role_levels.get(rid, 1))
+		var cur_exp: int = int(_role_exps.get(rid, 0)) + exp_gain
+		var leveled_up := false
+		while true:
+			var max_exp: int = int(_level_up_table.get(lv, 0))
+			if max_exp <= 0:
+				cur_exp = 0
+				break
+			if cur_exp < max_exp:
+				break
+			cur_exp -= max_exp
+			lv += 1
+			leveled_up = true
+		_role_levels[rid] = lv
+		_role_exps[rid] = cur_exp
+		if leveled_up:
+			any_leveled_up = true
+			_refresh_role_label_for(rid)
+	if any_leveled_up:
+		_play_level_up_sfx()
+	_spawn_float_text("tower", exp_gain, "exp")
+	_try_tower_drop()
+	_save_game()
+
+func _try_tower_drop() -> void:
+	if _equipment_table.is_empty():
+		return
+	if randf() > TOWER_DROP_CHANCE:
+		return
+	var tower_lv: int = _building_nodes["tower"]["level"] if _building_nodes.has("tower") else 1
+	var equip_level: int = tower_lv * 10
+	var ids := _equipment_table.keys()
+	# 过滤掉已满上限的类型
+	var slot_counts: Dictionary = {}
+	for inv_item in _inventory:
+		var s: String = String(inv_item.get("slot", ""))
+		slot_counts[s] = int(slot_counts.get(s, 0)) + 1
+	var valid_ids: Array = []
+	for eid_check in ids:
+		var tpl_check: Dictionary = _equipment_table[eid_check]
+		if int(slot_counts.get(tpl_check["slot"], 0)) < 32:
+			valid_ids.append(eid_check)
+	if valid_ids.is_empty():
+		return
+	var eid: int = valid_ids[randi() % valid_ids.size()]
+	var tpl: Dictionary = _equipment_table[eid]
+	var scale: float = 1.0 + (equip_level - 10) * 0.10
+	var item := {
+		"id": eid,
+		"level": equip_level,
+		"name": tpl["name"],
+		"slot": tpl["slot"],
+		"icon": tpl["icon"],
+		"atk": int(randi_range(tpl["atk_min"], tpl["atk_max"]) * scale),
+		"def": int(randi_range(tpl["def_min"], tpl["def_max"]) * scale),
+		"hp": int(randi_range(tpl["hp_min"], tpl["hp_max"]) * scale),
+		"speed": int(randi_range(tpl["speed_min"], tpl["speed_max"]) * scale),
+		"crit": int(randi_range(tpl["crit_min"], tpl["crit_max"]) * scale),
+		"dodge": int(randi_range(tpl["dodge_min"], tpl["dodge_max"]) * scale),
+	}
+	_inventory.append(item)
+	_spawn_equip_float(tpl["name"])
+
+func _spawn_equip_float(equip_name: String) -> void:
+	var pos: Vector2 = BUILDINGS["tower"]["pos"]
+	var container := Node2D.new()
+	container.position = pos + Vector2(0, -30)
+	container.z_index = 900
+	add_child(container)
+	var lbl := Label.new()
+	lbl.text = equip_name
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(160, 30)
+	lbl.position = Vector2(-80.0, -15.0)
+	var ls := LabelSettings.new()
+	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size = 20
+	ls.font_color = Color(1.0, 0.65, 0.0)
+	ls.outline_size = 3
+	ls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
+	lbl.label_settings = ls
+	container.add_child(lbl)
+	var tween := create_tween()
+	tween.tween_property(container, "position:y", pos.y - 65.0, 1.2)
+	tween.parallel().tween_property(container, "modulate:a", 0.0, 0.4).set_delay(0.8)
+	tween.tween_callback(container.queue_free)
+
 func _spawn_float_text(key: String, amount: int, resource_type: String) -> void:
 	var pos: Vector2 = BUILDINGS[key]["pos"]
 	var container := Node2D.new()
@@ -3086,10 +3544,13 @@ func _spawn_float_text(key: String, amount: int, resource_type: String) -> void:
 	container.z_index = 900
 	add_child(container)
 	var lbl := Label.new()
-	lbl.text = "+%d" % amount
+	if resource_type == "exp":
+		lbl.text = "+%d EXP" % amount
+	else:
+		lbl.text = "+%d" % amount
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lbl.size = Vector2(80, 30)
-	lbl.position = Vector2(-40.0, -15.0)
+	lbl.size = Vector2(120, 30)
+	lbl.position = Vector2(-60.0, -15.0)
 	var ls := LabelSettings.new()
 	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	ls.font_size = 24
@@ -3097,6 +3558,8 @@ func _spawn_float_text(key: String, amount: int, resource_type: String) -> void:
 		ls.font_color = Color(0.18, 0.75, 0.25)
 	elif resource_type == "ore":
 		ls.font_color = Color(0.1, 0.1, 0.1)
+	elif resource_type == "exp":
+		ls.font_color = Color(0.18, 0.8, 0.3)
 	else:
 		ls.font_color = Color(1.0, 0.82, 0.2)
 	ls.outline_size = 3
@@ -3180,6 +3643,8 @@ func _save_game() -> void:
 	data["tavern_pool"] = _tavern_pool.duplicate()
 	data["tavern_auto_timer"] = _tavern_auto_timer
 	data["tavern_free_refreshes"] = _tavern_free_refreshes
+	data["inventory"] = _inventory.duplicate(true)
+	data["role_equips"] = _role_equips.duplicate(true)
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		return
@@ -3251,6 +3716,15 @@ func _load_game() -> void:
 		_tavern_auto_timer = float(data["tavern_auto_timer"])
 	if data.has("tavern_free_refreshes"):
 		_tavern_free_refreshes = int(data["tavern_free_refreshes"])
+	if data.has("inventory") and data["inventory"] is Array:
+		_inventory = []
+		for item in (data["inventory"] as Array):
+			if item is Dictionary:
+				_inventory.append(item)
+	if data.has("role_equips") and data["role_equips"] is Dictionary:
+		_role_equips = {}
+		for rid in (data["role_equips"] as Dictionary).keys():
+			_role_equips[rid] = data["role_equips"][rid]
 	# 读档后用 formation_id 查名字并刷新按钮
 	_formation_name = _query_formation_name(_formation_id)
 	_refresh_formation_btn()

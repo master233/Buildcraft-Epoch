@@ -1160,7 +1160,7 @@ func _end_battle(victory: bool) -> void:
 	var rows_area_h: float = 0.0
 	if exp_rows.size() > 0:
 		rows_area_h = 16.0 + avatar_size + 6.0 + 22.0 + 4.0 + 18.0 + 4.0 + 22.0 + 16.0
-	var drop_area_h: float = 95.0 if not drop_item.is_empty() else 0.0
+	var drop_area_h: float = 85.0 if not drop_item.is_empty() else 0.0
 	var min_panel_w := 460.0
 	var gap_count: int = max(0, exp_rows.size() - 1)
 	var needed_w: float = float(exp_rows.size()) * cell_w + float(gap_count) * cell_gap + 56.0
@@ -1322,7 +1322,7 @@ func _end_battle(victory: bool) -> void:
 	# 装备掉落显示（标签 + 图标 + 装备名）
 	if not drop_item.is_empty():
 		var drop_y: float = panel.position.y + 96.0 + rows_area_h
-		var icon_size := 64.0
+		var icon_size := 52.0
 		var drop_lbl := Label.new()
 		drop_lbl.text = "获得装备:"
 		var dls := LabelSettings.new()
@@ -1332,7 +1332,7 @@ func _end_battle(victory: bool) -> void:
 		dls.outline_size = 2
 		dls.outline_color = Color(0, 0, 0, 0.8)
 		drop_lbl.label_settings = dls
-		drop_lbl.position = Vector2(panel.position.x + panel_w * 0.5 - 70, drop_y + 31)
+		drop_lbl.position = Vector2(panel.position.x + panel_w * 0.5 - 70, drop_y + 25)
 		ui.add_child(drop_lbl)
 		var drop_icon_path: String = String(drop_item.get("icon", ""))
 		if not drop_icon_path.is_empty() and ResourceLoader.exists(drop_icon_path):
@@ -1727,11 +1727,11 @@ func _record_level_cleared() -> Dictionary:
 		data["cleared_level"] = cleared_id
 	result["rows"] = _grant_exp_to_team(data, cleared_id)
 
-	# 胜利必定掉落一件装备
-	var drop := _generate_equipment_drop(data)
+	# 胜利必定掉落一件装备（每种类型上限32件）
+	var inv: Array = data.get("inventory", []) if data.get("inventory", null) is Array else []
+	var drop := _generate_equipment_drop(data, inv)
 	if not drop.is_empty():
 		result["drop"] = drop
-		var inv: Array = data.get("inventory", []) if data.get("inventory", null) is Array else []
 		inv.append(drop)
 		data["inventory"] = inv
 
@@ -1794,7 +1794,9 @@ func _grant_exp_to_team(data: Dictionary, cleared_id: int) -> Array:
 	data["roles"] = roles_state
 	return rows
 
-func _generate_equipment_drop(data: Dictionary) -> Dictionary:
+const EQUIP_SLOT_LIMIT := 32
+
+func _generate_equipment_drop(data: Dictionary, inv: Array) -> Dictionary:
 	var equip_table := _load_equipment_table()
 	if equip_table.is_empty():
 		return {}
@@ -1803,7 +1805,20 @@ func _generate_equipment_drop(data: Dictionary) -> Dictionary:
 		tower_lv = int((data["levels"] as Dictionary).get("tower", 1))
 	var equip_level: int = tower_lv * 10
 	var ids := equip_table.keys()
-	var eid: int = ids[randi() % ids.size()]
+	# 过滤掉已满上限的类型
+	var valid_ids: Array = []
+	var slot_counts: Dictionary = {}
+	for item in inv:
+		var s: String = String(item.get("slot", ""))
+		slot_counts[s] = int(slot_counts.get(s, 0)) + 1
+	for eid in ids:
+		var tpl: Dictionary = equip_table[eid]
+		var slot: String = tpl["slot"]
+		if int(slot_counts.get(slot, 0)) < EQUIP_SLOT_LIMIT:
+			valid_ids.append(eid)
+	if valid_ids.is_empty():
+		return {}
+	var eid: int = valid_ids[randi() % valid_ids.size()]
 	var tpl: Dictionary = equip_table[eid]
 	var scale: float = 1.0 + (equip_level - 10) * 0.10
 	return {

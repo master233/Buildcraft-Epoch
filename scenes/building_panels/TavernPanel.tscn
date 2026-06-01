@@ -253,15 +253,15 @@ offset_right = 208.0
 offset_bottom = 57.0
 theme_override_constants/separation = 4
 
+[node name="RefreshCostLbl" type="Label" parent="BottomRow/RefreshCostRow" unique_id=1756827089]
+layout_mode = 2
+text = "刷新消耗：10"
+
 [node name="RefreshCostIcon" type="TextureRect" parent="BottomRow/RefreshCostRow" unique_id=517066049]
 custom_minimum_size = Vector2(32, 32)
 layout_mode = 2
 expand_mode = 1
 stretch_mode = 5
-
-[node name="RefreshCostLbl" type="Label" parent="BottomRow/RefreshCostRow" unique_id=1756827089]
-layout_mode = 2
-text = "刷新消耗：10"
 
 [node name="RefreshBtn" type="Button" parent="BottomRow" unique_id=1723055589]
 layout_mode = 0

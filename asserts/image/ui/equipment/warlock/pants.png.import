@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dnfxc2g6dswsr"
-path="res://.godot/imported/suit_berserker.png-56ef118e4559d724b2704228485a1918.ctex"
+uid="uid://dcmlon62g57pn"
+path="res://.godot/imported/pants.png-2480b6d14fb128ab99095be9330bc6a3.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://asserts/image/ui/equipment/suit_berserker.png"
-dest_files=["res://.godot/imported/suit_berserker.png-56ef118e4559d724b2704228485a1918.ctex"]
+source_file="res://asserts/image/ui/equipment/warlock/pants.png"
+dest_files=["res://.godot/imported/pants.png-2480b6d14fb128ab99095be9330bc6a3.ctex"]
 
 [params]
 

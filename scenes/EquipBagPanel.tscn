@@ -1,0 +1,137 @@
+[gd_scene format=3 uid="uid://bkj5cufln1p2p"]
+
+[ext_resource type="Texture2D" uid="uid://c5gehyj7yi1cv" path="res://asserts/image/ui/equipment/equip_bag.png" id="1"]
+[ext_resource type="Texture2D" uid="uid://cos5jlt04al0p" path="res://asserts/image/ui/ui_close.png" id="2"]
+
+[node name="EquipBagPanel" type="Control" unique_id=1577088967]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="DimBg" type="ColorRect" parent="." unique_id=499588604]
+layout_mode = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="BgRect" type="TextureRect" parent="." unique_id=858533046]
+layout_mode = 0
+offset_left = 334.0
+offset_top = 180.0
+offset_right = 1014.0
+offset_bottom = 564.0
+mouse_filter = 2
+texture = ExtResource("1")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="CloseBtn" type="TextureButton" parent="." unique_id=1431656733]
+layout_mode = 0
+offset_left = 974.0
+offset_top = 179.0
+offset_right = 1014.0
+offset_bottom = 219.0
+texture_normal = ExtResource("2")
+ignore_texture_size = true
+stretch_mode = 4
+
+[node name="TabWeapon" type="Button" parent="." unique_id=1470711399]
+layout_mode = 0
+offset_left = 382.0
+offset_top = 246.0
+offset_right = 477.0
+offset_bottom = 278.0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TabHelmet" type="Button" parent="." unique_id=1260322329]
+layout_mode = 0
+offset_left = 383.0
+offset_top = 282.0
+offset_right = 477.0
+offset_bottom = 311.0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TabChest" type="Button" parent="." unique_id=832005389]
+layout_mode = 0
+offset_left = 383.0
+offset_top = 317.0
+offset_right = 477.0
+offset_bottom = 347.0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TabPants" type="Button" parent="." unique_id=1724460738]
+layout_mode = 0
+offset_left = 384.0
+offset_top = 353.0
+offset_right = 476.0
+offset_bottom = 382.0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TabBoots" type="Button" parent="." unique_id=1743907173]
+layout_mode = 0
+offset_left = 383.0
+offset_top = 389.0
+offset_right = 476.0
+offset_bottom = 418.0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TabGloves" type="Button" parent="." unique_id=124406182]
+layout_mode = 0
+offset_left = 384.0
+offset_top = 424.0
+offset_right = 475.0
+offset_bottom = 452.0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TabNecklace" type="Button" parent="." unique_id=1952571525]
+layout_mode = 0
+offset_left = 383.0
+offset_top = 458.0
+offset_right = 476.0
+offset_bottom = 488.0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TabRing" type="Button" parent="." unique_id=634935261]
+layout_mode = 0
+offset_left = 383.0
+offset_top = 493.0
+offset_right = 476.0
+offset_bottom = 522.0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="TabHighlight" type="Panel" parent="." unique_id=264651504]
+layout_mode = 0
+offset_left = 383.0
+offset_top = 245.0
+offset_right = 477.0
+offset_bottom = 276.0
+mouse_filter = 2
+
+[node name="SellBtn" type="Button" parent="." unique_id=1397288203]
+layout_mode = 0
+offset_left = 847.0
+offset_top = 499.0
+offset_right = 968.0
+offset_bottom = 534.0
+mouse_default_cursor_shape = 2
+flat = true
+
+[node name="GridContainer" type="Control" parent="." unique_id=1397288202]
+anchors_preset = 0
+offset_left = 499.0
+offset_top = 252.0
+offset_right = 976.0
+offset_bottom = 483.0
+mouse_filter = 2

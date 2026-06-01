@@ -1,42 +1,42 @@
 id	suit_id	name	icon	require_count	effect_desc	atk	def	hp	speed	crit	dodge
 # 套装编号_进度	套装组ID	套装名	图标路径	需穿戴件数	效果描述	攻击加成	防御加成	生命加成	速度加成	暴击加成(万分比)	闪避加成(万分比)
-# ─── 战士套装：攻击与暴击 ───
-60101	601	战士	res://asserts/image/ui/equipment/suit_warrior.png	2	攻击+15	15	0	0	0	0	0
-60102	601	战士	res://asserts/image/ui/equipment/suit_warrior.png	4	攻击+35，暴击+300	35	0	0	0	300	0
-60103	601	战士	res://asserts/image/ui/equipment/suit_warrior.png	6	攻击+60，暴击+600	60	0	0	0	600	0
-60104	601	战士	res://asserts/image/ui/equipment/suit_warrior.png	8	攻击+100，暴击+1000	100	0	0	0	1000	0
-# ─── 守护者套装：防御与生命 ───
-60201	602	守护者	res://asserts/image/ui/equipment/suit_guardian.png	2	防御+10，生命+50	0	10	50	0	0	0
-60202	602	守护者	res://asserts/image/ui/equipment/suit_guardian.png	4	防御+25，生命+120	0	25	120	0	0	0
-60203	602	守护者	res://asserts/image/ui/equipment/suit_guardian.png	6	防御+45，生命+250	0	45	250	0	0	0
-60204	602	守护者	res://asserts/image/ui/equipment/suit_guardian.png	8	防御+70，生命+400	0	70	400	0	0	0
-# ─── 刺客套装：暴击与速度 ───
-60301	603	刺客	res://asserts/image/ui/equipment/suit_assassin.png	2	暴击+200，速度+3	0	0	0	3	200	0
-60302	603	刺客	res://asserts/image/ui/equipment/suit_assassin.png	4	暴击+500，速度+6	0	0	0	6	500	0
-60303	603	刺客	res://asserts/image/ui/equipment/suit_assassin.png	6	暴击+800，速度+10	0	0	0	10	800	0
-60304	603	刺客	res://asserts/image/ui/equipment/suit_assassin.png	8	暴击+1200，速度+15	0	0	0	15	1200	0
-# ─── 牧师套装：生命与防御 ───
-60401	604	牧师	res://asserts/image/ui/equipment/suit_priest.png	2	生命+80	0	0	80	0	0	0
-60402	604	牧师	res://asserts/image/ui/equipment/suit_priest.png	4	生命+180，防御+15	0	15	180	0	0	0
-60403	604	牧师	res://asserts/image/ui/equipment/suit_priest.png	6	生命+320，防御+30	0	30	320	0	0	0
-60404	604	牧师	res://asserts/image/ui/equipment/suit_priest.png	8	生命+500，防御+50	0	50	500	0	0	0
-# ─── 法师套装：攻击与速度 ───
-60501	605	法师	res://asserts/image/ui/equipment/suit_mage.png	2	攻击+12，速度+3	12	0	0	3	0	0
-60502	605	法师	res://asserts/image/ui/equipment/suit_mage.png	4	攻击+30，速度+7	30	0	0	7	0	0
-60503	605	法师	res://asserts/image/ui/equipment/suit_mage.png	6	攻击+55，速度+12	55	0	0	12	0	0
-60504	605	法师	res://asserts/image/ui/equipment/suit_mage.png	8	攻击+90，速度+18	90	0	0	18	0	0
-# ─── 暗黑套装：攻击与闪避 ───
-60601	606	暗黑	res://asserts/image/ui/equipment/suit_dark.png	2	攻击+10，闪避+150	10	0	0	0	0	150
-60602	606	暗黑	res://asserts/image/ui/equipment/suit_dark.png	4	攻击+25，闪避+350	25	0	0	0	0	350
-60603	606	暗黑	res://asserts/image/ui/equipment/suit_dark.png	6	攻击+45，闪避+600	45	0	0	0	0	600
-60604	606	暗黑	res://asserts/image/ui/equipment/suit_dark.png	8	攻击+70，闪避+900	70	0	0	0	0	900
-# ─── 圣骑士套装：均衡型 ───
-60701	607	圣骑士	res://asserts/image/ui/equipment/suit_paladin.png	2	攻击+8，防御+5，生命+30	8	5	30	0	0	0
-60702	607	圣骑士	res://asserts/image/ui/equipment/suit_paladin.png	4	攻击+20，防御+12，生命+80	20	12	80	0	0	0
-60703	607	圣骑士	res://asserts/image/ui/equipment/suit_paladin.png	6	攻击+38，防御+22，生命+160	38	22	160	0	0	0
-60704	607	圣骑士	res://asserts/image/ui/equipment/suit_paladin.png	8	攻击+60，防御+35，生命+280	60	35	280	0	0	0
-# ─── 狂战士套装：纯攻击 ───
-60801	608	狂战士	res://asserts/image/ui/equipment/suit_berserker.png	2	攻击+20	20	0	0	0	0	0
-60802	608	狂战士	res://asserts/image/ui/equipment/suit_berserker.png	4	攻击+50	50	0	0	0	0	0
-60803	608	狂战士	res://asserts/image/ui/equipment/suit_berserker.png	6	攻击+90	90	0	0	0	0	0
-60804	608	狂战士	res://asserts/image/ui/equipment/suit_berserker.png	8	攻击+140	140	0	0	0	0	0
+# ─── 战魂套装：攻击与暴击 ───
+60101	601	战魂	res://asserts/image/ui/equipment/suit_warrior.png	2	攻击+15	15	0	0	0	0	0
+60102	601	战魂	res://asserts/image/ui/equipment/suit_warrior.png	4	攻击+35，暴击+300	35	0	0	0	300	0
+60103	601	战魂	res://asserts/image/ui/equipment/suit_warrior.png	6	攻击+60，暴击+600	60	0	0	0	600	0
+60104	601	战魂	res://asserts/image/ui/equipment/suit_warrior.png	8	攻击+100，暴击+1000	100	0	0	0	1000	0
+# ─── 磐岩套装：防御与生命 ───
+60201	602	磐岩	res://asserts/image/ui/equipment/suit_guardian.png	2	防御+10，生命+50	0	10	50	0	0	0
+60202	602	磐岩	res://asserts/image/ui/equipment/suit_guardian.png	4	防御+25，生命+120	0	25	120	0	0	0
+60203	602	磐岩	res://asserts/image/ui/equipment/suit_guardian.png	6	防御+45，生命+250	0	45	250	0	0	0
+60204	602	磐岩	res://asserts/image/ui/equipment/suit_guardian.png	8	防御+70，生命+400	0	70	400	0	0	0
+# ─── 暗影套装：暴击与速度 ───
+60301	603	暗影	res://asserts/image/ui/equipment/suit_assassin.png	2	暴击+200，速度+3	0	0	0	3	200	0
+60302	603	暗影	res://asserts/image/ui/equipment/suit_assassin.png	4	暴击+500，速度+6	0	0	0	6	500	0
+60303	603	暗影	res://asserts/image/ui/equipment/suit_assassin.png	6	暴击+800，速度+10	0	0	0	10	800	0
+60304	603	暗影	res://asserts/image/ui/equipment/suit_assassin.png	8	暴击+1200，速度+15	0	0	0	15	1200	0
+# ─── 神恩套装：生命与防御 ───
+60401	604	神恩	res://asserts/image/ui/equipment/suit_priest.png	2	生命+80	0	0	80	0	0	0
+60402	604	神恩	res://asserts/image/ui/equipment/suit_priest.png	4	生命+180，防御+15	0	15	180	0	0	0
+60403	604	神恩	res://asserts/image/ui/equipment/suit_priest.png	6	生命+320，防御+30	0	30	320	0	0	0
+60404	604	神恩	res://asserts/image/ui/equipment/suit_priest.png	8	生命+500，防御+50	0	50	500	0	0	0
+# ─── 奥术套装：攻击与速度 ───
+60501	605	奥术	res://asserts/image/ui/equipment/suit_mage.png	2	攻击+12，速度+3	12	0	0	3	0	0
+60502	605	奥术	res://asserts/image/ui/equipment/suit_mage.png	4	攻击+30，速度+7	30	0	0	7	0	0
+60503	605	奥术	res://asserts/image/ui/equipment/suit_mage.png	6	攻击+55，速度+12	55	0	0	12	0	0
+60504	605	奥术	res://asserts/image/ui/equipment/suit_mage.png	8	攻击+90，速度+18	90	0	0	18	0	0
+# ─── 黑暗套装：攻击与闪避 ───
+60601	606	黑暗	res://asserts/image/ui/equipment/suit_dark.png	2	攻击+10，闪避+150	10	0	0	0	0	150
+60602	606	黑暗	res://asserts/image/ui/equipment/suit_dark.png	4	攻击+25，闪避+350	25	0	0	0	0	350
+60603	606	黑暗	res://asserts/image/ui/equipment/suit_dark.png	6	攻击+45，闪避+600	45	0	0	0	0	600
+60604	606	黑暗	res://asserts/image/ui/equipment/suit_dark.png	8	攻击+70，闪避+900	70	0	0	0	0	900
+# ─── 圣光套装：均衡型 ───
+60701	607	圣光	res://asserts/image/ui/equipment/suit_paladin.png	2	攻击+8，防御+5，生命+30	8	5	30	0	0	0
+60702	607	圣光	res://asserts/image/ui/equipment/suit_paladin.png	4	攻击+20，防御+12，生命+80	20	12	80	0	0	0
+60703	607	圣光	res://asserts/image/ui/equipment/suit_paladin.png	6	攻击+38，防御+22，生命+160	38	22	160	0	0	0
+60704	607	圣光	res://asserts/image/ui/equipment/suit_paladin.png	8	攻击+60，防御+35，生命+280	60	35	280	0	0	0
+# ─── 邪能套装：纯攻击 ───
+60801	608	邪能	res://asserts/image/ui/equipment/suit_warlock.png	2	攻击+20	20	0	0	0	0	0
+60802	608	邪能	res://asserts/image/ui/equipment/suit_warlock.png	4	攻击+50	50	0	0	0	0	0
+60803	608	邪能	res://asserts/image/ui/equipment/suit_warlock.png	6	攻击+90	90	0	0	0	0	0
+60804	608	邪能	res://asserts/image/ui/equipment/suit_warlock.png	8	攻击+140	140	0	0	0	0	0
