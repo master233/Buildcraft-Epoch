@@ -31,6 +31,10 @@ var _formations: Array = []
 var _current_formation_idx: int = 0
 var _formation_role_nodes: Array = []
 var _formation_name_lbl: Label = null
+var _formation_team_ids: Array = []
+var _drag_index: int = -1
+var _drag_offset: Vector2 = Vector2.ZERO
+var _drag_original_pos: Vector2 = Vector2.ZERO
 
 # 战斗状态
 var _battle_units: Array = []   # Array of BattleUnit（玩家+敌方）
@@ -51,13 +55,6 @@ func _ready() -> void:
 func _build_ui() -> void:
 	var vp := get_viewport_rect().size
 
-	# 战斗背景音乐
-	var battle_bgm := AudioStreamPlayer.new()
-	battle_bgm.stream = load("res://asserts/audio/battle.ogg")
-	battle_bgm.volume_db = -3.0
-	battle_bgm.autoplay = true
-	add_child(battle_bgm)
-
 	var bg := Sprite2D.new()
 	bg.texture = load("res://asserts/image/backgroud/bg_battle.jpg")
 	var tex: Texture2D = bg.texture
@@ -72,6 +69,12 @@ func _build_ui() -> void:
 	if _scene_mode == "formation":
 		_build_formation_mode(vp)
 	else:
+		# 战斗背景音乐（仅战斗模式播放）
+		var battle_bgm := AudioStreamPlayer.new()
+		battle_bgm.stream = load("res://asserts/audio/battle.ogg")
+		battle_bgm.volume_db = -3.0
+		battle_bgm.autoplay = true
+		add_child(battle_bgm)
 		_place_battle_roles(vp)
 		_place_enemy_roles(vp)
 		var ui := CanvasLayer.new()
@@ -1361,7 +1364,9 @@ func _place_formation_roles(vp: Vector2, fidx: int) -> void:
 	var cell_h := vp.y / GRID_ROWS
 
 	var roles_data := _load_roles_table()
-	var team_ids   := _get_team_ids()
+	if _formation_team_ids.is_empty():
+		_formation_team_ids = _get_team_ids()
+	var team_ids := _formation_team_ids
 
 	for i in mini(team_ids.size(), positions.size()):
 		var rc: Vector2 = positions[i]
@@ -1422,6 +1427,20 @@ func _place_formation_roles(vp: Vector2, fidx: int) -> void:
 		sprite.play(use_anim)
 		root.add_child(sprite)
 
+		var pos_lbl := Label.new()
+		pos_lbl.text = str(i + 1)
+		pos_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		pos_lbl.size = Vector2(40, 24)
+		pos_lbl.position = Vector2(-20, fh * rd.idle_scale * 0.4)
+		var pos_ls := LabelSettings.new()
+		pos_ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+		pos_ls.font_size = 18
+		pos_ls.font_color = Color(1.0, 0.9, 0.5, 0.9)
+		pos_ls.outline_size = 2
+		pos_ls.outline_color = Color(0, 0, 0, 0.8)
+		pos_lbl.label_settings = pos_ls
+		root.add_child(pos_lbl)
+
 func _build_formation_overlay(vp: Vector2) -> void:
 	var ui := CanvasLayer.new()
 	ui.layer = 10
@@ -1470,17 +1489,32 @@ func _build_formation_overlay(vp: Vector2) -> void:
 	_formation_name_lbl.label_settings = nls
 	ui.add_child(_formation_name_lbl)
 
+	var tips_lbl := Label.new()
+	tips_lbl.text = "提示：鼠标拖动角色可以交换位置"
+	tips_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tips_lbl.size = Vector2(bar_w, 36)
+	tips_lbl.position = Vector2(bar_x, bar_y + bar_h + 8)
+	tips_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var tips_ls := LabelSettings.new()
+	tips_ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	tips_ls.font_size = 20
+	tips_ls.font_color = Color(1.0, 0.95, 0.6, 1.0)
+	tips_ls.outline_size = 3
+	tips_ls.outline_color = Color(0, 0, 0, 1.0)
+	tips_lbl.label_settings = tips_ls
+	ui.add_child(tips_lbl)
+
 	var next_btn := _make_arrow_button(">", Vector2(bar_x + bar_w - 54, bar_y + 5), Vector2(44, 48))
 	ui.add_child(next_btn.panel)
 	ui.add_child(next_btn.label)
 	next_btn.label.gui_input.connect(_on_formation_next)
 
-	var confirm_btn := _make_button("✓ 确认", Vector2(vp.x * 0.5 - 135, vp.y - 74), Vector2(120, 52))
+	var confirm_btn := _make_button("确认", Vector2(vp.x * 0.5 - 135, vp.y - 74), Vector2(120, 52))
 	ui.add_child(confirm_btn.panel)
 	ui.add_child(confirm_btn.label)
 	confirm_btn.label.gui_input.connect(_on_formation_confirm)
 
-	var cancel_btn := _make_button("✗ 取消", Vector2(vp.x * 0.5 + 15, vp.y - 74), Vector2(120, 52))
+	var cancel_btn := _make_button("取消", Vector2(vp.x * 0.5 + 15, vp.y - 74), Vector2(120, 52))
 	ui.add_child(cancel_btn.panel)
 	ui.add_child(cancel_btn.label)
 	cancel_btn.label.gui_input.connect(_on_formation_cancel)
@@ -1509,11 +1543,90 @@ func _on_formation_confirm(event: InputEvent) -> void:
 		var f: Dictionary = _formations[_current_formation_idx]
 		GlobalConfig.set_runtime("selected_formation_id",   int(f["id"]))
 		GlobalConfig.set_runtime("selected_formation_name", String(f["name"]))
+		_save_team_order()
 		_go_back_main()
 
 func _on_formation_cancel(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		_go_back_main()
+
+func _input(event: InputEvent) -> void:
+	if _scene_mode != "formation":
+		return
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_formation_drag_start(event.position)
+		else:
+			_formation_drag_end(event.position)
+	elif event is InputEventMouseMotion and _drag_index >= 0:
+		_formation_role_nodes[_drag_index].position = event.position - _drag_offset
+
+func _formation_drag_start(pos: Vector2) -> void:
+	for i in _formation_role_nodes.size():
+		var node: Node2D = _formation_role_nodes[i]
+		if not is_instance_valid(node):
+			continue
+		if node.position.distance_to(pos) < 60.0:
+			_drag_index = i
+			_drag_offset = pos - node.position
+			_drag_original_pos = node.position
+			node.z_index = 100
+			return
+
+func _formation_drag_end(pos: Vector2) -> void:
+	if _drag_index < 0:
+		return
+	var dragged_node: Node2D = _formation_role_nodes[_drag_index]
+	var swap_idx: int = -1
+	for i in _formation_role_nodes.size():
+		if i == _drag_index:
+			continue
+		var node: Node2D = _formation_role_nodes[i]
+		if not is_instance_valid(node):
+			continue
+		if node.position.distance_to(pos) < 60.0:
+			swap_idx = i
+			break
+	if swap_idx >= 0:
+		var other_node: Node2D = _formation_role_nodes[swap_idx]
+		var other_pos: Vector2 = other_node.position
+		other_node.position = _drag_original_pos
+		dragged_node.position = other_pos
+		_formation_role_nodes[_drag_index] = other_node
+		_formation_role_nodes[swap_idx] = dragged_node
+		var tmp: String = _formation_team_ids[_drag_index]
+		_formation_team_ids[_drag_index] = _formation_team_ids[swap_idx]
+		_formation_team_ids[swap_idx] = tmp
+		_refresh_formation_pos_labels()
+	else:
+		dragged_node.position = _drag_original_pos
+	dragged_node.z_index = 0
+	_drag_index = -1
+
+func _refresh_formation_pos_labels() -> void:
+	for i in _formation_role_nodes.size():
+		var node: Node2D = _formation_role_nodes[i]
+		if not is_instance_valid(node):
+			continue
+		for child in node.get_children():
+			if child is Label:
+				child.text = str(i + 1)
+
+func _save_team_order() -> void:
+	var save_path := "user://savegame.json"
+	var data: Dictionary = {}
+	if FileAccess.file_exists(save_path):
+		var rf := FileAccess.open(save_path, FileAccess.READ)
+		if rf:
+			var parsed = JSON.parse_string(rf.get_as_text())
+			rf.close()
+			if parsed is Dictionary:
+				data = parsed
+	data["team_ids"] = _formation_team_ids
+	var wf := FileAccess.open(save_path, FileAccess.WRITE)
+	if wf:
+		wf.store_string(JSON.stringify(data))
+		wf.close()
 
 func _go_back_main() -> void:
 	var main := load(MAIN_SCENE_PATH) as PackedScene
@@ -2459,9 +2572,23 @@ class BattleUnit:
 			return
 		var sf: SpriteFrames = s.sprite_frames
 		if dying:
+			_play_die_sfx()
 			if sf and sf.has_animation("dead"):
 				s.play("dead")
 		else:
 			var back := "alert" if sf and sf.has_animation("alert") else "idle"
 			if sf and sf.has_animation(back):
 				s.play(back)
+
+	func _play_die_sfx() -> void:
+		var gender: String = rd.get("gender", "male")
+		var path := "res://asserts/audio/die_man.ogg" if gender == "male" else "res://asserts/audio/die_woman.ogg"
+		var stream := load(path) as AudioStream
+		if not stream:
+			return
+		var player := AudioStreamPlayer.new()
+		player.stream = stream
+		player.volume_db = -5.0
+		sprite.add_child(player)
+		player.play()
+		player.finished.connect(player.queue_free)
