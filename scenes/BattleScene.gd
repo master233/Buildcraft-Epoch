@@ -9,6 +9,7 @@ const LEVELS_TABLE_PATH     := "res://asserts/table/levels.txt"
 const LEVEL_UP_TABLE_PATH   := "res://asserts/table/level_up.txt"
 const SKILL_TABLE_PATH      := "res://asserts/table/skill.txt"
 const SKILL_UPGRADE_COST_PATH := "res://asserts/table/skill_upgrade_cost.txt"
+const FORMATION_BONUS_PATH   := "res://asserts/table/formation_bonus.txt"
 const DEFAULT_SKILLS: Array = []
 const GRID_ROWS := 7
 const GRID_COLS := 12
@@ -67,6 +68,11 @@ func _build_ui() -> void:
 	_scene_mode = String(GlobalConfig.get_runtime("scene_mode"))
 
 	if _scene_mode == "formation":
+		var formation_bgm := AudioStreamPlayer.new()
+		formation_bgm.stream = load("res://asserts/audio/bg1.ogg")
+		formation_bgm.volume_db = -3.0
+		formation_bgm.autoplay = true
+		add_child(formation_bgm)
 		_build_formation_mode(vp)
 	else:
 		# 战斗背景音乐（仅战斗模式播放）
@@ -1158,7 +1164,7 @@ func _end_battle(victory: bool) -> void:
 	var panel_w: float = max(min_panel_w, needed_w)
 	var panel_h: float = 200.0 + rows_area_h
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.05, 0.08, 0.18, 0.95)
+	style.bg_color = Color(0.12, 0.16, 0.30, 0.95)
 	style.set_corner_radius_all(16)
 	style.border_width_top    = 2
 	style.border_width_bottom = 2
@@ -1441,6 +1447,26 @@ func _place_formation_roles(vp: Vector2, fidx: int) -> void:
 		pos_lbl.label_settings = pos_ls
 		root.add_child(pos_lbl)
 
+		var bonus_table := _load_formation_bonus_table()
+		var fid := int(formation["id"])
+		if bonus_table.has(fid) and bonus_table[fid].has(i + 1):
+			var bonus_text := _get_bonus_text(bonus_table[fid][i + 1])
+			if not bonus_text.is_empty():
+				var bonus_lbl := Label.new()
+				bonus_lbl.text = bonus_text
+				bonus_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				bonus_lbl.size = Vector2(160, 22)
+				bonus_lbl.position = Vector2(-80, -fh * rd.idle_scale * 0.5 - 20)
+				bonus_lbl.z_index = 50
+				var bonus_ls := LabelSettings.new()
+				bonus_ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+				bonus_ls.font_size = 14
+				bonus_ls.font_color = Color(0.6, 1.0, 0.6, 0.95)
+				bonus_ls.outline_size = 2
+				bonus_ls.outline_color = Color(0, 0, 0, 0.9)
+				bonus_lbl.label_settings = bonus_ls
+				root.add_child(bonus_lbl)
+
 func _build_formation_overlay(vp: Vector2) -> void:
 	var ui := CanvasLayer.new()
 	ui.layer = 10
@@ -1452,7 +1478,7 @@ func _build_formation_overlay(vp: Vector2) -> void:
 	var bar_y := 16.0
 
 	var bar_style := StyleBoxFlat.new()
-	bar_style.bg_color = Color(0.05, 0.10, 0.22, 0.88)
+	bar_style.bg_color = Color(0.12, 0.20, 0.38, 0.90)
 	bar_style.set_corner_radius_all(14)
 	bar_style.border_width_top    = 2
 	bar_style.border_width_bottom = 2
@@ -1902,6 +1928,9 @@ func _place_battle_roles(vp: Vector2) -> void:
 		root.add_child(sprite)
 
 		var attrs := _calc_attrs(rid, rd, attrs_data)
+		var bonus_table := _load_formation_bonus_table()
+		if bonus_table.has(formation_id) and bonus_table[formation_id].has(i + 1):
+			attrs = _apply_formation_bonus(attrs, bonus_table[formation_id][i + 1])
 		var bar := RoleStatusBar.new(
 			attrs.hp, attrs.hp,
 			hp_tex, mp_tex, font,
@@ -1978,6 +2007,10 @@ func _place_enemy_roles(vp: Vector2) -> void:
 		root.add_child(sprite)
 
 		var attrs := _calc_attrs(rid, rd, attrs_data, monster_lv)
+		var enemy_fid := int(level["formation_id"])
+		var bonus_table := _load_formation_bonus_table()
+		if bonus_table.has(enemy_fid) and bonus_table[enemy_fid].has(i + 1):
+			attrs = _apply_formation_bonus(attrs, bonus_table[enemy_fid][i + 1])
 		var bar := RoleStatusBar.new(
 			attrs.hp, attrs.hp,
 			hp_tex, mp_tex, font,
@@ -2069,6 +2102,71 @@ func _calc_attrs(rid: String, rd: Dictionary, attrs_data: Dictionary, override_l
 		"crit":  a.init_crit  + (lv - 1) * a.lv_crit  + star * a.star_crit,
 		"dodge": a.init_dodge + (lv - 1) * a.lv_dodge + star * a.star_dodge,
 	}
+
+func _apply_formation_bonus(attrs: Dictionary, bonus: Dictionary) -> Dictionary:
+	return {
+		"hp":    int(attrs.hp    * (1.0 + float(bonus.get("hp", 0)) / 100.0)),
+		"atk":   int(attrs.atk   * (1.0 + float(bonus.get("atk", 0)) / 100.0)),
+		"def":   int(attrs.def   * (1.0 + float(bonus.get("def", 0)) / 100.0)),
+		"spd":   int(attrs.spd   * (1.0 + float(bonus.get("spd", 0)) / 100.0)),
+		"crit":  int(attrs.crit  * (1.0 + float(bonus.get("crit", 0)) / 100.0)),
+		"dodge": int(attrs.dodge * (1.0 + float(bonus.get("dodge", 0)) / 100.0)),
+	}
+
+var _formation_bonus_cache: Dictionary = {}
+func _load_formation_bonus_table() -> Dictionary:
+	if not _formation_bonus_cache.is_empty():
+		return _formation_bonus_cache
+	var result: Dictionary = {}
+	var file := FileAccess.open(FORMATION_BONUS_PATH, FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 8:
+			continue
+		var fid_s: String = (parts[0] as String).strip_edges()
+		var pos_s: String = (parts[1] as String).strip_edges()
+		if not fid_s.is_valid_int() or not pos_s.is_valid_int():
+			continue
+		var fid := int(fid_s)
+		var pos := int(pos_s)
+		if not result.has(fid):
+			result[fid] = {}
+		result[fid][pos] = {
+			"hp":    int((parts[2] as String).strip_edges()),
+			"atk":   int((parts[3] as String).strip_edges()),
+			"def":   int((parts[4] as String).strip_edges()),
+			"spd":   int((parts[5] as String).strip_edges()),
+			"crit":  int((parts[6] as String).strip_edges()),
+			"dodge": int((parts[7] as String).strip_edges()),
+		}
+	_formation_bonus_cache = result
+	return result
+
+func _get_bonus_text(bonus: Dictionary) -> String:
+	var parts: Array = []
+	if int(bonus.get("hp", 0)) > 0:
+		parts.append("血+%d%%" % int(bonus.hp))
+	if int(bonus.get("atk", 0)) > 0:
+		parts.append("攻+%d%%" % int(bonus.atk))
+	if int(bonus.get("def", 0)) > 0:
+		parts.append("防+%d%%" % int(bonus.def))
+	if int(bonus.get("spd", 0)) > 0:
+		parts.append("速+%d%%" % int(bonus.spd))
+	if int(bonus.get("crit", 0)) > 0:
+		parts.append("暴+%d%%" % int(bonus.crit))
+	if int(bonus.get("dodge", 0)) > 0:
+		parts.append("闪+%d%%" % int(bonus.dodge))
+	return " ".join(parts)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 数据加载
@@ -2349,7 +2447,7 @@ func _next_level_id_str() -> String:
 
 func _make_button(text: String, pos: Vector2, size: Vector2) -> Dictionary:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.10, 0.08, 0.05, 0.88)
+	style.bg_color = Color(0.22, 0.18, 0.10, 0.92)
 	style.set_corner_radius_all(10)
 	style.border_width_top    = 2
 	style.border_width_right  = 2
@@ -2387,7 +2485,7 @@ func _make_button(text: String, pos: Vector2, size: Vector2) -> Dictionary:
 
 func _make_arrow_button(text: String, pos: Vector2, size: Vector2) -> Dictionary:
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.12, 0.28, 0.58, 0.85)
+	style.bg_color = Color(0.20, 0.38, 0.68, 0.90)
 	style.set_corner_radius_all(8)
 	style.border_width_top    = 2
 	style.border_width_right  = 2

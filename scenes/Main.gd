@@ -188,6 +188,7 @@ func _ready() -> void:
 	bgm.volume_db = 0.0
 	bgm.play()
 	_panel_nodes = []
+	get_tree().node_added.connect(_on_node_added)
 	call_deferred("_setup")
 
 func _setup() -> void:
@@ -271,7 +272,7 @@ func _spawn_gm_button() -> void:
 	_gm_rect = Rect2(vp.x - 74, 12, 60, 36)
 
 	_gm_style = StyleBoxFlat.new()
-	_gm_style.bg_color = Color(0.12, 0.18, 0.42)
+	_gm_style.bg_color = Color(0.20, 0.28, 0.55)
 	_gm_style.set_corner_radius_all(10)
 	_gm_style.border_width_top    = 2
 	_gm_style.border_width_right  = 2
@@ -325,7 +326,7 @@ func _build_gm_cmd_panel(ui: Node) -> void:
 	var panel_y := _gm_rect.position.y + _gm_rect.size.y + 6.0
 
 	var pstyle := StyleBoxFlat.new()
-	pstyle.bg_color = Color(0.08, 0.10, 0.18, 0.95)
+	pstyle.bg_color = Color(0.15, 0.18, 0.30, 0.95)
 	pstyle.set_corner_radius_all(10)
 	pstyle.border_width_top    = 2
 	pstyle.border_width_right  = 2
@@ -351,7 +352,7 @@ func _build_gm_cmd_panel(ui: Node) -> void:
 		var btn_rect := Rect2(panel_x + pad, by, panel_w - pad * 2, btn_h)
 
 		var bstyle := StyleBoxFlat.new()
-		bstyle.bg_color = Color(0.18, 0.24, 0.50)
+		bstyle.bg_color = Color(0.25, 0.32, 0.60)
 		bstyle.set_corner_radius_all(8)
 		bstyle.border_width_top    = 1
 		bstyle.border_width_right  = 1
@@ -732,7 +733,7 @@ func _process(delta: float) -> void:
 		var hov := _gm_rect.has_point(get_viewport().get_mouse_position())
 		if hov != _gm_hovering:
 			_gm_hovering = hov
-			_gm_style.bg_color     = Color(0.18, 0.26, 0.58) if hov else Color(0.12, 0.18, 0.42)
+			_gm_style.bg_color     = Color(0.28, 0.36, 0.68) if hov else Color(0.20, 0.28, 0.55)
 			_gm_style.border_color = Color(0.55, 0.70, 1.0) if hov else Color(0.40, 0.55, 0.95)
 
 func _place_buildings() -> void:
@@ -1232,6 +1233,7 @@ func _set_panel_visible(v: bool) -> void:
 		_gm_lbl.visible = not v
 	if v:
 		_set_gm_cmd_visible(false)
+		_play_ui_open_sfx()
 
 func _load_function_panel(key: String) -> void:
 	_unload_function_panel()
@@ -1931,7 +1933,7 @@ func _show_suit_tip(suit_id: String, suit_name: String, suit_icon: String) -> vo
 	panel.position = Vector2((1280 - panel_w) / 2.0, (720 - panel_h) / 2.0)
 	panel.size = Vector2(panel_w, panel_h)
 	var ps := StyleBoxFlat.new()
-	ps.bg_color = Color(0.12, 0.08, 0.04, 0.95)
+	ps.bg_color = Color(0.22, 0.16, 0.08, 0.95)
 	ps.set_corner_radius_all(10)
 	ps.border_width_bottom = 2
 	ps.border_width_top = 2
@@ -2035,7 +2037,7 @@ func _show_skill_tip(sid: int, slv: int, slot_idx: int = -1) -> void:
 	panel.position = Vector2((1280 - panel_w) / 2.0, (720 - panel_h) / 2.0)
 	panel.size = Vector2(panel_w, panel_h)
 	var ps := StyleBoxFlat.new()
-	ps.bg_color = Color(0.12, 0.08, 0.04, 0.95)
+	ps.bg_color = Color(0.22, 0.16, 0.08, 0.95)
 	ps.set_corner_radius_all(10)
 	ps.border_width_bottom = 2
 	ps.border_width_top = 2
@@ -2189,7 +2191,7 @@ func _show_skill_tip_with_learn(sid: int, slv: int, rid: String, slot_idx: int, 
 	panel.position = Vector2((1280 - panel_w) / 2.0, (720 - panel_h) / 2.0)
 	panel.size = Vector2(panel_w, panel_h)
 	var ps := StyleBoxFlat.new()
-	ps.bg_color = Color(0.12, 0.08, 0.04, 0.95)
+	ps.bg_color = Color(0.22, 0.16, 0.08, 0.95)
 	ps.set_corner_radius_all(10)
 	ps.border_width_bottom = 2
 	ps.border_width_top = 2
@@ -2439,7 +2441,7 @@ func _connect_tavern_panel() -> void:
 	if refresh_btn:
 		refresh_btn.text = "刷新"
 		refresh_btn.disabled = _gold < TAVERN_REFRESH_COST
-		_style_tower_btn(refresh_btn, Color(0.10, 0.28, 0.48), Color(0.25, 0.55, 0.85), Color(0.75, 0.92, 1.0))
+		_style_tower_btn(refresh_btn, Color(0.15, 0.35, 0.58), Color(0.25, 0.55, 0.85), Color(0.75, 0.92, 1.0))
 		refresh_btn.pressed.connect(func() -> void: _tavern_manual_refresh())
 	_tavern_update_auto_label()
 
@@ -2522,7 +2524,7 @@ func _connect_tower_buttons() -> void:
 		)
 	var form_btn: Button = _function_panel_node.get_node_or_null("ActionRow/FormationBtn")
 	if form_btn:
-		_style_tower_btn(form_btn, Color(0.10, 0.28, 0.48), Color(0.25, 0.55, 0.85), Color(0.75, 0.92, 1.0))
+		_style_tower_btn(form_btn, Color(0.15, 0.35, 0.58), Color(0.25, 0.55, 0.85), Color(0.75, 0.92, 1.0))
 		var action_row := _function_panel_node.get_node_or_null("ActionRow") as HBoxContainer
 		if action_row:
 			action_row.add_theme_constant_override("separation", 40)
@@ -3026,6 +3028,7 @@ func upgrade_building(key: String) -> void:
 			if k != "home":
 				_refresh_label(k)
 	_play_upgrade_fx(BUILDINGS[key]["pos"])
+	_play_level_up_sfx()
 	if key == "tavern" and _panel_key == "tavern" and _panel_visible:
 		_tavern_roll_pool()
 		_tavern_reload_panel()
@@ -3311,6 +3314,43 @@ func _play_upgrade_fx(pos: Vector2) -> void:
 	fx.animation_finished.connect(fx.queue_free)
 	fx.play("play")
 
+func _play_level_up_sfx() -> void:
+	var stream := load("res://asserts/audio/level_up.ogg") as AudioStream
+	if not stream:
+		return
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = -3.0
+	add_child(player)
+	player.play()
+	player.finished.connect(player.queue_free)
+
+func _play_ui_open_sfx() -> void:
+	var stream := load("res://asserts/audio/ui_open.ogg") as AudioStream
+	if not stream:
+		return
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = -5.0
+	add_child(player)
+	player.play()
+	player.finished.connect(player.queue_free)
+
+func _on_node_added(node: Node) -> void:
+	if node is Button:
+		node.pressed.connect(_play_button_click_sfx)
+
+func _play_button_click_sfx() -> void:
+	var stream := load("res://asserts/audio/button_click.ogg") as AudioStream
+	if not stream:
+		return
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = -5.0
+	add_child(player)
+	player.play()
+	player.finished.connect(player.queue_free)
+
 func _build_animal_frames() -> void:
 	_bird_frames = SpriteFrames.new()
 	_bird_frames.add_animation("fly")
@@ -3571,7 +3611,7 @@ func _spawn_chat_box() -> void:
 	_chat_toggle_rect = Rect2(toggle_x, toggle_y, toggle_w, toggle_h)
 
 	var tstyle := StyleBoxFlat.new()
-	tstyle.bg_color = Color(0.10, 0.18, 0.32, 0.92)
+	tstyle.bg_color = Color(0.18, 0.28, 0.45, 0.92)
 	tstyle.set_corner_radius_all(10)
 	tstyle.border_width_top    = 2
 	tstyle.border_width_right  = 2
@@ -3612,7 +3652,7 @@ func _spawn_chat_box() -> void:
 	var preview_x := toggle_x - preview_w - 8.0
 	var preview_y := toggle_y
 	var pstyle := StyleBoxFlat.new()
-	pstyle.bg_color = Color(0.08, 0.14, 0.26, 0.85)
+	pstyle.bg_color = Color(0.15, 0.22, 0.38, 0.88)
 	pstyle.set_corner_radius_all(8)
 	pstyle.border_width_top    = 2
 	pstyle.border_width_right  = 2
@@ -3655,7 +3695,7 @@ func _spawn_chat_box() -> void:
 	ui.add_child(_chat_root)
 
 	var bg_style := StyleBoxFlat.new()
-	bg_style.bg_color = Color(0.05, 0.10, 0.20, 0.92)
+	bg_style.bg_color = Color(0.12, 0.18, 0.32, 0.92)
 	bg_style.set_corner_radius_all(12)
 	bg_style.border_width_top    = 2
 	bg_style.border_width_right  = 2
@@ -3714,7 +3754,7 @@ func _spawn_chat_box() -> void:
 	var send_w := 64.0
 	var send_x := panel_w - send_w - 12.0
 	var send_style := StyleBoxFlat.new()
-	send_style.bg_color = Color(0.20, 0.45, 0.85, 0.95)
+	send_style.bg_color = Color(0.28, 0.52, 0.90, 0.95)
 	send_style.set_corner_radius_all(8)
 	send_style.border_width_top    = 2
 	send_style.border_width_right  = 2
