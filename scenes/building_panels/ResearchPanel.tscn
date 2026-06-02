@@ -44,7 +44,7 @@ theme_override_constants/v_separation = 10
 
 [node name="SuitTitleLbl" type="Label" parent="SkillScroll/ContentVBox"]
 layout_mode = 2
-text = "套装效果"
+text = "装备套装效果"
 label_settings = SubResource("LabelSettings_title")
 
 [node name="SuitGrid" type="GridContainer" parent="SkillScroll/ContentVBox"]

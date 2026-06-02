@@ -208,11 +208,14 @@ func _process(delta: float) -> void:
 func _perform_action(attacker: BattleUnit) -> void:
 	_acting = true
 
-	# 找对方阵营存活的随机目标
+	# 找对方阵营存活的随机目标（隐身单位不可被选中，除非攻击者自身有真视）
+	var attacker_has_sight := not _find_skill(attacker, 30010).is_empty()
 	var targets: Array = []
 	for u in _battle_units:
 		var candidate := u as BattleUnit
 		if not candidate.is_dead and candidate.is_enemy != attacker.is_enemy:
+			if candidate.stealth_rounds > 0 and not attacker_has_sight:
+				continue
 			targets.append(candidate)
 	if targets.is_empty():
 		_acting = false
@@ -466,6 +469,7 @@ func _try_pursue_strike(attacker: BattleUnit, sf: SpriteFrames, has_atk_anim: bo
 	var mult: float = float(int(sd.get("p1", 0))) / 100.0
 	if mult <= 0.0:
 		return
+	var chase_has_sight := not _find_skill(attacker, 30010).is_empty()
 	while not attacker.is_dead:
 		var pool: Array = []
 		for u in _battle_units:
@@ -475,6 +479,8 @@ func _try_pursue_strike(attacker: BattleUnit, sf: SpriteFrames, has_atk_anim: bo
 			if e.is_enemy == attacker.is_enemy:
 				continue
 			if not is_instance_valid(e.root):
+				continue
+			if e.stealth_rounds > 0 and not chase_has_sight:
 				continue
 			pool.append(e)
 		if pool.is_empty():
@@ -893,12 +899,15 @@ func _try_soul_drain_mark(caster: BattleUnit) -> bool:
 	var ratio: float = float(int(sd.get("p1", 0))) / 100.0
 	if ratio <= 0.0:
 		return false
+	var caster_has_sight := not _find_skill(caster, 30010).is_empty()
 	var enemies: Array = []
 	for u in _battle_units:
 		var e := u as BattleUnit
 		if e == null or e.is_dead:
 			continue
 		if e.is_enemy != caster.is_enemy:
+			if e.stealth_rounds > 0 and not caster_has_sight:
+				continue
 			enemies.append(e)
 	if enemies.is_empty():
 		return false

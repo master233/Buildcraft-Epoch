@@ -303,7 +303,7 @@ func _spawn_gm_button() -> void:
 	ui.add_child(_gm_bg)
 
 	_gm_lbl = Label.new()
-	_gm_lbl.text = "GM"
+	_gm_lbl.text = "充值"
 	_gm_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_gm_lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
 	_gm_lbl.size     = _gm_rect.size
@@ -1862,17 +1862,30 @@ func _show_hero_detail(rid: String) -> void:
 						icon_container.add_child(icon)
 						var lv_lbl := Label.new()
 						lv_lbl.text = "Lv.%d" % int(equip_item.get("level", 10))
-						lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-						lv_lbl.position = Vector2(0, 56)
-						lv_lbl.size = Vector2(72, 16)
+						lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+						lv_lbl.position = Vector2(2, 0)
+						lv_lbl.size = Vector2(44, 16)
 						var lv_ls := LabelSettings.new()
 						lv_ls.font = font
-						lv_ls.font_size = 11
-						lv_ls.font_color = Color(1.0, 1.0, 1.0)
+						lv_ls.font_size = 13
+						lv_ls.font_color = Color(0.2, 0.9, 0.3)
 						lv_ls.outline_size = 2
 						lv_ls.outline_color = Color(0, 0, 0, 0.9)
 						lv_lbl.label_settings = lv_ls
 						icon_container.add_child(lv_lbl)
+						var equip_name_lbl := Label.new()
+						equip_name_lbl.text = String(equip_item.get("name", ""))
+						equip_name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+						equip_name_lbl.position = Vector2(0, 56)
+						equip_name_lbl.size = Vector2(72, 16)
+						var equip_name_ls := LabelSettings.new()
+						equip_name_ls.font = font
+						equip_name_ls.font_size = 13
+						equip_name_ls.font_color = Color(0.2, 0.9, 0.3)
+						equip_name_ls.outline_size = 2
+						equip_name_ls.outline_color = Color(0, 0, 0, 0.9)
+						equip_name_lbl.label_settings = equip_name_ls
+						icon_container.add_child(equip_name_lbl)
 					else:
 						var lbl := Label.new()
 						lbl.text = equip_slot_names[i]
@@ -2723,6 +2736,7 @@ func _tavern_recruit(rid: String, slot_idx: int) -> void:
 		var cur_star: int = int(_role_stars.get(rid, 1))
 		if cur_star < max_star:
 			_role_stars[rid] = cur_star + 1
+			_refresh_role_label_for(rid)
 	if slot_idx < _tavern_pool.size():
 		_tavern_pool[slot_idx] = ""
 	_refresh_hud()
@@ -2934,17 +2948,30 @@ func _show_equip_bag() -> void:
 					grid_node.add_child(icon)
 				var lv_lbl := Label.new()
 				lv_lbl.text = "Lv.%d" % int(item2.get("level", 10))
-				lv_lbl.size = Vector2(slot_size, 16.0)
-				lv_lbl.position = Vector2(sx, sy + slot_size - 16.0)
-				lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				lv_lbl.size = Vector2(34, 16.0)
+				lv_lbl.position = Vector2(sx + 1, sy)
+				lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 				var lv_ls := LabelSettings.new()
 				lv_ls.font = font
-				lv_ls.font_size = 11
-				lv_ls.font_color = Color(1.0, 1.0, 1.0)
+				lv_ls.font_size = 12
+				lv_ls.font_color = Color(0.2, 0.9, 0.3)
 				lv_ls.outline_size = 2
 				lv_ls.outline_color = Color(0, 0, 0, 0.9)
 				lv_lbl.label_settings = lv_ls
 				grid_node.add_child(lv_lbl)
+				var name_lbl := Label.new()
+				name_lbl.text = String(item2.get("name", ""))
+				name_lbl.size = Vector2(slot_size, 16.0)
+				name_lbl.position = Vector2(sx, sy + slot_size - 15.0)
+				name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				var name_ls := LabelSettings.new()
+				name_ls.font = font
+				name_ls.font_size = 12
+				name_ls.font_color = Color(0.2, 0.9, 0.3)
+				name_ls.outline_size = 2
+				name_ls.outline_color = Color(0, 0, 0, 0.9)
+				name_lbl.label_settings = name_ls
+				grid_node.add_child(name_lbl)
 	grid_fn[0] = _refresh_grid
 	for ti in tab_slots.size():
 		var tab_btn: Button = panel.get_node(tab_names[ti])
@@ -3153,17 +3180,30 @@ func _show_equip_bag_select(rid: String, slot_key: String, slot_idx: int) -> voi
 					grid_node.add_child(icon)
 				var lv_lbl := Label.new()
 				lv_lbl.text = "Lv.%d" % int(item2.get("level", 10))
-				lv_lbl.size = Vector2(slot_size, 16.0)
-				lv_lbl.position = Vector2(sx, sy + slot_size - 16.0)
-				lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				lv_lbl.size = Vector2(34, 16.0)
+				lv_lbl.position = Vector2(sx + 1, sy)
+				lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 				var lv_ls := LabelSettings.new()
 				lv_ls.font = font
-				lv_ls.font_size = 11
-				lv_ls.font_color = Color(1.0, 1.0, 1.0)
+				lv_ls.font_size = 12
+				lv_ls.font_color = Color(0.2, 0.9, 0.3)
 				lv_ls.outline_size = 2
 				lv_ls.outline_color = Color(0, 0, 0, 0.9)
 				lv_lbl.label_settings = lv_ls
 				grid_node.add_child(lv_lbl)
+				var name_lbl := Label.new()
+				name_lbl.text = String(item2.get("name", ""))
+				name_lbl.size = Vector2(slot_size, 16.0)
+				name_lbl.position = Vector2(sx, sy + slot_size - 15.0)
+				name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				var name_ls := LabelSettings.new()
+				name_ls.font = font
+				name_ls.font_size = 12
+				name_ls.font_color = Color(0.2, 0.9, 0.3)
+				name_ls.outline_size = 2
+				name_ls.outline_color = Color(0, 0, 0, 0.9)
+				name_lbl.label_settings = name_ls
+				grid_node.add_child(name_lbl)
 	# 页签按钮 - 点击提示"正在选装中"
 	for ti in tab_slots.size():
 		var tab_btn: Button = panel.get_node(tab_names[ti])
@@ -3838,7 +3878,6 @@ func _handle_click(pos: Vector2) -> void:
 		for i in _gm_cmd_rects.size():
 			if _gm_cmd_rects[i].has_point(pos):
 				var action: String = String(_gm_cmd_btns[i].get("action", ""))
-				_set_gm_cmd_visible(false)
 				if action == "reset":
 					_reset_game()
 				elif action == "add_resources":
@@ -3850,7 +3889,6 @@ func _handle_click(pos: Vector2) -> void:
 				elif action == "add_all_equip":
 					_gm_add_all_equip()
 				return
-		_set_gm_cmd_visible(false)
 		return
 
 	# 检测角色点击
