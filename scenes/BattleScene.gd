@@ -2160,6 +2160,7 @@ func _place_enemy_roles(vp: Vector2) -> void:
 		unit.status_bar = bar
 		unit.root       = root
 		unit.rd         = rd
+		unit.skills     = _parse_monster_skills(level.get("monster_skills", ""))
 		_battle_units.append(unit)
 
 # 构建带 idle/alert/attack/dead 四组动画的 AnimatedSprite2D
@@ -2566,7 +2567,26 @@ func _load_levels_table() -> Dictionary:
 			"monster_level": int(entry.get("monster_level", "1")),
 			"formation_id": int(entry.get("formation_id", "1")),
 			"exp":          int(entry.get("exp", "0")),
+			"monster_skills": String(entry.get("monster_skills", "")),
 		}
+	return result
+
+func _parse_monster_skills(skills_str: String) -> Array:
+	var result: Array = []
+	var s := skills_str.strip_edges()
+	if s.is_empty():
+		return result
+	for piece in s.split(","):
+		var p: String = (piece as String).strip_edges()
+		if p.is_empty():
+			continue
+		var parts := p.split(":")
+		if parts.size() < 2:
+			continue
+		var sid: int = int((parts[0] as String).strip_edges())
+		var lv: int = int((parts[1] as String).strip_edges())
+		if sid > 0 and lv > 0:
+			result.append({"id": sid, "level": lv})
 	return result
 
 func _get_team_ids() -> Array:

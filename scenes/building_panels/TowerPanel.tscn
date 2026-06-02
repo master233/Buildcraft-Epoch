@@ -60,7 +60,7 @@ size_flags_horizontal = 3
 
 [node name="RewardTitle" type="Label" parent="InfoRow/RewardBox" unique_id=1200000006]
 layout_mode = 2
-text = "关卡奖励"
+text = "关卡情报"
 label_settings = SubResource("LabelSettings_body")
 
 [node name="RewardContent" type="Label" parent="InfoRow/RewardBox" unique_id=1200000007]

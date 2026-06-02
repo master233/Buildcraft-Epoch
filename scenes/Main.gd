@@ -724,6 +724,38 @@ func _load_level_ids() -> void:
 			_level_ids.append(lid_str)
 	_level_ids.sort_custom(func(a, b): return int(a) < int(b))
 
+func _load_level_names() -> Dictionary:
+	var result: Dictionary = {}
+	var file := FileAccess.open(LEVELS_TABLE_PATH, FileAccess.READ)
+	if file == null:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	if raw.size() < 2:
+		return result
+	var headers := (raw[0] as String).strip_edges().split("\t")
+	var name_col := -1
+	for j in headers.size():
+		if headers[j] == "name":
+			name_col = j
+			break
+	if name_col < 0:
+		return result
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() <= name_col:
+			continue
+		var lid_str: String = (parts[0] as String).strip_edges()
+		if lid_str.is_valid_int():
+			result[lid_str] = (parts[name_col] as String).strip_edges()
+	return result
+
 func _reset_game() -> void:
 	if FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
@@ -3495,7 +3527,7 @@ func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLa
 	)
 	container.add_child(close_btn)
 
-const LEVEL_TRACK_NODE_H  := 120.0  # 节点图片显示高度
+const LEVEL_TRACK_NODE_H  := 140.0  # 节点图片显示高度（含底部名字区域）
 const LEVEL_TRACK_LINE_H  := 60.0   # 连接线显示高度（同行垂直居中）
 const LEVEL_TRACK_SHOW    := 5      # 轨道显示几个节点
 const LEVEL_TRACK_CURRENT := 2      # 当前节点固定在第几位（0-based），后续不足时右移
@@ -3530,11 +3562,14 @@ func _build_level_track() -> void:
 		win_start = win_end - LEVEL_TRACK_SHOW
 	win_start = maxi(win_start, 0)
 
-	var node_scale := LEVEL_TRACK_NODE_H / 528.0  # 原图高度 528
+	var icon_h := 110.0
+	var node_scale := icon_h / 528.0  # 原图高度 528
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var level_names := _load_level_names()
 
 	for i in range(win_start, mini(win_start + LEVEL_TRACK_SHOW, total)):
 		var lid_int := int(_level_ids[i])
+		var lid_str: String = String(_level_ids[i])
 		var img_key: String
 		if lid_int <= _cleared_level:
 			img_key = "finished"
@@ -3575,17 +3610,18 @@ func _build_level_track() -> void:
 		node_rect.texture = node_tex
 		node_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		node_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		node_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		node_rect.position = Vector2.ZERO
+		node_rect.size = Vector2(nw, icon_h)
 		wrapper.add_child(node_rect)
 
 		var num_lbl := Label.new()
 		num_lbl.text = str(i + 1)
 		num_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		num_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		num_lbl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		num_lbl.position = Vector2.ZERO
+		num_lbl.size = Vector2(nw, icon_h)
 		num_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 		num_lbl.clip_text = false
-		# 字体随位数缩小：1位22，2位18，3位14
 		var digit_count := str(i + 1).length()
 		var fs := 22 - (digit_count - 1) * 4
 		var ls := LabelSettings.new()
@@ -3596,6 +3632,23 @@ func _build_level_track() -> void:
 		ls.outline_color = Color(0.1, 0.05, 0.0, 1.0)
 		num_lbl.label_settings = ls
 		wrapper.add_child(num_lbl)
+
+		var name_lbl := Label.new()
+		name_lbl.text = level_names.get(lid_str, "")
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		name_lbl.position = Vector2(-10, icon_h)
+		name_lbl.size = Vector2(nw + 20, LEVEL_TRACK_NODE_H - icon_h)
+		name_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		name_lbl.clip_text = true
+		var name_ls := LabelSettings.new()
+		name_ls.font = font
+		name_ls.font_size = 12
+		name_ls.font_color = Color(0.9, 0.88, 0.75)
+		name_ls.outline_size = 2
+		name_ls.outline_color = Color(0, 0, 0, 0.9)
+		name_lbl.label_settings = name_ls
+		wrapper.add_child(name_lbl)
 
 		track.add_child(wrapper)
 
@@ -3615,7 +3668,7 @@ func _refresh_level_info() -> void:
 		return
 	var monster_lbl:     Label         = _function_panel_node.get_node_or_null("InfoRow/MonsterBox/MonsterContent")
 	var monster_sprites: HBoxContainer = _function_panel_node.get_node_or_null("InfoRow/MonsterBox/MonsterSprites")
-	var reward_lbl:      Label         = _function_panel_node.get_node_or_null("InfoRow/RewardBox/RewardContent")
+	var story_lbl:       Label         = _function_panel_node.get_node_or_null("InfoRow/RewardBox/RewardContent")
 	var lid_str := _next_level_id()
 	var level_data := _get_level_data(lid_str)
 
@@ -3626,8 +3679,11 @@ func _refresh_level_info() -> void:
 
 	if level_data.is_empty():
 		if monster_lbl:    monster_lbl.text = "—"
-		if reward_lbl:     reward_lbl.text  = "即将开放"
+		if story_lbl:      story_lbl.text   = ""
 		return
+
+	if story_lbl:
+		story_lbl.text = String(level_data.get("desc", ""))
 
 	var monster_ids: Array = String(level_data.get("monster_ids", "")).split(",")
 	var _monster_lv: String = String(level_data.get("monster_level", "1"))
@@ -3706,8 +3762,6 @@ func _refresh_level_info() -> void:
 				cnt_lbl.label_settings = ls
 				monster_sprites.add_child(cnt_lbl)
 
-	if reward_lbl:
-		reward_lbl.text = "即将开放"
 
 func _get_level_data(lid_str: String) -> Dictionary:
 	var text := _read_table_text(LEVELS_TABLE_PATH)
