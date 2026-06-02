@@ -3527,7 +3527,7 @@ func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLa
 	)
 	container.add_child(close_btn)
 
-const LEVEL_TRACK_NODE_H  := 140.0  # 节点图片显示高度（含底部名字区域）
+const LEVEL_TRACK_NODE_H  := 116.0  # 节点图片显示高度（含底部名字区域）
 const LEVEL_TRACK_LINE_H  := 60.0   # 连接线显示高度（同行垂直居中）
 const LEVEL_TRACK_SHOW    := 5      # 轨道显示几个节点
 const LEVEL_TRACK_CURRENT := 2      # 当前节点固定在第几位（0-based），后续不足时右移
@@ -3562,7 +3562,8 @@ func _build_level_track() -> void:
 		win_start = win_end - LEVEL_TRACK_SHOW
 	win_start = maxi(win_start, 0)
 
-	var icon_h := 110.0
+	var icon_h := 90.0
+	var name_h := 24.0
 	var node_scale := icon_h / 528.0  # 原图高度 528
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var level_names := _load_level_names()
@@ -3636,9 +3637,9 @@ func _build_level_track() -> void:
 		var name_lbl := Label.new()
 		name_lbl.text = level_names.get(lid_str, "")
 		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		name_lbl.position = Vector2(-10, icon_h)
-		name_lbl.size = Vector2(nw + 20, LEVEL_TRACK_NODE_H - icon_h)
+		name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_TOP
+		name_lbl.position = Vector2(-10, icon_h + 2)
+		name_lbl.size = Vector2(nw + 20, name_h)
 		name_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 		name_lbl.clip_text = true
 		var name_ls := LabelSettings.new()
@@ -3655,13 +3656,17 @@ func _build_level_track() -> void:
 		# 连接线（最后一个节点后不加线）
 		if i < mini(win_start + LEVEL_TRACK_SHOW, total) - 1:
 			var line_tex: Texture2D = load(LEVEL_NODE_IMG["line"])
+			var line_container := Control.new()
+			var lw := int(line_tex.get_width() * node_scale)
+			line_container.custom_minimum_size = Vector2(lw, LEVEL_TRACK_NODE_H)
 			var line_rect := TextureRect.new()
 			line_rect.texture = line_tex
 			line_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			line_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			var lw := int(line_tex.get_width() * node_scale)
-			line_rect.custom_minimum_size = Vector2(lw, LEVEL_TRACK_NODE_H)
-			track.add_child(line_rect)
+			line_rect.size = Vector2(lw, icon_h)
+			line_rect.position = Vector2(0, 0)
+			line_container.add_child(line_rect)
+			track.add_child(line_container)
 
 func _refresh_level_info() -> void:
 	if _function_panel_node == null:
@@ -3701,10 +3706,11 @@ func _refresh_level_info() -> void:
 			seen[mid] = 1
 			ordered_mids.append(mid)
 
-	# 填充精灵（每种怪物播放 alert 动画，高度 60px）
-	const SPRITE_H := 60.0
+	# 填充精灵（每种怪物播放 alert 动画）
+	const SPRITE_H := 80.0
 	if monster_sprites:
-		monster_sprites.add_theme_constant_override("separation", 6)
+		monster_sprites.add_theme_constant_override("separation", 10)
+		var m_font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 		for mid in ordered_mids:
 			var role_data: Dictionary = _roles.get(mid, {})
 			var sheet_path: String = String(role_data.get("alert_sheet", ""))
@@ -3729,7 +3735,6 @@ func _refresh_level_info() -> void:
 				at.filter_clip = true
 				sf.add_frame("alert", at)
 
-			# 用 SubViewportContainer 把 AnimatedSprite2D 嵌入 UI
 			var sub_vp := SubViewport.new()
 			sub_vp.size = Vector2i(int(fw * sprite_scale), int(SPRITE_H))
 			sub_vp.transparent_bg = true
@@ -3746,21 +3751,27 @@ func _refresh_level_info() -> void:
 			vpc.stretch = true
 			vpc.custom_minimum_size = Vector2(int(fw * sprite_scale), int(SPRITE_H))
 			vpc.add_child(sub_vp)
-			monster_sprites.add_child(vpc)
 
-			# 数量标记（>1 时显示 ×N）
+			var col := VBoxContainer.new()
+			col.add_theme_constant_override("separation", 2)
+			col.add_child(vpc)
+
+			var m_name: String = String(role_data.get("name", ""))
 			if seen[mid] > 1:
-				var cnt_lbl := Label.new()
-				cnt_lbl.text = "×%d" % seen[mid]
-				cnt_lbl.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
-				var ls := LabelSettings.new()
-				ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
-				ls.font_size = 14
-				ls.font_color = Color(1.0, 0.92, 0.6)
-				ls.outline_size = 3
-				ls.outline_color = Color(0.0, 0.0, 0.0, 1.0)
-				cnt_lbl.label_settings = ls
-				monster_sprites.add_child(cnt_lbl)
+				m_name += " ×%d" % seen[mid]
+			var name_lbl := Label.new()
+			name_lbl.text = m_name
+			name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			var mls := LabelSettings.new()
+			mls.font = m_font
+			mls.font_size = 13
+			mls.font_color = Color(0.22, 0.13, 0.06, 1)
+			mls.outline_size = 1
+			mls.outline_color = Color(1, 0.96, 0.85, 0.5)
+			name_lbl.label_settings = mls
+			col.add_child(name_lbl)
+
+			monster_sprites.add_child(col)
 
 
 func _get_level_data(lid_str: String) -> Dictionary:

@@ -422,6 +422,8 @@ func _try_combo_strike(attacker: BattleUnit, target: BattleUnit, sf: SpriteFrame
 func _try_counter_strike(attacker: BattleUnit, target: BattleUnit) -> void:
 	if attacker == null or target == null or attacker.is_dead or target.is_dead:
 		return
+	if target.stunned:
+		return
 	var sd := _find_skill(target, 30002)
 	if sd.is_empty():
 		return
