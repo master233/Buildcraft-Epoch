@@ -2222,14 +2222,111 @@ func _calc_attrs(rid: String, rd: Dictionary, attrs_data: Dictionary, override_l
 	if not attrs_data.has(rid):
 		return {hp=500, atk=80, def=30, spd=80, crit=500, dodge=300}
 	var a: Dictionary = attrs_data[rid]
-	return {
-		"hp":    a.init_hp    + (lv - 1) * a.lv_hp    + star * a.star_hp,
-		"atk":   a.init_atk   + (lv - 1) * a.lv_atk   + star * a.star_atk,
-		"def":   a.init_def   + (lv - 1) * a.lv_def   + star * a.star_def,
-		"spd":   a.init_speed + (lv - 1) * a.lv_speed + star * a.star_speed,
-		"crit":  a.init_crit  + (lv - 1) * a.lv_crit  + star * a.star_crit,
-		"dodge": a.init_dodge + (lv - 1) * a.lv_dodge + star * a.star_dodge,
-	}
+	var hp: int    = a.init_hp    + (lv - 1) * a.lv_hp    + star * a.star_hp
+	var atk: int   = a.init_atk   + (lv - 1) * a.lv_atk   + star * a.star_atk
+	var def: int   = a.init_def   + (lv - 1) * a.lv_def   + star * a.star_def
+	var spd: int   = a.init_speed + (lv - 1) * a.lv_speed + star * a.star_speed
+	var crit: int  = a.init_crit  + (lv - 1) * a.lv_crit  + star * a.star_crit
+	var dodge: int = a.init_dodge + (lv - 1) * a.lv_dodge + star * a.star_dodge
+	# 装备属性加成
+	var save_data := _load_save_data()
+	var role_equips: Dictionary = save_data.get("role_equips", {}) if save_data.get("role_equips", null) is Dictionary else {}
+	var inventory: Array = save_data.get("inventory", []) if save_data.get("inventory", null) is Array else []
+	var equips: Dictionary = role_equips.get(rid, {}) if role_equips.get(rid, null) is Dictionary else {}
+	var suit_members := _load_suit_members_table()
+	var suit_counts: Dictionary = {}
+	for sk in equips.keys():
+		var inv_idx: int = int(equips[sk])
+		if inv_idx >= 0 and inv_idx < inventory.size():
+			var item: Dictionary = inventory[inv_idx]
+			atk   += int(item.get("atk", 0))
+			def   += int(item.get("def", 0))
+			hp    += int(item.get("hp", 0))
+			spd   += int(item.get("speed", 0))
+			crit  += int(item.get("crit", 0))
+			dodge += int(item.get("dodge", 0))
+			var eid: int = int(item.get("id", 0))
+			if suit_members.has(eid):
+				var sn: String = suit_members[eid]
+				suit_counts[sn] = int(suit_counts.get(sn, 0)) + 1
+	# 套装属性加成
+	var suit_data := _load_suit_bonus_table()
+	for sn in suit_counts.keys():
+		var count: int = int(suit_counts[sn])
+		if suit_data.has(sn):
+			for bonus in suit_data[sn]:
+				if int(bonus["require_count"]) <= count:
+					atk   += int(bonus.get("atk", 0))
+					def   += int(bonus.get("def", 0))
+					hp    += int(bonus.get("hp", 0))
+					spd   += int(bonus.get("speed", 0))
+					crit  += int(bonus.get("crit", 0))
+					dodge += int(bonus.get("dodge", 0))
+	return {"hp": hp, "atk": atk, "def": def, "spd": spd, "crit": crit, "dodge": dodge}
+
+func _load_save_data() -> Dictionary:
+	var save_path := "user://savegame.json"
+	if not FileAccess.file_exists(save_path):
+		return {}
+	var file := FileAccess.open(save_path, FileAccess.READ)
+	if file == null:
+		return {}
+	var parsed = JSON.parse_string(file.get_as_text())
+	file.close()
+	if parsed is Dictionary:
+		return parsed
+	return {}
+
+func _load_suit_members_table() -> Dictionary:
+	var result: Dictionary = {}
+	var file := FileAccess.open("res://asserts/table/suit_members.txt", FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 3:
+			continue
+		var suit_name: String = (parts[1] as String).strip_edges()
+		for eid_str in (parts[2] as String).strip_edges().split(","):
+			var eid: int = int(eid_str.strip_edges())
+			if eid > 0:
+				result[eid] = suit_name
+	return result
+
+func _load_suit_bonus_table() -> Dictionary:
+	var result: Dictionary = {}
+	var file := FileAccess.open("res://asserts/table/suit.txt", FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 12:
+			continue
+		var suit_name: String = (parts[2] as String).strip_edges()
+		if not result.has(suit_name):
+			result[suit_name] = []
+		result[suit_name].append({
+			"require_count": int(parts[4]),
+			"atk": int(parts[6]), "def": int(parts[7]), "hp": int(parts[8]),
+			"speed": int(parts[9]), "crit": int(parts[10]), "dodge": int(parts[11]),
+		})
+	return result
 
 func _apply_formation_bonus(attrs: Dictionary, bonus: Dictionary) -> Dictionary:
 	return {

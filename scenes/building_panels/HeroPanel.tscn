@@ -184,10 +184,13 @@ offset_right = 622.0
 offset_bottom = 396.0
 theme_override_constants/separation = 8
 
-[node name="EquipLbl" type="Label" parent="DetailArea/RightCol" unique_id=749066502]
+[node name="EquipLbl" type="RichTextLabel" parent="DetailArea/RightCol" unique_id=749066502]
 layout_mode = 2
+custom_minimum_size = Vector2(0, 24)
+bbcode_enabled = true
 text = "装备"
-label_settings = SubResource("LabelSettings_title")
+fit_content = true
+scroll_active = false
 
 [node name="EquipGrid" type="GridContainer" parent="DetailArea/RightCol" unique_id=749066503]
 layout_mode = 2

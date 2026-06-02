@@ -56,7 +56,7 @@ const SPEECH_TICK_INTERVAL := 6.0
 const SPEECH_DURATION := 3.0
 
 var _panel_rect    := Rect2(0, 0, 1280, 720)
-var _upgrade_rect  := Rect2(360, 93, 560, 150)
+var _upgrade_rect  := Rect2(540, 110, 200, 120)
 var _close_rect    := Rect2(1090, 10, 85, 80)
 var _gm_rect       := Rect2(0, 0, 160, 36)
 var _gm_cmd_rects: Array[Rect2] = []
@@ -146,7 +146,9 @@ var _research_levels: Dictionary = {}  # skill_id(int) → current research leve
 var _skill_upgrade_cost: Dictionary = {}  # level(int) → cost(int)
 var _suit_table: Array = []  # 每个套装仅首条，用于 grid 显示
 var _suit_details: Dictionary = {}  # suit_id → [{require_count, effect_desc}]
+var _suit_members: Dictionary = {}  # equip_id(int) → suit_name(String)
 const SUIT_TABLE_PATH := "res://asserts/table/suit.txt"
+const SUIT_MEMBERS_PATH := "res://asserts/table/suit_members.txt"
 var _building_configs: Dictionary = {}  # key → [{level, wood_cost, ore_cost, desc}]
 const DEFAULT_SKILLS: Array = []
 var _equipment_table: Dictionary = {}  # equip_id(int) → {name, slot, atk_min, atk_max, ...}
@@ -247,6 +249,7 @@ func _setup() -> void:
 	_load_skill_table()
 	_load_skill_upgrade_cost()
 	_load_suit_table()
+	_load_suit_members()
 	_load_team_layout()
 	_load_role_lines()
 	_load_equipment_table()
@@ -324,6 +327,7 @@ func _build_gm_cmd_panel(ui: Node) -> void:
 		{"text": "添加资源", "action": "add_resources"},
 		{"text": "获得所有角色1个", "action": "grant_all_roles"},
 		{"text": "所有角色学习技能", "action": "learn_skill"},
+		{"text": "添加所有装备", "action": "add_all_equip"},
 		{"text": "重置数据", "action": "reset"},
 	]
 	var pad := 8.0
@@ -551,7 +555,35 @@ func _load_suit_table() -> void:
 			_suit_table.append(entry)
 		if not _suit_details.has(suit_id):
 			_suit_details[suit_id] = []
-		_suit_details[suit_id].append({"require_count": entry["require_count"], "effect_desc": entry["effect_desc"]})
+		var bonus := {"require_count": entry["require_count"], "effect_desc": entry["effect_desc"],
+			"atk": int(parts[6]) if parts.size() > 6 else 0,
+			"def": int(parts[7]) if parts.size() > 7 else 0,
+			"hp": int(parts[8]) if parts.size() > 8 else 0,
+			"speed": int(parts[9]) if parts.size() > 9 else 0,
+			"crit": int(parts[10]) if parts.size() > 10 else 0,
+			"dodge": int(parts[11]) if parts.size() > 11 else 0,
+		}
+		_suit_details[suit_id].append(bonus)
+
+func _load_suit_members() -> void:
+	_suit_members.clear()
+	var text := _read_table_text(SUIT_MEMBERS_PATH)
+	if text.is_empty():
+		return
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 3:
+			continue
+		var suit_name: String = (parts[1] as String).strip_edges()
+		var id_list: String = (parts[2] as String).strip_edges()
+		for eid_str in id_list.split(","):
+			var eid: int = int(eid_str.strip_edges())
+			if eid > 0:
+				_suit_members[eid] = suit_name
 
 func _load_building_configs() -> void:
 	_building_configs.clear()
@@ -627,6 +659,30 @@ func _gm_learn_next_skill() -> void:
 				cur.append({"id": sid, "level": 1})
 				break
 		_role_skills[rid] = cur
+	_save_game()
+
+func _gm_add_all_equip() -> void:
+	if _equipment_table.is_empty():
+		return
+	var tower_lv: int = _building_nodes["tower"]["level"] if _building_nodes.has("tower") else 1
+	var equip_level: int = tower_lv * 10
+	var scale: float = 1.0 + (equip_level - 10) * 0.10
+	for eid in _equipment_table.keys():
+		var tpl: Dictionary = _equipment_table[eid]
+		var item := {
+			"id": eid,
+			"level": equip_level,
+			"name": tpl["name"],
+			"slot": tpl["slot"],
+			"icon": tpl["icon"],
+			"atk": int(randi_range(tpl["atk_min"], tpl["atk_max"]) * scale),
+			"def": int(randi_range(tpl["def_min"], tpl["def_max"]) * scale),
+			"hp": int(randi_range(tpl["hp_min"], tpl["hp_max"]) * scale),
+			"speed": int(randi_range(tpl["speed_min"], tpl["speed_max"]) * scale),
+			"crit": int(randi_range(tpl["crit_min"], tpl["crit_max"]) * scale),
+			"dodge": int(randi_range(tpl["dodge_min"], tpl["dodge_max"]) * scale),
+		}
+		_inventory.append(item)
 	_save_game()
 
 const BATTLE_SCENE_PATH := "res://scenes/BattleScene.tscn"
@@ -1364,12 +1420,40 @@ func _hero_calc_attrs(rid: String) -> Dictionary:
 	if not _role_attrs.has(rid):
 		return {"hp": 300, "atk": 50, "def": 30, "spd": 80}
 	var a: Dictionary = _role_attrs[rid]
-	return {
-		"hp":  a.init_hp    + (lv - 1) * a.lv_hp    + star * a.star_hp,
-		"atk": a.init_atk   + (lv - 1) * a.lv_atk   + star * a.star_atk,
-		"def": a.init_def   + (lv - 1) * a.lv_def   + star * a.star_def,
-		"spd": a.init_speed + (lv - 1) * a.lv_speed + star * a.star_speed,
-	}
+	var hp: int  = a.init_hp    + (lv - 1) * a.lv_hp    + star * a.star_hp
+	var atk: int = a.init_atk   + (lv - 1) * a.lv_atk   + star * a.star_atk
+	var def: int = a.init_def   + (lv - 1) * a.lv_def   + star * a.star_def
+	var spd: int = a.init_speed + (lv - 1) * a.lv_speed + star * a.star_speed
+	# 装备属性加成
+	var equips: Dictionary = _role_equips.get(rid, {}) if _role_equips.get(rid, null) is Dictionary else {}
+	var suit_counts: Dictionary = {}
+	for sk in equips.keys():
+		var inv_idx: int = int(equips[sk])
+		if inv_idx >= 0 and inv_idx < _inventory.size():
+			var item: Dictionary = _inventory[inv_idx]
+			atk += int(item.get("atk", 0))
+			def += int(item.get("def", 0))
+			hp  += int(item.get("hp", 0))
+			spd += int(item.get("speed", 0))
+			var eid: int = int(item.get("id", 0))
+			if _suit_members.has(eid):
+				var sn: String = _suit_members[eid]
+				suit_counts[sn] = int(suit_counts.get(sn, 0)) + 1
+	# 套装属性加成
+	for sn in suit_counts.keys():
+		var count: int = int(suit_counts[sn])
+		for entry in _suit_table:
+			if String(entry["name"]) == sn:
+				var sid: String = String(entry["suit_id"])
+				if _suit_details.has(sid):
+					for bonus in _suit_details[sid]:
+						if int(bonus["require_count"]) <= count:
+							atk += int(bonus.get("atk", 0))
+							def += int(bonus.get("def", 0))
+							hp  += int(bonus.get("hp", 0))
+							spd += int(bonus.get("speed", 0))
+				break
+	return {"hp": hp, "atk": atk, "def": def, "spd": spd}
 
 func _connect_research_panel() -> void:
 	if _function_panel_node == null or not is_instance_valid(_function_panel_node):
@@ -1681,9 +1765,36 @@ func _show_hero_detail(rid: String) -> void:
 
 	# 装备占位
 	var equip_grid: GridContainer = _hero_panel_get_node("DetailArea/RightCol/EquipGrid")
+	var equip_lbl: RichTextLabel = _hero_panel_get_node("DetailArea/RightCol/EquipLbl")
+	var equip_slot_names := ["添加\n武器", "添加\n头盔", "添加\n胸甲", "添加\n手套", "添加\n裤子", "添加\n鞋子", "添加\n项链", "添加\n戒指"]
+	var equip_slot_keys := ["weapon", "helmet", "chest", "gloves", "pants", "boots", "necklace", "ring"]
 	if equip_grid:
-		if equip_grid.get_child_count() == 0:
-			for i in 8:
+		for c in equip_grid.get_children():
+			c.queue_free()
+		var role_equips: Dictionary = _role_equips.get(rid, {}) if _role_equips.get(rid, null) is Dictionary else {}
+		# 通过装备ID统计套装数量
+		var suit_counts: Dictionary = {}
+		for sk in role_equips.keys():
+			var inv_idx: int = int(role_equips[sk])
+			if inv_idx >= 0 and inv_idx < _inventory.size():
+				var eid: int = int(_inventory[inv_idx].get("id", 0))
+				if _suit_members.has(eid):
+					var sn: String = _suit_members[eid]
+					suit_counts[sn] = int(suit_counts.get(sn, 0)) + 1
+		if equip_lbl and equip_lbl is RichTextLabel:
+			var rtl: RichTextLabel = equip_lbl as RichTextLabel
+			rtl.add_theme_font_override("normal_font", font)
+			rtl.add_theme_font_size_override("normal_font_size", 20)
+			rtl.add_theme_color_override("default_color", Color(0.22, 0.13, 0.06, 1))
+			var suit_text := "装备"
+			var suit_parts: Array = []
+			for sn in suit_counts.keys():
+				if int(suit_counts[sn]) >= 2:
+					suit_parts.append("%s:[color=#2ebf40]%d[/color]" % [sn, suit_counts[sn]])
+			if not suit_parts.is_empty():
+				suit_text += "  " + " ".join(suit_parts)
+			rtl.text = suit_text
+		for i in 8:
 				var slot := PanelContainer.new()
 				var ss := StyleBoxFlat.new()
 				ss.set_corner_radius_all(6)
@@ -1695,14 +1806,76 @@ func _show_hero_detail(rid: String) -> void:
 				ss.border_color = Color(0.4, 0.65, 0.85, 0.4)
 				slot.add_theme_stylebox_override("panel", ss)
 				slot.custom_minimum_size = Vector2(72, 72)
-				var lbl := Label.new()
-				lbl.text = "空"
-				lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-				lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-				lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
-				lbl.label_settings = _make_hero_label_settings(font, 13)
-				slot.add_child(lbl)
+				var slot_key: String = equip_slot_keys[i]
+				var has_equip := role_equips.has(slot_key)
+				var equip_item: Dictionary = {}
+				if has_equip:
+					var inv_idx: int = int(role_equips[slot_key])
+					if inv_idx >= 0 and inv_idx < _inventory.size():
+						equip_item = _inventory[inv_idx]
+					else:
+						has_equip = false
+				if has_equip and not equip_item.is_empty():
+					var icon_path: String = String(equip_item.get("icon", ""))
+					if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+						var icon_container := Control.new()
+						icon_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+						slot.add_child(icon_container)
+						var icon := TextureRect.new()
+						icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+						icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+						icon.position = Vector2.ZERO
+						icon.size = Vector2(72, 72)
+						icon.texture = load(icon_path)
+						icon_container.add_child(icon)
+						var lv_lbl := Label.new()
+						lv_lbl.text = "Lv.%d" % int(equip_item.get("level", 10))
+						lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+						lv_lbl.position = Vector2(0, 56)
+						lv_lbl.size = Vector2(72, 16)
+						var lv_ls := LabelSettings.new()
+						lv_ls.font = font
+						lv_ls.font_size = 11
+						lv_ls.font_color = Color(1.0, 1.0, 1.0)
+						lv_ls.outline_size = 2
+						lv_ls.outline_color = Color(0, 0, 0, 0.9)
+						lv_lbl.label_settings = lv_ls
+						icon_container.add_child(lv_lbl)
+					else:
+						var lbl := Label.new()
+						lbl.text = equip_slot_names[i]
+						lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+						lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+						lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+						lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+						lbl.label_settings = _make_hero_label_settings(font, 13)
+						slot.add_child(lbl)
+				else:
+					var lbl := Label.new()
+					lbl.text = equip_slot_names[i]
+					lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+					lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+					lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					lbl.size_flags_vertical = Control.SIZE_EXPAND_FILL
+					lbl.label_settings = _make_hero_label_settings(font, 13)
+					slot.add_child(lbl)
+				var slot_btn := Button.new()
+				slot_btn.flat = true
+				slot_btn.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+				slot_btn.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+				var captured_slot_key: String = equip_slot_keys[i]
+				var captured_rid := rid
+				var captured_slot_idx := i
+				slot_btn.pressed.connect(func():
+					var equips: Dictionary = _role_equips.get(captured_rid, {}) if _role_equips.get(captured_rid, null) is Dictionary else {}
+					if equips.has(captured_slot_key):
+						var inv_idx: int = int(equips[captured_slot_key])
+						if inv_idx >= 0 and inv_idx < _inventory.size():
+							_show_equipped_item_info(_inventory[inv_idx], captured_rid, captured_slot_key)
+							return
+					_show_equip_bag_select(captured_rid, captured_slot_key, captured_slot_idx)
+				)
+				slot.add_child(slot_btn)
 				equip_grid.add_child(slot)
 
 	# 技能槽
@@ -1807,7 +1980,7 @@ func _show_hero_detail(rid: String) -> void:
 				slot_style.border_color = Color(0.35, 0.35, 0.35, 0.4)
 				slot_panel.add_theme_stylebox_override("panel", slot_style)
 				var lock_lbl := Label.new()
-				lock_lbl.text = "锁"
+				lock_lbl.text = "%d星\n解锁" % i
 				lock_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 				lock_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 				lock_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1828,6 +2001,7 @@ func _equip_skill_to_slot(rid: String, slot_idx: int, sid: int) -> void:
 			cur.append(null)
 		cur.append({"id": sid, "level": 1})
 	_role_skills[rid] = cur
+	_play_equip_sfx()
 	_save_game()
 	_show_hero_detail(rid)
 
@@ -2196,6 +2370,7 @@ func _show_skill_tip(sid: int, slv: int, slot_idx: int = -1) -> void:
 		if _skill_table.has("%d_%d" % [captured_sid, nxt]) and _gold >= cost:
 			_gold -= cost
 			_research_levels[captured_sid] = nxt
+			_play_skill_up_sfx()
 			_save_game()
 			_refresh_hud()
 			_refresh_skill_display_after_upgrade()
@@ -2691,6 +2866,8 @@ func _show_equip_bag() -> void:
 	cls.outline_color = Color(0, 0, 0, 0.8)
 	count_lbl.label_settings = cls
 	panel.add_child(count_lbl)
+	var state := {"tab": "weapon"}
+	var grid_fn := [null]
 	var _refresh_grid := func(filter: String) -> void:
 		var count: int = 0
 		for it in _inventory:
@@ -2721,7 +2898,7 @@ func _show_equip_bag() -> void:
 					icon.texture = load(icon_path)
 					icon.mouse_filter = Control.MOUSE_FILTER_STOP
 					icon.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-					icon.gui_input.connect(_on_bag_item_click.bind(item2, canvas_layer))
+					icon.gui_input.connect(_on_bag_item_click.bind(item2, canvas_layer, grid_fn, state))
 					grid_node.add_child(icon)
 				var lv_lbl := Label.new()
 				lv_lbl.text = "Lv.%d" % int(item2.get("level", 10))
@@ -2736,7 +2913,7 @@ func _show_equip_bag() -> void:
 				lv_ls.outline_color = Color(0, 0, 0, 0.9)
 				lv_lbl.label_settings = lv_ls
 				grid_node.add_child(lv_lbl)
-	var state := {"tab": "weapon"}
+	grid_fn[0] = _refresh_grid
 	for ti in tab_slots.size():
 		var tab_btn: Button = panel.get_node(tab_names[ti])
 		var captured_key: String = tab_slots[ti]
@@ -2758,6 +2935,359 @@ func _show_equip_bag() -> void:
 		_show_sell_confirm(to_remove, 0, cur, canvas_layer, _refresh_grid)
 	)
 	_refresh_grid.call("weapon")
+
+func _show_equipped_item_info(item: Dictionary, rid: String, slot_key: String) -> void:
+	var vp := get_viewport_rect().size
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.layer = 31
+	add_child(canvas_layer)
+	var container := Control.new()
+	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	canvas_layer.add_child(container)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.4)
+	dim.size = vp
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	container.add_child(dim)
+	var popup_w := 280.0
+	var popup_h := 340.0
+	var popup := Panel.new()
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.1, 0.12, 0.22, 0.97)
+	ps.set_corner_radius_all(12)
+	ps.border_width_top = 2
+	ps.border_width_bottom = 2
+	ps.border_width_left = 2
+	ps.border_width_right = 2
+	ps.border_color = Color(1.0, 0.65, 0.0, 0.8)
+	ps.shadow_color = Color(0, 0, 0, 0.6)
+	ps.shadow_size = 8
+	popup.add_theme_stylebox_override("panel", ps)
+	popup.size = Vector2(popup_w, popup_h)
+	popup.position = (vp - Vector2(popup_w, popup_h)) * 0.5
+	container.add_child(popup)
+	# 装备图标
+	var icon_path: String = String(item.get("icon", ""))
+	if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+		var icon_rect := TextureRect.new()
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.custom_minimum_size = Vector2(64, 64)
+		icon_rect.size = Vector2(64, 64)
+		icon_rect.position = popup.position + Vector2((popup_w - 64) * 0.5, 8)
+		icon_rect.texture = load(icon_path)
+		container.add_child(icon_rect)
+	# 装备名
+	var name_lbl := Label.new()
+	name_lbl.text = String(item.get("name", ""))
+	name_lbl.size = Vector2(popup_w, 36.0)
+	name_lbl.position = popup.position + Vector2(0, 72)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var nls := LabelSettings.new()
+	nls.font = font
+	nls.font_size = 22
+	nls.font_color = Color(1.0, 0.65, 0.0)
+	nls.outline_size = 2
+	nls.outline_color = Color(0, 0, 0, 1.0)
+	name_lbl.label_settings = nls
+	container.add_child(name_lbl)
+	# 属性信息
+	var slot_names := {"weapon": "武器", "helmet": "头盔", "chest": "胸甲", "gloves": "手套", "pants": "裤子", "boots": "鞋子", "necklace": "项链", "ring": "戒指"}
+	var slot_cn: String = slot_names.get(String(item.get("slot", "")), "")
+	var info_text := "Lv.%d  [%s]\n" % [int(item.get("level", 10)), slot_cn]
+	var attrs := [["攻击", "atk"], ["防御", "def"], ["生命", "hp"], ["速度", "speed"], ["暴击", "crit"], ["闪避", "dodge"]]
+	for a in attrs:
+		var val: int = int(item.get(a[1], 0))
+		if val > 0:
+			info_text += "%s [color=#2ebf40]+%d[/color]\n" % [a[0], val]
+	var info_lbl := RichTextLabel.new()
+	info_lbl.bbcode_enabled = true
+	info_lbl.text = info_text
+	info_lbl.fit_content = true
+	info_lbl.scroll_active = false
+	info_lbl.size = Vector2(popup_w - 40, popup_h - 190)
+	info_lbl.position = popup.position + Vector2(20, 110)
+	info_lbl.add_theme_font_override("normal_font", font)
+	info_lbl.add_theme_font_size_override("normal_font_size", 18)
+	info_lbl.add_theme_color_override("default_color", Color(0.9, 0.92, 0.85))
+	container.add_child(info_lbl)
+	# 卸载按钮
+	var unequip_btn := Button.new()
+	unequip_btn.text = "卸载"
+	unequip_btn.custom_minimum_size = Vector2(100, 38)
+	unequip_btn.size = Vector2(100, 38)
+	unequip_btn.position = popup.position + Vector2((popup_w - 100) * 0.5, popup_h - 52)
+	unequip_btn.add_theme_font_override("font", font)
+	unequip_btn.add_theme_font_size_override("font_size", 18)
+	unequip_btn.pressed.connect(func() -> void:
+		if _role_equips.has(rid) and (_role_equips[rid] as Dictionary).has(slot_key):
+			(_role_equips[rid] as Dictionary).erase(slot_key)
+		_play_equip_sfx()
+		_save_game()
+		canvas_layer.queue_free()
+		_show_hero_detail(rid)
+	)
+	container.add_child(unequip_btn)
+	# 关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = popup.position + Vector2(popup_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
+	close_btn.pressed.connect(func():
+		dim.mouse_filter = Control.MOUSE_FILTER_STOP
+		canvas_layer.call_deferred("queue_free")
+	)
+	container.add_child(close_btn)
+
+func _show_equip_bag_select(rid: String, slot_key: String, slot_idx: int) -> void:
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var canvas_layer := CanvasLayer.new()
+	canvas_layer.layer = 30
+	add_child(canvas_layer)
+	var panel: Control = load("res://scenes/EquipBagPanel.tscn").instantiate()
+	canvas_layer.add_child(panel)
+	var close_btn: TextureButton = panel.get_node("CloseBtn")
+	close_btn.pressed.connect(func():
+		canvas_layer.queue_free()
+	)
+	var grid_node: Control = panel.get_node("GridContainer")
+	var tab_highlight: Panel = panel.get_node("TabHighlight")
+	var hl_style := StyleBoxFlat.new()
+	hl_style.bg_color = Color(1.0, 0.85, 0.4, 0.2)
+	hl_style.set_corner_radius_all(4)
+	hl_style.border_width_top = 2
+	hl_style.border_width_bottom = 2
+	hl_style.border_width_left = 2
+	hl_style.border_width_right = 2
+	hl_style.border_color = Color(1.0, 0.75, 0.2, 0.9)
+	tab_highlight.add_theme_stylebox_override("panel", hl_style)
+	var tab_slots := ["weapon", "helmet", "chest", "pants", "boots", "gloves", "necklace", "ring"]
+	var tab_names := ["TabWeapon", "TabHelmet", "TabChest", "TabPants", "TabBoots", "TabGloves", "TabNecklace", "TabRing"]
+	var grid_cols := 8
+	var slot_size := 50.0
+	var slot_gap := 10.0
+	# 右上角数量标签
+	var count_lbl := Label.new()
+	count_lbl.size = Vector2(120.0, 24.0)
+	count_lbl.position = Vector2(grid_node.position.x + grid_node.size.x - 120, grid_node.position.y - 26)
+	count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	var cls := LabelSettings.new()
+	cls.font = font
+	cls.font_size = 14
+	cls.font_color = Color(0.9, 0.88, 0.75)
+	cls.outline_size = 2
+	cls.outline_color = Color(0, 0, 0, 0.8)
+	count_lbl.label_settings = cls
+	panel.add_child(count_lbl)
+	# 刷新网格
+	var _refresh_grid := func(filter: String) -> void:
+		var count: int = 0
+		for it in _inventory:
+			if String(it.get("slot", "")) == filter:
+				count += 1
+		count_lbl.text = "%d / 32" % count
+		for c in grid_node.get_children():
+			c.queue_free()
+		var filtered: Array = []
+		for item in _inventory:
+			if String(item.get("slot", "")) == filter:
+				filtered.append(item)
+		if not filtered.is_empty():
+			for i in filtered.size():
+				var item2: Dictionary = filtered[i]
+				var col: int = i % grid_cols
+				var row: int = i / grid_cols
+				var sx: float = col * (slot_size + slot_gap)
+				var sy: float = row * (slot_size + slot_gap)
+				var icon_path: String = String(item2.get("icon", ""))
+				if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+					var icon := TextureRect.new()
+					icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+					icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+					icon.custom_minimum_size = Vector2(slot_size, slot_size)
+					icon.size = Vector2(slot_size, slot_size)
+					icon.position = Vector2(sx, sy)
+					icon.texture = load(icon_path)
+					icon.mouse_filter = Control.MOUSE_FILTER_STOP
+					icon.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+					var captured_item := item2
+					icon.gui_input.connect(func(ev: InputEvent) -> void:
+						if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT and ev.pressed:
+							_show_equip_confirm(captured_item, rid, slot_key, slot_idx, canvas_layer)
+					)
+					grid_node.add_child(icon)
+				var lv_lbl := Label.new()
+				lv_lbl.text = "Lv.%d" % int(item2.get("level", 10))
+				lv_lbl.size = Vector2(slot_size, 16.0)
+				lv_lbl.position = Vector2(sx, sy + slot_size - 16.0)
+				lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				var lv_ls := LabelSettings.new()
+				lv_ls.font = font
+				lv_ls.font_size = 11
+				lv_ls.font_color = Color(1.0, 1.0, 1.0)
+				lv_ls.outline_size = 2
+				lv_ls.outline_color = Color(0, 0, 0, 0.9)
+				lv_lbl.label_settings = lv_ls
+				grid_node.add_child(lv_lbl)
+	# 页签按钮 - 点击提示"正在选装中"
+	for ti in tab_slots.size():
+		var tab_btn: Button = panel.get_node(tab_names[ti])
+		tab_btn.pressed.connect(func() -> void:
+			_show_toast("正在选装中")
+		)
+	# 一键售出按钮 - 点击提示"正在选装中"
+	var sell_btn: Button = panel.get_node("SellBtn")
+	sell_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	sell_btn.pressed.connect(func() -> void:
+		_show_toast("正在选装中")
+	)
+	# 定位高亮到对应页签
+	var tab_idx: int = tab_slots.find(slot_key)
+	if tab_idx >= 0:
+		var target_btn: Button = panel.get_node(tab_names[tab_idx])
+		tab_highlight.position = target_btn.position
+		tab_highlight.size = target_btn.size
+	_refresh_grid.call(slot_key)
+
+func _show_equip_confirm(item: Dictionary, rid: String, slot_key: String, slot_idx: int, bag_layer: CanvasLayer) -> void:
+	var vp := get_viewport_rect().size
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var confirm_layer := CanvasLayer.new()
+	confirm_layer.layer = 31
+	add_child(confirm_layer)
+	var container := Control.new()
+	container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	confirm_layer.add_child(container)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.4)
+	dim.size = vp
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	container.add_child(dim)
+	var popup_w := 280.0
+	var popup_h := 340.0
+	var popup := Panel.new()
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.1, 0.12, 0.22, 0.97)
+	ps.set_corner_radius_all(12)
+	ps.border_width_top = 2
+	ps.border_width_bottom = 2
+	ps.border_width_left = 2
+	ps.border_width_right = 2
+	ps.border_color = Color(1.0, 0.65, 0.0, 0.8)
+	ps.shadow_color = Color(0, 0, 0, 0.6)
+	ps.shadow_size = 8
+	popup.add_theme_stylebox_override("panel", ps)
+	popup.size = Vector2(popup_w, popup_h)
+	popup.position = (vp - Vector2(popup_w, popup_h)) * 0.5
+	container.add_child(popup)
+	var icon_path: String = String(item.get("icon", ""))
+	if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+		var icon_rect := TextureRect.new()
+		icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		icon_rect.custom_minimum_size = Vector2(64, 64)
+		icon_rect.size = Vector2(64, 64)
+		icon_rect.position = popup.position + Vector2((popup_w - 64) * 0.5, 8)
+		icon_rect.texture = load(icon_path)
+		container.add_child(icon_rect)
+	var name_lbl := Label.new()
+	name_lbl.text = String(item.get("name", ""))
+	name_lbl.size = Vector2(popup_w, 36.0)
+	name_lbl.position = popup.position + Vector2(0, 72)
+	name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var nls := LabelSettings.new()
+	nls.font = font
+	nls.font_size = 22
+	nls.font_color = Color(1.0, 0.65, 0.0)
+	nls.outline_size = 2
+	nls.outline_color = Color(0, 0, 0, 1.0)
+	name_lbl.label_settings = nls
+	container.add_child(name_lbl)
+	var slot_names := {"weapon": "武器", "helmet": "头盔", "chest": "胸甲", "gloves": "手套", "pants": "裤子", "boots": "鞋子", "necklace": "项链", "ring": "戒指"}
+	var slot_cn: String = slot_names.get(String(item.get("slot", "")), "")
+	var info_text := "Lv.%d  [%s]\n" % [int(item.get("level", 10)), slot_cn]
+	var attrs := [["攻击", "atk"], ["防御", "def"], ["生命", "hp"], ["速度", "speed"], ["暴击", "crit"], ["闪避", "dodge"]]
+	for a in attrs:
+		var val: int = int(item.get(a[1], 0))
+		if val > 0:
+			info_text += "%s [color=#2ebf40]+%d[/color]\n" % [a[0], val]
+	var info_lbl := RichTextLabel.new()
+	info_lbl.bbcode_enabled = true
+	info_lbl.text = info_text
+	info_lbl.fit_content = true
+	info_lbl.scroll_active = false
+	info_lbl.size = Vector2(popup_w - 40, popup_h - 190)
+	info_lbl.position = popup.position + Vector2(20, 110)
+	info_lbl.add_theme_font_override("normal_font", font)
+	info_lbl.add_theme_font_size_override("normal_font_size", 18)
+	info_lbl.add_theme_color_override("default_color", Color(0.9, 0.92, 0.85))
+	container.add_child(info_lbl)
+	# 穿戴按钮
+	var equip_btn := Button.new()
+	equip_btn.text = "穿戴"
+	equip_btn.custom_minimum_size = Vector2(100, 38)
+	equip_btn.size = Vector2(100, 38)
+	equip_btn.position = popup.position + Vector2((popup_w - 100) * 0.5, popup_h - 52)
+	equip_btn.add_theme_font_override("font", font)
+	equip_btn.add_theme_font_size_override("font_size", 18)
+	equip_btn.pressed.connect(func() -> void:
+		_equip_item_to_role(rid, slot_key, slot_idx, item)
+		confirm_layer.queue_free()
+		bag_layer.queue_free()
+	)
+	container.add_child(equip_btn)
+	# 关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = popup.position + Vector2(popup_w - 48, 4)
+	close_btn.size = Vector2(40, 40)
+	close_btn.pressed.connect(func():
+		confirm_layer.queue_free()
+	)
+	container.add_child(close_btn)
+
+func _equip_item_to_role(rid: String, slot_key: String, slot_idx: int, item: Dictionary) -> void:
+	if not _role_equips.has(rid):
+		_role_equips[rid] = {}
+	var old_suit_stage: int = _get_suit_active_stages(rid)
+	var idx: int = _inventory.find(item)
+	if idx >= 0:
+		(_role_equips[rid] as Dictionary)[slot_key] = idx
+	var new_suit_stage: int = _get_suit_active_stages(rid)
+	_play_equip_sfx()
+	if new_suit_stage > old_suit_stage:
+		_play_skill_up_sfx()
+	_save_game()
+	_show_hero_detail(rid)
+
+func _show_toast(msg: String) -> void:
+	var vp := get_viewport_rect().size
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var toast_layer := CanvasLayer.new()
+	toast_layer.layer = 50
+	add_child(toast_layer)
+	var lbl := Label.new()
+	lbl.text = msg
+	lbl.size = Vector2(300, 40)
+	lbl.position = Vector2((vp.x - 300) * 0.5, vp.y * 0.4)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var ls := LabelSettings.new()
+	ls.font = font
+	ls.font_size = 20
+	ls.font_color = Color(1.0, 0.9, 0.5)
+	ls.outline_size = 3
+	ls.outline_color = Color(0, 0, 0, 0.9)
+	lbl.label_settings = ls
+	toast_layer.add_child(lbl)
+	var tween := create_tween()
+	tween.tween_property(lbl, "modulate:a", 0.0, 0.5).set_delay(1.0)
+	tween.tween_callback(toast_layer.queue_free)
 
 func _is_item_equipped(item: Dictionary) -> bool:
 	var idx: int = _inventory.find(item)
@@ -2846,6 +3376,7 @@ func _show_sell_confirm(to_remove: Array, _unused: int, tab: String, parent_ui: 
 		for item in to_remove:
 			_inventory.erase(item)
 		_gold += gold_gain
+		_play_sell_sfx()
 		_refresh_hud()
 		_save_game()
 		refresh_fn.call(tab)
@@ -2865,13 +3396,13 @@ func _show_sell_confirm(to_remove: Array, _unused: int, tab: String, parent_ui: 
 	)
 	container.add_child(cancel_btn)
 
-func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLayer) -> void:
+func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLayer, grid_fn: Array, state: Dictionary) -> void:
 	if not (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
 		return
 	var vp := get_viewport_rect().size
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var popup_w := 280.0
-	var popup_h := 300.0
+	var popup_h := 340.0
 	var container := Control.new()
 	container.size = vp
 	parent_ui.add_child(container)
@@ -2932,6 +3463,27 @@ func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLa
 	info_lbl.add_theme_font_size_override("normal_font_size", 18)
 	info_lbl.add_theme_color_override("default_color", Color(0.9, 0.92, 0.85))
 	container.add_child(info_lbl)
+	# 售出按钮
+	var sell_price: int = _calc_sell_price(item)
+	var sell_btn := Button.new()
+	sell_btn.text = "售出 +%d金" % sell_price
+	sell_btn.custom_minimum_size = Vector2(120, 38)
+	sell_btn.size = Vector2(120, 38)
+	sell_btn.position = popup.position + Vector2((popup_w - 120) * 0.5, popup_h - 52)
+	sell_btn.add_theme_font_override("font", font)
+	sell_btn.add_theme_font_size_override("font_size", 16)
+	sell_btn.pressed.connect(func() -> void:
+		_inventory.erase(item)
+		_gold += sell_price
+		_play_sell_sfx()
+		_refresh_hud()
+		_save_game()
+		container.queue_free()
+		if grid_fn[0] is Callable:
+			(grid_fn[0] as Callable).call(state["tab"])
+	)
+	container.add_child(sell_btn)
+	# 关闭按钮
 	var close_btn := TextureButton.new()
 	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
 	close_btn.ignore_texture_size = true
@@ -3230,6 +3782,8 @@ func _handle_click(pos: Vector2) -> void:
 					_gm_grant_all_roles()
 				elif action == "learn_skill":
 					_gm_learn_next_skill()
+				elif action == "add_all_equip":
+					_gm_add_all_equip()
 				return
 		_set_gm_cmd_visible(false)
 		return
@@ -3281,7 +3835,7 @@ func _switch_role_action(idx: int) -> void:
 
 func _reposition_panel(_key: String) -> void:
 	_panel_rect   = Rect2(0, 0, 1280, 720)
-	_upgrade_rect = Rect2(360, 93, 560, 150)
+	_upgrade_rect = Rect2(540, 110, 200, 120)
 	_close_rect   = Rect2(1090, 10, 85, 80)
 
 func _get_building_level_data(key: String, lv: int) -> Dictionary:
@@ -3344,6 +3898,10 @@ func _refresh_panel() -> void:
 			_upgrade_disabled = not (_wood >= wood_cost and _ore >= ore_cost and _gold >= gold_cost)
 	if _panel_extra_lbl and is_instance_valid(_panel_extra_lbl):
 		_panel_extra_lbl.text = extra_text
+		var line_count: int = extra_text.count("\n") + 1
+		var area_h := 90.0
+		var text_h: float = line_count * 24.0
+		_panel_extra_lbl.offset_top = 120.0 + (area_h - text_h) * 0.5
 	var a: float = _upgrade_btn.modulate.a
 	var tint: Color = Color(0.55, 0.55, 0.55, a) if _upgrade_disabled else Color(1, 1, 1, a)
 	_upgrade_btn.modulate = tint
@@ -3787,6 +4345,62 @@ func _play_upgrade_fx(pos: Vector2) -> void:
 	add_child(fx)
 	fx.animation_finished.connect(fx.queue_free)
 	fx.play("play")
+
+func _get_suit_active_stages(rid: String) -> int:
+	var equips: Dictionary = _role_equips.get(rid, {}) if _role_equips.get(rid, null) is Dictionary else {}
+	var suit_counts: Dictionary = {}
+	for sk in equips.keys():
+		var inv_idx: int = int(equips[sk])
+		if inv_idx >= 0 and inv_idx < _inventory.size():
+			var eid: int = int(_inventory[inv_idx].get("id", 0))
+			if _suit_members.has(eid):
+				var sn: String = _suit_members[eid]
+				suit_counts[sn] = int(suit_counts.get(sn, 0)) + 1
+	var stages: int = 0
+	for sn in suit_counts.keys():
+		var count: int = int(suit_counts[sn])
+		for entry in _suit_table:
+			if String(entry["name"]) == sn:
+				var sid: String = String(entry["suit_id"])
+				if _suit_details.has(sid):
+					for bonus in _suit_details[sid]:
+						if int(bonus["require_count"]) <= count:
+							stages += 1
+				break
+	return stages
+
+func _play_sell_sfx() -> void:
+	var stream := load("res://asserts/audio/sell.ogg") as AudioStream
+	if not stream:
+		return
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = -3.0
+	add_child(player)
+	player.play()
+	player.finished.connect(player.queue_free)
+
+func _play_skill_up_sfx() -> void:
+	var stream := load("res://asserts/audio/skill_up.ogg") as AudioStream
+	if not stream:
+		return
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = -3.0
+	add_child(player)
+	player.play()
+	player.finished.connect(player.queue_free)
+
+func _play_equip_sfx() -> void:
+	var stream := load("res://asserts/audio/equip.ogg") as AudioStream
+	if not stream:
+		return
+	var player := AudioStreamPlayer.new()
+	player.stream = stream
+	player.volume_db = -3.0
+	add_child(player)
+	player.play()
+	player.finished.connect(player.queue_free)
 
 func _play_level_up_sfx() -> void:
 	var stream := load("res://asserts/audio/level_up.ogg") as AudioStream
