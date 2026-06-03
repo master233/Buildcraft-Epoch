@@ -3094,13 +3094,13 @@ func _connect_exchange_panel(key: String) -> void:
 		btn2.disabled = not has_gold
 		btn2.pressed.connect(_on_exchange_pressed.bind(key, "gold_to_res"))
 	var boost_btn: Button = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostBtnWrap/BoostBtn")
-	var boost_lbl: Label = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostChargeLbl")
+	var boost_lbl: RichTextLabel = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostChargeLbl")
 	if boost_lbl:
-		boost_lbl.add_theme_font_override("font", font)
-		boost_lbl.add_theme_font_size_override("font_size", 20)
-		var charge_color: Color = Color(0.18, 0.75, 0.25) if _ad_boost_charges > 0 else Color(0.85, 0.15, 0.15)
-		boost_lbl.add_theme_color_override("font_color", charge_color)
-		boost_lbl.text = "可用次数:%d 观看广告可增加次数" % _ad_boost_charges
+		boost_lbl.add_theme_font_override("normal_font", font)
+		boost_lbl.add_theme_font_size_override("normal_font_size", 20)
+		boost_lbl.add_theme_color_override("default_color", Color(0.22, 0.13, 0.06))
+		var charge_color: String = "#2ebf40" if _ad_boost_charges > 0 else "#d92626"
+		boost_lbl.text = "[center]可用次数:[color=%s]%d[/color] 观看广告可增加次数[/center]" % [charge_color, _ad_boost_charges]
 	if boost_btn:
 		_style_tower_btn(boost_btn, Color(0.55, 0.22, 0.06), Color(0.90, 0.45, 0.15), Color(1.0, 0.88, 0.55))
 		boost_btn.disabled = _ad_boost_charges <= 0
@@ -3127,11 +3127,12 @@ func _refresh_exchange_boost(key: String) -> void:
 	if not (_function_panel_node and is_instance_valid(_function_panel_node)):
 		return
 	var boost_btn: Button = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostBtnWrap/BoostBtn")
-	var boost_lbl: Label = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostChargeLbl")
+	var boost_lbl: RichTextLabel = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostChargeLbl")
 	if boost_btn:
 		boost_btn.disabled = _ad_boost_charges <= 0
 	if boost_lbl:
-		boost_lbl.text = "可用次数:%d 观看广告可增加次数" % _ad_boost_charges
+		var charge_color: String = "#2ebf40" if _ad_boost_charges > 0 else "#d92626"
+		boost_lbl.text = "[center]可用次数:[color=%s]%d[/color] 观看广告可增加次数[/center]" % [charge_color, _ad_boost_charges]
 
 func _on_exchange_pressed(key: String, direction: String) -> void:
 	var lv: int = _building_nodes[key]["level"]
