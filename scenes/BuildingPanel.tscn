@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://xjux03nisrql"]
+[gd_scene format=3 uid="uid://hiytuem455wm"]
 
 [ext_resource type="Texture2D" uid="uid://p4o80wo4qurm" path="res://asserts/image/building/building_board/building_click_board.png" id="1"]
 [ext_resource type="Texture2D" uid="uid://bfjf8csfde8re" path="res://asserts/image/ui/ui_upgrade.png" id="2"]
@@ -11,13 +11,6 @@ font_size = 28
 font_color = Color(1, 0.92, 0.6, 1)
 outline_size = 5
 outline_color = Color(0.18, 0.08, 0.02, 1)
-
-[sub_resource type="LabelSettings" id="LabelSettings_info"]
-font = ExtResource("4")
-font_size = 22
-font_color = Color(0.22, 0.13, 0.06, 1)
-outline_size = 3
-outline_color = Color(1, 0.96, 0.85, 0.7)
 
 [sub_resource type="LabelSettings" id="LabelSettings_upgrade"]
 font = ExtResource("4")
@@ -69,11 +62,11 @@ stretch_mode = 5
 
 [node name="UpgradeLbl" type="Label" parent="." unique_id=1808770731]
 layout_mode = 0
-offset_left = 615.0
-offset_top = 154.0
-offset_right = 665.0
+offset_left = 594.0
+offset_top = 150.0
+offset_right = 687.0
 offset_bottom = 179.0
-text = "升 级"
+text = "升级建筑"
 label_settings = SubResource("LabelSettings_upgrade")
 horizontal_alignment = 1
 vertical_alignment = 1

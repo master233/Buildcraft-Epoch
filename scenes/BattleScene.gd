@@ -624,7 +624,7 @@ func _spawn_damage_label(target: BattleUnit, dmg: int, is_miss: bool, is_crit: b
 	if is_miss:
 		lbl.text = "MISS"
 	elif is_crit:
-		lbl.text = str(dmg) + "!!"
+		lbl.text = "暴击 " + str(dmg)
 	else:
 		lbl.text = str(dmg)
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1171,12 +1171,13 @@ func _end_battle(victory: bool) -> void:
 	var rows_area_h: float = 0.0
 	if exp_rows.size() > 0:
 		rows_area_h = 16.0 + avatar_size + 6.0 + 22.0 + 4.0 + 18.0 + 4.0 + 22.0 + 16.0
+	var tip_area_h: float = 60.0 if not victory else 0.0
 	var drop_area_h: float = 85.0 if not drop_item.is_empty() else 0.0
 	var min_panel_w := 460.0
 	var gap_count: int = max(0, exp_rows.size() - 1)
 	var needed_w: float = float(exp_rows.size()) * cell_w + float(gap_count) * cell_gap + 56.0
 	var panel_w: float = max(min_panel_w, needed_w)
-	var panel_h: float = 200.0 + rows_area_h + drop_area_h
+	var panel_h: float = 200.0 + rows_area_h + drop_area_h + tip_area_h
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0.12, 0.16, 0.30, 0.95)
 	style.set_corner_radius_all(16)
@@ -1375,8 +1376,27 @@ func _end_battle(victory: bool) -> void:
 				name_lbl.label_settings = nls
 				ui.add_child(name_lbl)
 
-	var btn_y: float = panel.position.y + 110.0 + rows_area_h + drop_area_h
-	var back_btn := _make_button("返回", Vector2(panel.position.x + (panel_w - 120) * 0.5, btn_y), Vector2(120, 52))
+	if not victory:
+		var tip_lbl := Label.new()
+		tip_lbl.text = "提升星级、穿戴装备、学习技能、更改阵容可增强战力"
+		tip_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		tip_lbl.size = Vector2(panel_w - 40, 50.0)
+		tip_lbl.position = Vector2(panel.position.x + 20, panel.position.y + 96.0)
+		tip_lbl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		var tip_ls := LabelSettings.new()
+		tip_ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+		tip_ls.font_size = 18
+		tip_ls.font_color = Color(0.9, 0.85, 0.6)
+		tip_ls.outline_size = 2
+		tip_ls.outline_color = Color(0, 0, 0, 0.8)
+		tip_lbl.label_settings = tip_ls
+		ui.add_child(tip_lbl)
+
+	var btn_y: float = panel.position.y + 110.0 + rows_area_h + drop_area_h + tip_area_h
+	var btn_w := 120.0
+	var btn_h := 52.0
+	var gap := 30.0
+	var back_btn := _make_button("返回", Vector2(panel.position.x + (panel_w - btn_w) * 0.5, btn_y), Vector2(btn_w, btn_h))
 	ui.add_child(back_btn.panel)
 	ui.add_child(back_btn.label)
 	back_btn.label.gui_input.connect(_on_exit_input)
@@ -1384,10 +1404,6 @@ func _end_battle(victory: bool) -> void:
 	if victory:
 		var next_id := _next_level_id_str()
 		if not next_id.is_empty():
-			# 有下一关：把"返回"挪到左半边，右边加"下一关"
-			var btn_w := 120.0
-			var btn_h := 52.0
-			var gap := 30.0
 			var x0 := panel.position.x + (panel_w - (btn_w * 2 + gap)) * 0.5
 			back_btn.panel.position = Vector2(x0, btn_y)
 			back_btn.label.position = Vector2(x0, btn_y)
@@ -1395,6 +1411,14 @@ func _end_battle(victory: bool) -> void:
 			ui.add_child(next_btn.panel)
 			ui.add_child(next_btn.label)
 			next_btn.label.gui_input.connect(_on_next_level_input.bind(next_id))
+	else:
+		var x0 := panel.position.x + (panel_w - (btn_w * 2 + gap)) * 0.5
+		back_btn.panel.position = Vector2(x0, btn_y)
+		back_btn.label.position = Vector2(x0, btn_y)
+		var retry_btn := _make_button("重新挑战", Vector2(x0 + btn_w + gap, btn_y), Vector2(btn_w, btn_h))
+		ui.add_child(retry_btn.panel)
+		ui.add_child(retry_btn.label)
+		retry_btn.label.gui_input.connect(_on_retry_input)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 阵型选择模式
@@ -1844,6 +1868,7 @@ func _generate_equipment_drop(data: Dictionary, inv: Array) -> Dictionary:
 		"speed": int(randi_range(tpl["speed_min"], tpl["speed_max"]) * scale),
 		"crit": int(randi_range(tpl["crit_min"], tpl["crit_max"]) * scale),
 		"dodge": int(randi_range(tpl["dodge_min"], tpl["dodge_max"]) * scale),
+		"is_new": true,
 	}
 
 func _load_equipment_table() -> Dictionary:
@@ -2751,6 +2776,11 @@ func _on_exit_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
 		var main := load(MAIN_SCENE_PATH) as PackedScene
 		SceneTransition.change_to(main)
+
+func _on_retry_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+		var scene := load(BATTLE_SCENE_PATH) as PackedScene
+		SceneTransition.change_to(scene)
 
 func _on_next_level_input(event: InputEvent, next_id: String) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed:

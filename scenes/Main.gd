@@ -25,6 +25,8 @@ const BUILDING_FUNCTION_SCENES := {
 	"home":  "res://scenes/building_panels/HeroPanel.tscn",
 	"research": "res://scenes/building_panels/ResearchPanel.tscn",
 	"tavern": "res://scenes/building_panels/TavernPanel.tscn",
+	"lumberyard": "res://scenes/building_panels/ExchangePanel.tscn",
+	"mine": "res://scenes/building_panels/ExchangePanel.tscn",
 }
 
 var _function_panel_node: Node = null
@@ -33,6 +35,7 @@ const BUILDING_SCALE := 0.8
 const SQUIRREL_OBSTACLES := [[130.0, 410.0], [870.0, 1210.0]]
 const PRODUCE_INTERVAL := 5.0
 const PRODUCE_RATES := [3, 6, 12]
+const EXCHANGE_AMOUNTS := {1: 10, 2: 100, 3: 1000}
 const TOWER_EXP_INTERVAL := 30.0
 const TOWER_EXP_PER_LEVEL := 2
 const TOWER_DROP_CHANCE := 0.15
@@ -98,11 +101,18 @@ const BUILDINGS := {
 		"pos": Vector2(1010, 510), "display": "研究院", "y_adj": 0,
 		"produces": "",
 	},
+	"store": {
+		"ref_size": Vector2(288, 324),
+		"anim_sheets": ["res://asserts/image/building/building_anim_sheet/store_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/store_anim_sheet.png", "res://asserts/image/building/building_anim_sheet/store_anim_sheet.png"], "n_frames": 8,
+		"pos": Vector2(380, 160), "display": "装备仓库", "y_adj": 0,
+		"produces": "",
+	},
 }
 
 var _wood: int = 200
 var _ore: int = 100
 var _gold: int = 0
+var _ad_boost_charges: int = 0
 var _cleared_level: int = 0
 var _level_ids: Array = []
 var _gm_bg: Panel = null
@@ -112,6 +122,20 @@ var _gm_hovering: bool = false
 var _gm_cmd_panel: Panel = null
 var _gm_cmd_visible: bool = false
 var _gm_cmd_btns: Array = []  # [{bg: Panel, lbl: Label, action: String}]
+var _ad_bg: Panel = null
+var _ad_lbl: Label = null
+var _ad_style: StyleBoxFlat = null
+var _ad_hovering: bool = false
+var _ad_rect := Rect2(0, 0, 60, 36)
+var _ad_texts: Array = []
+var _ad_panel_layer: CanvasLayer = null
+var _ad_timer: float = 0.0
+var _ad_char_index: int = 0
+var _ad_current_text: String = ""
+var _ad_content_lbl: RichTextLabel = null
+var _ad_reward_lbl: Label = null
+var _ad_playing: bool = false
+const ADS_TABLE_PATH := "res://asserts/table/ads.txt"
 
 var _formation_id: int = 1
 var _formation_name: String = "标准阵"
@@ -154,6 +178,7 @@ const DEFAULT_SKILLS: Array = []
 var _equipment_table: Dictionary = {}  # equip_id(int) → {name, slot, atk_min, atk_max, ...}
 var _inventory: Array = []             # [{id, level, atk, def, hp, speed, crit, dodge, name, slot}]
 var _role_equips: Dictionary = {}      # rid → {slot_name: inventory_index}
+var _store_new_badge: TextureRect = null
 var _tower_exp_timer: float = 0.0
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
@@ -320,7 +345,188 @@ func _spawn_gm_button() -> void:
 	_gm_lbl.label_settings = ls
 	ui.add_child(_gm_lbl)
 
+	_spawn_ad_button(ui)
 	_build_gm_cmd_panel(ui)
+
+func _spawn_ad_button(ui: Node) -> void:
+	_ad_rect = Rect2(_gm_rect.position.x, _gm_rect.position.y + _gm_rect.size.y + 6.0, 60, 36)
+	_ad_style = StyleBoxFlat.new()
+	_ad_style.bg_color = Color(0.55, 0.22, 0.06)
+	_ad_style.set_corner_radius_all(10)
+	_ad_style.border_width_top    = 2
+	_ad_style.border_width_right  = 2
+	_ad_style.border_width_bottom = 3
+	_ad_style.border_width_left   = 2
+	_ad_style.border_color = Color(0.90, 0.45, 0.15)
+	_ad_style.shadow_color = Color(0, 0, 0, 0.55)
+	_ad_style.shadow_size  = 6
+	_ad_style.shadow_offset = Vector2(1, 3)
+	_ad_bg = Panel.new()
+	_ad_bg.size = _ad_rect.size
+	_ad_bg.position = _ad_rect.position
+	_ad_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ad_bg.add_theme_stylebox_override("panel", _ad_style)
+	ui.add_child(_ad_bg)
+	_ad_lbl = Label.new()
+	_ad_lbl.text = "广告"
+	_ad_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ad_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_ad_lbl.size = _ad_rect.size
+	_ad_lbl.position = _ad_rect.position
+	_ad_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ls := LabelSettings.new()
+	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size = 22
+	ls.font_color = Color(1.0, 0.88, 0.55)
+	ls.outline_size = 2
+	ls.outline_color = Color(0, 0, 0, 0.75)
+	ls.shadow_size = 2
+	ls.shadow_color = Color(0, 0, 0, 0.45)
+	_ad_lbl.label_settings = ls
+	ui.add_child(_ad_lbl)
+	_load_ad_texts()
+
+func _load_ad_texts() -> void:
+	var text := _read_table_text(ADS_TABLE_PATH)
+	if text.is_empty():
+		return
+	var lines := text.split("\n", false)
+	for i in range(1, lines.size()):
+		var line: String = lines[i].strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		_ad_texts.append(line)
+
+func _show_ad_panel() -> void:
+	if _ad_texts.is_empty():
+		return
+	if _ad_panel_layer and is_instance_valid(_ad_panel_layer):
+		return
+	var idx: int = randi() % _ad_texts.size()
+	_ad_current_text = _ad_texts[idx]
+	_ad_char_index = 0
+	_ad_timer = 0.0
+	_ad_playing = true
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	_ad_panel_layer = CanvasLayer.new()
+	_ad_panel_layer.layer = 50
+	add_child(_ad_panel_layer)
+	var bg := ColorRect.new()
+	bg.color = Color(0, 0, 0, 0.75)
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ad_panel_layer.add_child(bg)
+	var panel := Panel.new()
+	panel.size = Vector2(800, 400)
+	panel.position = Vector2(240, 160)
+	var pstyle := StyleBoxFlat.new()
+	pstyle.bg_color = Color(0.95, 0.92, 0.85)
+	pstyle.set_corner_radius_all(16)
+	pstyle.border_width_top = 3
+	pstyle.border_width_right = 3
+	pstyle.border_width_bottom = 3
+	pstyle.border_width_left = 3
+	pstyle.border_color = Color(0.55, 0.22, 0.06)
+	panel.add_theme_stylebox_override("panel", pstyle)
+	_ad_panel_layer.add_child(panel)
+	# 右上角关闭按钮
+	var close_btn := Button.new()
+	close_btn.text = "X"
+	close_btn.size = Vector2(40, 40)
+	close_btn.position = Vector2(240 + 800 - 48, 165)
+	_style_tower_btn(close_btn, Color(0.65, 0.15, 0.1), Color(0.9, 0.3, 0.2), Color(1.0, 1.0, 1.0))
+	close_btn.pressed.connect(_close_ad_panel)
+	_ad_panel_layer.add_child(close_btn)
+	# 顶部提醒
+	var hint := Label.new()
+	hint.text = "广告时长10秒 提前退出拿不到奖励哦~"
+	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	hint.size = Vector2(800, 36)
+	hint.position = Vector2(240, 170)
+	hint.add_theme_font_override("font", font)
+	hint.add_theme_font_size_override("font_size", 20)
+	hint.add_theme_color_override("font_color", Color(0.75, 0.25, 0.1))
+	_ad_panel_layer.add_child(hint)
+	# 广告内容
+	_ad_content_lbl = RichTextLabel.new()
+	_ad_content_lbl.size = Vector2(720, 250)
+	_ad_content_lbl.position = Vector2(280, 220)
+	_ad_content_lbl.bbcode_enabled = false
+	_ad_content_lbl.scroll_active = false
+	_ad_content_lbl.add_theme_font_override("normal_font", font)
+	_ad_content_lbl.add_theme_font_size_override("normal_font_size", 22)
+	_ad_content_lbl.add_theme_color_override("default_color", Color(0.15, 0.12, 0.08))
+	_ad_content_lbl.text = ""
+	_ad_panel_layer.add_child(_ad_content_lbl)
+	# 底部奖励提示
+	_ad_reward_lbl = Label.new()
+	_ad_reward_lbl.text = ""
+	_ad_reward_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ad_reward_lbl.size = Vector2(800, 40)
+	_ad_reward_lbl.position = Vector2(240, 480)
+	_ad_reward_lbl.add_theme_font_override("font", font)
+	_ad_reward_lbl.add_theme_font_size_override("font_size", 26)
+	_ad_reward_lbl.add_theme_color_override("font_color", Color(0.18, 0.75, 0.25))
+	_ad_panel_layer.add_child(_ad_reward_lbl)
+
+func _tick_ad(delta: float) -> void:
+	if not _ad_playing:
+		return
+	_ad_timer += delta
+	var total_chars: int = _ad_current_text.length()
+	var char_interval: float = 10.0 / float(total_chars)
+	var target_index: int = mini(int(_ad_timer / char_interval), total_chars)
+	if target_index > _ad_char_index:
+		_ad_char_index = target_index
+		if _ad_content_lbl and is_instance_valid(_ad_content_lbl):
+			_ad_content_lbl.text = _ad_current_text.substr(0, _ad_char_index)
+	if _ad_timer >= 10.0 and _ad_playing:
+		_ad_playing = false
+		_ad_boost_charges += 1
+		_save_game()
+		if _ad_reward_lbl and is_instance_valid(_ad_reward_lbl):
+			_ad_reward_lbl.text = "资源加速次数+1"
+		if _ad_content_lbl and is_instance_valid(_ad_content_lbl):
+			_ad_content_lbl.text = _ad_current_text
+		_show_ad_next_btn()
+
+func _show_ad_next_btn() -> void:
+	if not (_ad_panel_layer and is_instance_valid(_ad_panel_layer)):
+		return
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var next_btn := Button.new()
+	next_btn.name = "AdNextBtn"
+	next_btn.text = "播放下一条"
+	next_btn.size = Vector2(160, 44)
+	next_btn.position = Vector2(560, 520)
+	_style_tower_btn(next_btn, Color(0.55, 0.22, 0.06), Color(0.90, 0.45, 0.15), Color(1.0, 0.88, 0.55))
+	next_btn.pressed.connect(_play_next_ad)
+	_ad_panel_layer.add_child(next_btn)
+
+func _play_next_ad() -> void:
+	if _ad_texts.is_empty():
+		return
+	var idx: int = randi() % _ad_texts.size()
+	_ad_current_text = _ad_texts[idx]
+	_ad_char_index = 0
+	_ad_timer = 0.0
+	_ad_playing = true
+	if _ad_content_lbl and is_instance_valid(_ad_content_lbl):
+		_ad_content_lbl.text = ""
+	if _ad_reward_lbl and is_instance_valid(_ad_reward_lbl):
+		_ad_reward_lbl.text = ""
+	var old_btn = _ad_panel_layer.get_node_or_null("AdNextBtn")
+	if old_btn:
+		old_btn.queue_free()
+
+func _close_ad_panel() -> void:
+	if _ad_panel_layer and is_instance_valid(_ad_panel_layer):
+		_ad_panel_layer.queue_free()
+		_ad_panel_layer = null
+	_ad_playing = false
+	_ad_content_lbl = null
+	_ad_reward_lbl = null
+	if _panel_visible and (_panel_key == "lumberyard" or _panel_key == "mine"):
+		_refresh_exchange_boost(_panel_key)
 
 func _build_gm_cmd_panel(ui: Node) -> void:
 	var commands := [
@@ -681,8 +887,10 @@ func _gm_add_all_equip() -> void:
 			"speed": int(randi_range(tpl["speed_min"], tpl["speed_max"]) * scale),
 			"crit": int(randi_range(tpl["crit_min"], tpl["crit_max"]) * scale),
 			"dodge": int(randi_range(tpl["dodge_min"], tpl["dodge_max"]) * scale),
+			"is_new": true,
 		}
 		_inventory.append(item)
+	_refresh_store_new_badge()
 	_save_game()
 
 const BATTLE_SCENE_PATH := "res://scenes/BattleScene.tscn"
@@ -791,7 +999,7 @@ func _clear_team_nodes() -> void:
 
 func _has_popup_layer() -> bool:
 	for child in get_children():
-		if child is CanvasLayer and child.layer >= 128:
+		if child is CanvasLayer and child.layer >= 20:
 			return true
 	return false
 
@@ -832,6 +1040,13 @@ func _process(delta: float) -> void:
 		_tick_speech()
 	_tick_chat(delta)
 	_tick_tavern_auto_refresh(delta)
+	_tick_ad(delta)
+	if _ad_style != null:
+		var ad_hov := _ad_rect.has_point(get_viewport().get_mouse_position())
+		if ad_hov != _ad_hovering:
+			_ad_hovering = ad_hov
+			_ad_style.bg_color = Color(0.70, 0.30, 0.10) if ad_hov else Color(0.55, 0.22, 0.06)
+			_ad_style.border_color = Color(1.0, 0.55, 0.20) if ad_hov else Color(0.90, 0.45, 0.15)
 	if _gm_style != null:
 		var hov := _gm_rect.has_point(get_viewport().get_mouse_position())
 		if hov != _gm_hovering:
@@ -890,6 +1105,16 @@ func _place_buildings() -> void:
 
 		_building_nodes[key] = {"level": 1, "sprite": display_node, "label": label}
 		_refresh_label(key)
+		if key == "store":
+			var badge := TextureRect.new()
+			badge.texture = load("res://asserts/image/ui/redpoint.png")
+			badge.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			badge.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			badge.size = Vector2(24, 24)
+			badge.position = Vector2(50.0, label_y_offset - 4)
+			badge.visible = false
+			container.add_child(badge)
+			_store_new_badge = badge
 
 func _place_expedition_team() -> void:
 	var team_size: int = _expedition_team_ids.size()
@@ -1334,6 +1559,10 @@ func _set_panel_visible(v: bool) -> void:
 		_gm_bg.visible = not v
 	if _gm_lbl and is_instance_valid(_gm_lbl):
 		_gm_lbl.visible = not v
+	if _ad_bg and is_instance_valid(_ad_bg):
+		_ad_bg.visible = not v
+	if _ad_lbl and is_instance_valid(_ad_lbl):
+		_ad_lbl.visible = not v
 	if v:
 		_set_gm_cmd_visible(false)
 		_play_ui_open_sfx()
@@ -1358,6 +1587,8 @@ func _load_function_panel(key: String) -> void:
 		_connect_research_panel()
 	elif key == "tavern":
 		_connect_tavern_panel()
+	elif key == "lumberyard" or key == "mine":
+		_connect_exchange_panel(key)
 
 func _unload_function_panel() -> void:
 	if _function_panel_node and is_instance_valid(_function_panel_node):
@@ -2663,6 +2894,10 @@ func _connect_tavern_panel() -> void:
 		if name_lbl: name_lbl.label_settings = _make_hero_label_settings(font, 22)
 		if cost_lbl: cost_lbl.label_settings = _make_hero_label_settings(font, 22)
 
+		# 清理旧的 NEW/星级标签
+		var old_tag: Control = card.get_node_or_null("StarTag%d" % i)
+		if old_tag:
+			old_tag.queue_free()
 		if rid.is_empty():
 			if avatar_rect: avatar_rect.texture = null
 			if name_lbl: name_lbl.text = "待刷新"
@@ -2676,6 +2911,33 @@ func _connect_tavern_panel() -> void:
 				var ap := "res://asserts/image/role/role%d_avatar.png" % role_idx
 				avatar_rect.texture = load(ap) if ResourceLoader.exists(ap) else null
 			if name_lbl: name_lbl.text = String(rd.get("name", rid))
+			var is_owned := _owned_role_ids.has(rid)
+			var tag_ls := LabelSettings.new()
+			tag_ls.font = font
+			tag_ls.font_size = 22
+			tag_ls.font_color = Color(0.2, 0.9, 0.3)
+			tag_ls.outline_size = 3
+			tag_ls.outline_color = Color(0, 0, 0, 0.9)
+			if not is_owned:
+				# 头像下半部分显示"新角色"
+				var tag_lbl := Label.new()
+				tag_lbl.name = "StarTag%d" % i
+				tag_lbl.text = "新角色"
+				tag_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				tag_lbl.position = Vector2(8, 135)
+				tag_lbl.size = Vector2(244, 28)
+				tag_lbl.label_settings = tag_ls
+				card.add_child(tag_lbl)
+			else:
+				# 角色名右边显示"+1星"
+				var star_tag := Label.new()
+				star_tag.name = "StarTag%d" % i
+				star_tag.text = "+1星"
+				star_tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+				star_tag.position = Vector2(8, 172)
+				star_tag.size = Vector2(244, 24)
+				star_tag.label_settings = tag_ls
+				card.add_child(star_tag)
 			if cost_icon:
 				cost_icon.texture = coin_tex
 				cost_icon.visible = true
@@ -2788,6 +3050,132 @@ func _tick_tavern_auto_refresh(delta: float) -> void:
 			_tavern_reload_panel()
 	_tavern_update_auto_label()
 
+# ─── 资源兑换面板（伐木场 / 矿石场）───────────────────────────────────────────
+
+func _connect_exchange_panel(key: String) -> void:
+	if not (_function_panel_node and is_instance_valid(_function_panel_node)):
+		return
+	var lv: int = _building_nodes[key]["level"]
+	var amount: int = EXCHANGE_AMOUNTS[lv]
+	var gain: int = amount / 2
+	var res_name: String = "木材" if key == "lumberyard" else "矿石"
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var cost_lbl1: Label = _function_panel_node.get_node_or_null("ExchangeRows/Row1/CostLbl1")
+	var gain_lbl1: Label = _function_panel_node.get_node_or_null("ExchangeRows/Row1/GainLbl1")
+	var btn1: Button = _function_panel_node.get_node_or_null("ExchangeRows/Row1/ExchangeBtn1")
+	var cost_lbl2: Label = _function_panel_node.get_node_or_null("ExchangeRows/Row2/CostLbl2")
+	var gain_lbl2: Label = _function_panel_node.get_node_or_null("ExchangeRows/Row2/GainLbl2")
+	var btn2: Button = _function_panel_node.get_node_or_null("ExchangeRows/Row2/ExchangeBtn2")
+	var section_lbl: Label = _function_panel_node.get_node_or_null("SectionLbl")
+	if section_lbl:
+		section_lbl.add_theme_font_override("font", font)
+		section_lbl.add_theme_font_size_override("font_size", 22)
+	for lbl in [cost_lbl1, gain_lbl1, cost_lbl2, gain_lbl2]:
+		if lbl:
+			lbl.add_theme_font_override("font", font)
+			lbl.add_theme_font_size_override("font_size", 20)
+			lbl.add_theme_color_override("font_color", Color(0.18, 0.75, 0.25))
+	if cost_lbl1:
+		cost_lbl1.text = "%d %s " % [amount, res_name]
+	if gain_lbl1:
+		gain_lbl1.text = " %d 金币" % gain
+	if cost_lbl2:
+		cost_lbl2.text = "%d 金币 " % amount
+	if gain_lbl2:
+		gain_lbl2.text = " %d %s" % [gain, res_name]
+	var has_res: bool = (_wood >= amount) if key == "lumberyard" else (_ore >= amount)
+	var has_gold: bool = _gold >= amount
+	if btn1:
+		_style_tower_btn(btn1, Color(0.55, 0.22, 0.06), Color(0.90, 0.45, 0.15), Color(1.0, 0.88, 0.55))
+		btn1.disabled = not has_res
+		btn1.pressed.connect(_on_exchange_pressed.bind(key, "res_to_gold"))
+	if btn2:
+		_style_tower_btn(btn2, Color(0.15, 0.35, 0.58), Color(0.25, 0.55, 0.85), Color(0.75, 0.92, 1.0))
+		btn2.disabled = not has_gold
+		btn2.pressed.connect(_on_exchange_pressed.bind(key, "gold_to_res"))
+	var boost_btn: Button = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostBtnWrap/BoostBtn")
+	var boost_lbl: Label = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostChargeLbl")
+	if boost_lbl:
+		boost_lbl.add_theme_font_override("font", font)
+		boost_lbl.add_theme_font_size_override("font_size", 20)
+		var charge_color: Color = Color(0.18, 0.75, 0.25) if _ad_boost_charges > 0 else Color(0.85, 0.15, 0.15)
+		boost_lbl.add_theme_color_override("font_color", charge_color)
+		boost_lbl.text = "可用次数:%d 观看广告可增加次数" % _ad_boost_charges
+	if boost_btn:
+		_style_tower_btn(boost_btn, Color(0.55, 0.22, 0.06), Color(0.90, 0.45, 0.15), Color(1.0, 0.88, 0.55))
+		boost_btn.disabled = _ad_boost_charges <= 0
+		boost_btn.pressed.connect(_on_boost_pressed.bind(key))
+
+func _on_boost_pressed(key: String) -> void:
+	if _ad_boost_charges <= 0:
+		return
+	_ad_boost_charges -= 1
+	var lv: int = _building_nodes[key]["level"]
+	var ticks: int = int(7200.0 / PRODUCE_INTERVAL)
+	var amount: int = PRODUCE_RATES[lv - 1] * ticks
+	if key == "lumberyard":
+		_wood += amount
+		_spawn_float_text(key, amount, "wood")
+	else:
+		_ore += amount
+		_spawn_float_text(key, amount, "ore")
+	_refresh_hud()
+	_save_game()
+	_refresh_exchange_boost(key)
+
+func _refresh_exchange_boost(key: String) -> void:
+	if not (_function_panel_node and is_instance_valid(_function_panel_node)):
+		return
+	var boost_btn: Button = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostBtnWrap/BoostBtn")
+	var boost_lbl: Label = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostChargeLbl")
+	if boost_btn:
+		boost_btn.disabled = _ad_boost_charges <= 0
+	if boost_lbl:
+		boost_lbl.text = "可用次数:%d 观看广告可增加次数" % _ad_boost_charges
+
+func _on_exchange_pressed(key: String, direction: String) -> void:
+	var lv: int = _building_nodes[key]["level"]
+	var amount: int = EXCHANGE_AMOUNTS[lv]
+	var gain: int = amount / 2
+	if direction == "res_to_gold":
+		if key == "lumberyard":
+			if _wood < amount:
+				return
+			_wood -= amount
+		else:
+			if _ore < amount:
+				return
+			_ore -= amount
+		_gold += gain
+		_spawn_float_text(key, gain, "gold")
+	else:
+		if _gold < amount:
+			return
+		_gold -= amount
+		if key == "lumberyard":
+			_wood += gain
+			_spawn_float_text(key, gain, "wood")
+		else:
+			_ore += gain
+			_spawn_float_text(key, gain, "ore")
+	_refresh_hud()
+	_save_game()
+	_refresh_exchange_buttons(key)
+
+func _refresh_exchange_buttons(key: String) -> void:
+	if not (_function_panel_node and is_instance_valid(_function_panel_node)):
+		return
+	var lv: int = _building_nodes[key]["level"]
+	var amount: int = EXCHANGE_AMOUNTS[lv]
+	var btn1: Button = _function_panel_node.get_node_or_null("ExchangeRows/Row1/ExchangeBtn1")
+	var btn2: Button = _function_panel_node.get_node_or_null("ExchangeRows/Row2/ExchangeBtn2")
+	var has_res: bool = (_wood >= amount) if key == "lumberyard" else (_ore >= amount)
+	var has_gold: bool = _gold >= amount
+	if btn1:
+		btn1.disabled = not has_res
+	if btn2:
+		btn2.disabled = not has_gold
+
 func _connect_tower_buttons() -> void:
 	_build_level_track()
 	_refresh_level_info()
@@ -2813,12 +3201,6 @@ func _connect_tower_buttons() -> void:
 			GlobalConfig.set_runtime("formation_id", _formation_id)
 			var scene := load(BATTLE_SCENE_PATH) as PackedScene
 			SceneTransition.change_to(scene)
-		)
-	var equip_bag_btn: Button = _function_panel_node.get_node_or_null("ActionRow/EquipBagBtn")
-	if equip_bag_btn:
-		_style_tower_btn(equip_bag_btn, Color(0.2, 0.4, 0.25), Color(0.35, 0.7, 0.4), Color(0.85, 1.0, 0.85))
-		equip_bag_btn.pressed.connect(func() -> void:
-			_show_equip_bag()
 		)
 
 func _style_tower_btn(btn: Button, bg_color: Color, border_color: Color, text_color: Color) -> void:
@@ -2860,15 +3242,26 @@ func _style_tower_btn(btn: Button, bg_color: Color, border_color: Color, text_co
 	pressed.shadow_size   = 3
 	pressed.shadow_offset = Vector2(0, 1)
 
+	var disabled := StyleBoxFlat.new()
+	disabled.bg_color = bg_color.darkened(0.4)
+	disabled.set_corner_radius_all(12)
+	disabled.border_width_top    = 2
+	disabled.border_width_right  = 2
+	disabled.border_width_bottom = 4
+	disabled.border_width_left   = 2
+	disabled.border_color = border_color.darkened(0.4)
+
 	btn.add_theme_stylebox_override("normal",   normal)
 	btn.add_theme_stylebox_override("hover",    hover)
 	btn.add_theme_stylebox_override("pressed",  pressed)
+	btn.add_theme_stylebox_override("disabled", disabled)
 	btn.add_theme_stylebox_override("focus",    normal)
 	btn.add_theme_font_override("font", font)
 	btn.add_theme_font_size_override("font_size", 22)
 	btn.add_theme_color_override("font_color",          text_color)
 	btn.add_theme_color_override("font_hover_color",    text_color.lightened(0.1))
 	btn.add_theme_color_override("font_pressed_color",  text_color.darkened(0.1))
+	btn.add_theme_color_override("font_disabled_color", text_color.darkened(0.3))
 	btn.add_theme_color_override("font_outline_color",  Color(0, 0, 0, 0.8))
 	btn.add_theme_constant_override("outline_size", 3)
 
@@ -2898,7 +3291,7 @@ func _show_equip_bag() -> void:
 	var tab_names := ["TabWeapon", "TabHelmet", "TabChest", "TabPants", "TabBoots", "TabGloves", "TabNecklace", "TabRing"]
 	var grid_cols := 8
 	var slot_size := 50.0
-	var slot_gap := 10.0
+	var slot_gap := (grid_node.size.x - slot_size * grid_cols) / maxf(grid_cols - 1, 1)
 	# 右上角数量标签
 	var count_lbl := Label.new()
 	count_lbl.size = Vector2(120.0, 24.0)
@@ -2907,7 +3300,7 @@ func _show_equip_bag() -> void:
 	var cls := LabelSettings.new()
 	cls.font = font
 	cls.font_size = 14
-	cls.font_color = Color(0.9, 0.88, 0.75)
+	cls.font_color = Color(0.2, 0.9, 0.3)
 	cls.outline_size = 2
 	cls.outline_color = Color(0, 0, 0, 0.8)
 	count_lbl.label_settings = cls
@@ -2964,6 +3357,7 @@ func _show_equip_bag() -> void:
 				name_lbl.size = Vector2(slot_size, 16.0)
 				name_lbl.position = Vector2(sx, sy + slot_size - 15.0)
 				name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				name_lbl.clip_text = true
 				var name_ls := LabelSettings.new()
 				name_ls.font = font
 				name_ls.font_size = 12
@@ -2972,16 +3366,51 @@ func _show_equip_bag() -> void:
 				name_ls.outline_color = Color(0, 0, 0, 0.9)
 				name_lbl.label_settings = name_ls
 				grid_node.add_child(name_lbl)
+				if _is_item_equipped(item2):
+					var worn_lbl := Label.new()
+					worn_lbl.text = "穿"
+					worn_lbl.size = Vector2(20, 16.0)
+					worn_lbl.position = Vector2(sx + slot_size - 20, sy)
+					worn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+					var worn_ls := LabelSettings.new()
+					worn_ls.font = font
+					worn_ls.font_size = 12
+					worn_ls.font_color = Color(0.2, 0.9, 0.3)
+					worn_ls.outline_size = 2
+					worn_ls.outline_color = Color(0, 0, 0, 0.9)
+					worn_lbl.label_settings = worn_ls
+					grid_node.add_child(worn_lbl)
+				if item2.get("is_new", false):
+					var new_icon := TextureRect.new()
+					new_icon.texture = load("res://asserts/image/ui/redpoint.png")
+					new_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+					new_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+					new_icon.size = Vector2(16, 16)
+					new_icon.position = Vector2(sx + slot_size - 16, sy)
+					grid_node.add_child(new_icon)
 	grid_fn[0] = _refresh_grid
+	var tab_new_lbls: Array = []
 	for ti in tab_slots.size():
 		var tab_btn: Button = panel.get_node(tab_names[ti])
 		var captured_key: String = tab_slots[ti]
+		var tab_new := TextureRect.new()
+		tab_new.texture = load("res://asserts/image/ui/redpoint.png")
+		tab_new.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		tab_new.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		tab_new.size = Vector2(16, 16)
+		tab_new.position = Vector2(tab_btn.position.x + tab_btn.size.x - 14, tab_btn.position.y - 2)
+		tab_new.visible = _has_new_items(captured_key)
+		panel.add_child(tab_new)
+		tab_new_lbls.append(tab_new)
 		tab_btn.pressed.connect(func() -> void:
 			state["tab"] = captured_key
 			tab_highlight.position = tab_btn.position
 			tab_highlight.size = tab_btn.size
 			_refresh_grid.call(captured_key)
+			_refresh_bag_tab_badges(tab_slots, tab_new_lbls)
 		)
+	state["tab_slots"] = tab_slots
+	state["tab_new_lbls"] = tab_new_lbls
 	# 一键售出按钮
 	var sell_btn: Button = panel.get_node("SellBtn")
 	sell_btn.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -2989,9 +3418,9 @@ func _show_equip_bag() -> void:
 		var cur: String = state["tab"]
 		var to_remove: Array = []
 		for inv_item in _inventory:
-			if String(inv_item.get("slot", "")) == cur:
+			if String(inv_item.get("slot", "")) == cur and not _is_item_equipped(inv_item):
 				to_remove.append(inv_item)
-		_show_sell_confirm(to_remove, 0, cur, canvas_layer, _refresh_grid)
+		_show_sell_confirm(to_remove, 0, cur, canvas_layer, _refresh_grid, state)
 	)
 	_refresh_grid.call("weapon")
 
@@ -3127,7 +3556,7 @@ func _show_equip_bag_select(rid: String, slot_key: String, slot_idx: int) -> voi
 	var tab_names := ["TabWeapon", "TabHelmet", "TabChest", "TabPants", "TabBoots", "TabGloves", "TabNecklace", "TabRing"]
 	var grid_cols := 8
 	var slot_size := 50.0
-	var slot_gap := 10.0
+	var slot_gap := (grid_node.size.x - slot_size * grid_cols) / maxf(grid_cols - 1, 1)
 	# 右上角数量标签
 	var count_lbl := Label.new()
 	count_lbl.size = Vector2(120.0, 24.0)
@@ -3136,7 +3565,7 @@ func _show_equip_bag_select(rid: String, slot_key: String, slot_idx: int) -> voi
 	var cls := LabelSettings.new()
 	cls.font = font
 	cls.font_size = 14
-	cls.font_color = Color(0.9, 0.88, 0.75)
+	cls.font_color = Color(0.2, 0.9, 0.3)
 	cls.outline_size = 2
 	cls.outline_color = Color(0, 0, 0, 0.8)
 	count_lbl.label_settings = cls
@@ -3196,6 +3625,7 @@ func _show_equip_bag_select(rid: String, slot_key: String, slot_idx: int) -> voi
 				name_lbl.size = Vector2(slot_size, 16.0)
 				name_lbl.position = Vector2(sx, sy + slot_size - 15.0)
 				name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+				name_lbl.clip_text = true
 				var name_ls := LabelSettings.new()
 				name_ls.font = font
 				name_ls.font_size = 12
@@ -3204,6 +3634,20 @@ func _show_equip_bag_select(rid: String, slot_key: String, slot_idx: int) -> voi
 				name_ls.outline_color = Color(0, 0, 0, 0.9)
 				name_lbl.label_settings = name_ls
 				grid_node.add_child(name_lbl)
+				if _is_item_equipped(item2):
+					var worn_lbl := Label.new()
+					worn_lbl.text = "穿"
+					worn_lbl.size = Vector2(20, 16.0)
+					worn_lbl.position = Vector2(sx + slot_size - 20, sy)
+					worn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+					var worn_ls := LabelSettings.new()
+					worn_ls.font = font
+					worn_ls.font_size = 12
+					worn_ls.font_color = Color(0.2, 0.9, 0.3)
+					worn_ls.outline_size = 2
+					worn_ls.outline_color = Color(0, 0, 0, 0.9)
+					worn_lbl.label_settings = worn_ls
+					grid_node.add_child(worn_lbl)
 	# 页签按钮 - 点击提示"正在选装中"
 	for ti in tab_slots.size():
 		var tab_btn: Button = panel.get_node(tab_names[ti])
@@ -3299,7 +3743,9 @@ func _show_equip_confirm(item: Dictionary, rid: String, slot_key: String, slot_i
 	container.add_child(info_lbl)
 	# 穿戴按钮
 	var equip_btn := Button.new()
-	equip_btn.text = "穿戴"
+	var already_worn := _is_item_equipped(item)
+	equip_btn.text = "已穿戴" if already_worn else "穿戴"
+	equip_btn.disabled = already_worn
 	equip_btn.custom_minimum_size = Vector2(100, 38)
 	equip_btn.size = Vector2(100, 38)
 	equip_btn.position = popup.position + Vector2((popup_w - 100) * 0.5, popup_h - 52)
@@ -3376,7 +3822,7 @@ func _calc_sell_price(item: Dictionary) -> int:
 	var lv: int = maxi(1, int(item.get("level", 10)))
 	return maxi(1, lv * 2)
 
-func _show_sell_confirm(to_remove: Array, _unused: int, tab: String, parent_ui: CanvasLayer, refresh_fn: Callable) -> void:
+func _show_sell_confirm(to_remove: Array, _unused: int, tab: String, parent_ui: CanvasLayer, refresh_fn: Callable, bag_state: Dictionary = {}) -> void:
 	var gold_gain: int = 0
 	for sell_item in to_remove:
 		gold_gain += _calc_sell_price(sell_item)
@@ -3452,6 +3898,9 @@ func _show_sell_confirm(to_remove: Array, _unused: int, tab: String, parent_ui: 
 		_refresh_hud()
 		_save_game()
 		refresh_fn.call(tab)
+		_refresh_store_new_badge()
+		if bag_state.has("tab_slots") and bag_state.has("tab_new_lbls"):
+			_refresh_bag_tab_badges(bag_state["tab_slots"], bag_state["tab_new_lbls"])
 		confirm_layer.queue_free()
 	)
 	container.add_child(confirm_btn)
@@ -3471,6 +3920,14 @@ func _show_sell_confirm(to_remove: Array, _unused: int, tab: String, parent_ui: 
 func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLayer, grid_fn: Array, state: Dictionary) -> void:
 	if not (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
 		return
+	if item.get("is_new", false):
+		item["is_new"] = false
+		_save_game()
+		_refresh_store_new_badge()
+		if grid_fn[0] is Callable:
+			(grid_fn[0] as Callable).call(state["tab"])
+		if state.has("tab_slots") and state.has("tab_new_lbls"):
+			_refresh_bag_tab_badges(state["tab_slots"], state["tab_new_lbls"])
 	var vp := get_viewport_rect().size
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var popup_w := 280.0
@@ -3538,22 +3995,26 @@ func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLa
 	# 售出按钮
 	var sell_price: int = _calc_sell_price(item)
 	var sell_btn := Button.new()
-	sell_btn.text = "售出 +%d金" % sell_price
 	sell_btn.custom_minimum_size = Vector2(120, 38)
 	sell_btn.size = Vector2(120, 38)
 	sell_btn.position = popup.position + Vector2((popup_w - 120) * 0.5, popup_h - 52)
 	sell_btn.add_theme_font_override("font", font)
 	sell_btn.add_theme_font_size_override("font_size", 16)
-	sell_btn.pressed.connect(func() -> void:
-		_inventory.erase(item)
-		_gold += sell_price
-		_play_sell_sfx()
-		_refresh_hud()
-		_save_game()
-		container.queue_free()
-		if grid_fn[0] is Callable:
-			(grid_fn[0] as Callable).call(state["tab"])
-	)
+	if _is_item_equipped(item):
+		sell_btn.text = "已装备"
+		sell_btn.disabled = true
+	else:
+		sell_btn.text = "售出 +%d金" % sell_price
+		sell_btn.pressed.connect(func() -> void:
+			_inventory.erase(item)
+			_gold += sell_price
+			_play_sell_sfx()
+			_refresh_hud()
+			_save_game()
+			container.queue_free()
+			if grid_fn[0] is Callable:
+				(grid_fn[0] as Callable).call(state["tab"])
+		)
 	container.add_child(sell_btn)
 	# 关闭按钮
 	var close_btn := TextureButton.new()
@@ -3863,6 +4324,20 @@ func _handle_click(pos: Vector2) -> void:
 		_panel_key = ""
 		return
 
+	if _ad_panel_layer and is_instance_valid(_ad_panel_layer):
+		return
+
+	if _ad_rect.has_point(pos):
+		_ad_bg.pivot_offset = _ad_bg.size / 2
+		_ad_lbl.pivot_offset = _ad_lbl.size / 2
+		var tw2 := create_tween()
+		tw2.tween_property(_ad_bg, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw2.parallel().tween_property(_ad_lbl, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw2.tween_property(_ad_bg, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		tw2.parallel().tween_property(_ad_lbl, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		_show_ad_panel()
+		return
+
 	if _gm_rect.has_point(pos):
 		_gm_bg.pivot_offset = _gm_bg.size / 2
 		_gm_lbl.pivot_offset = _gm_lbl.size / 2
@@ -3878,6 +4353,7 @@ func _handle_click(pos: Vector2) -> void:
 		for i in _gm_cmd_rects.size():
 			if _gm_cmd_rects[i].has_point(pos):
 				var action: String = String(_gm_cmd_btns[i].get("action", ""))
+				_set_gm_cmd_visible(false)
 				if action == "reset":
 					_reset_game()
 				elif action == "add_resources":
@@ -3908,6 +4384,9 @@ func _handle_click(pos: Vector2) -> void:
 
 	for key in _building_nodes:
 		if pos.distance_to(BUILDINGS[key]["pos"]) < 80.0:
+			if key == "store":
+				_show_equip_bag()
+				return
 			_panel_key = key
 			_refresh_panel()
 			_reposition_panel(key)
@@ -4170,8 +4649,10 @@ func _try_tower_drop() -> void:
 		"speed": int(randi_range(tpl["speed_min"], tpl["speed_max"]) * scale),
 		"crit": int(randi_range(tpl["crit_min"], tpl["crit_max"]) * scale),
 		"dodge": int(randi_range(tpl["dodge_min"], tpl["dodge_max"]) * scale),
+		"is_new": true,
 	}
 	_inventory.append(item)
+	_refresh_store_new_badge()
 	_spawn_equip_float(tpl["name"])
 
 func _spawn_equip_float(equip_name: String) -> void:
@@ -4242,7 +4723,26 @@ func _refresh_hud() -> void:
 
 func _refresh_label(key: String) -> void:
 	var state = _building_nodes[key]
-	state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
+	if key == "store":
+		state["label"].text = BUILDINGS[key]["display"]
+	else:
+		state["label"].text = "%s  Lv.%d" % [BUILDINGS[key]["display"], state["level"]]
+
+func _refresh_bag_tab_badges(tab_slots_arr: Array, tab_new_lbls_arr: Array) -> void:
+	for i in tab_slots_arr.size():
+		if i < tab_new_lbls_arr.size():
+			(tab_new_lbls_arr[i] as Control).visible = _has_new_items(String(tab_slots_arr[i]))
+
+func _has_new_items(slot_filter: String = "") -> bool:
+	for item in _inventory:
+		if item.get("is_new", false):
+			if slot_filter.is_empty() or String(item.get("slot", "")) == slot_filter:
+				return true
+	return false
+
+func _refresh_store_new_badge() -> void:
+	if _store_new_badge and is_instance_valid(_store_new_badge):
+		_store_new_badge.visible = _has_new_items()
 
 func _default_skills_copy() -> Array:
 	var out: Array = []
@@ -4306,6 +4806,7 @@ func _save_game() -> void:
 	data["tavern_free_refreshes"] = _tavern_free_refreshes
 	data["inventory"] = _inventory.duplicate(true)
 	data["role_equips"] = _role_equips.duplicate(true)
+	data["ad_boost_charges"] = _ad_boost_charges
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		return
@@ -4377,6 +4878,8 @@ func _load_game() -> void:
 		_tavern_auto_timer = float(data["tavern_auto_timer"])
 	if data.has("tavern_free_refreshes"):
 		_tavern_free_refreshes = int(data["tavern_free_refreshes"])
+	if data.has("ad_boost_charges"):
+		_ad_boost_charges = int(data["ad_boost_charges"])
 	if data.has("inventory") and data["inventory"] is Array:
 		_inventory = []
 		for item in (data["inventory"] as Array):
@@ -4386,6 +4889,7 @@ func _load_game() -> void:
 		_role_equips = {}
 		for rid in (data["role_equips"] as Dictionary).keys():
 			_role_equips[rid] = data["role_equips"][rid]
+	_refresh_store_new_badge()
 	# 读档后用 formation_id 查名字并刷新按钮
 	_formation_name = _query_formation_name(_formation_id)
 	_refresh_formation_btn()

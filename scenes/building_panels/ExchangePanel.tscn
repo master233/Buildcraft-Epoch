@@ -1,0 +1,106 @@
+[gd_scene format=3 uid="uid://cpn4xo83xlolb"]
+
+[ext_resource type="FontFile" uid="uid://b6wyxgm7fm30n" path="res://asserts/fonts/ZCOOLKuaiLe.ttf" id="1"]
+
+[sub_resource type="LabelSettings" id="LabelSettings_body"]
+font = ExtResource("1")
+font_size = 20
+font_color = Color(0.22, 0.13, 0.06, 1)
+outline_size = 2
+outline_color = Color(1, 0.96, 0.85, 0.5)
+
+[node name="ExchangePanel" type="Control"]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 856.0
+offset_bottom = 396.0
+
+[node name="SectionLbl" type="Label" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 40.0
+grow_horizontal = 2
+text = " 资源兑换 "
+label_settings = SubResource("LabelSettings_body")
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ExchangeRows" type="VBoxContainer" parent="."]
+layout_mode = 0
+offset_left = 100.0
+offset_top = 60.0
+offset_right = 756.0
+offset_bottom = 300.0
+alignment = 1
+
+[node name="Row1" type="HBoxContainer" parent="ExchangeRows"]
+layout_mode = 2
+alignment = 1
+
+[node name="CostLbl1" type="Label" parent="ExchangeRows/Row1"]
+custom_minimum_size = Vector2(160, 40)
+layout_mode = 2
+label_settings = SubResource("LabelSettings_body")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="ExchangeBtn1" type="Button" parent="ExchangeRows/Row1"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+text = "兑换"
+
+[node name="GainLbl1" type="Label" parent="ExchangeRows/Row1"]
+custom_minimum_size = Vector2(160, 40)
+layout_mode = 2
+label_settings = SubResource("LabelSettings_body")
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="Spacer" type="Control" parent="ExchangeRows"]
+custom_minimum_size = Vector2(0, 20)
+layout_mode = 2
+
+[node name="Row2" type="HBoxContainer" parent="ExchangeRows"]
+layout_mode = 2
+alignment = 1
+
+[node name="CostLbl2" type="Label" parent="ExchangeRows/Row2"]
+custom_minimum_size = Vector2(160, 40)
+layout_mode = 2
+label_settings = SubResource("LabelSettings_body")
+horizontal_alignment = 2
+vertical_alignment = 1
+
+[node name="ExchangeBtn2" type="Button" parent="ExchangeRows/Row2"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+text = "兑换"
+
+[node name="GainLbl2" type="Label" parent="ExchangeRows/Row2"]
+custom_minimum_size = Vector2(160, 40)
+layout_mode = 2
+label_settings = SubResource("LabelSettings_body")
+horizontal_alignment = 0
+vertical_alignment = 1
+
+[node name="Spacer2" type="Control" parent="ExchangeRows"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+
+[node name="BoostRow" type="VBoxContainer" parent="ExchangeRows"]
+layout_mode = 2
+alignment = 1
+
+[node name="BoostChargeLbl" type="Label" parent="ExchangeRows/BoostRow"]
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="BoostBtnWrap" type="HBoxContainer" parent="ExchangeRows/BoostRow"]
+layout_mode = 2
+alignment = 1
+
+[node name="BoostBtn" type="Button" parent="ExchangeRows/BoostRow/BoostBtnWrap"]
+custom_minimum_size = Vector2(200, 44)
+layout_mode = 2
+text = "加速2小时"
