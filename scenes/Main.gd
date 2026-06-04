@@ -2800,6 +2800,7 @@ func _show_skill_tip(sid: int, slv: int, slot_idx: int = -1) -> void:
 		unequip_btn.size = Vector2(80, 34)
 		unequip_btn.add_theme_font_override("font", font)
 		unequip_btn.add_theme_font_size_override("font_size", 18)
+		_style_btn(unequip_btn, Color(0.55, 0.25, 0.2))
 		panel.add_child(unequip_btn)
 		var captured_unequip_rid := _hero_panel_rid
 		var captured_unequip_slot := slot_idx
@@ -2826,6 +2827,7 @@ func _show_skill_tip(sid: int, slv: int, slot_idx: int = -1) -> void:
 	upgrade_btn.add_theme_font_override("font", font)
 	upgrade_btn.add_theme_font_size_override("font_size", 18)
 	upgrade_btn.disabled = max_lv or _gold < upgrade_cost
+	_style_btn(upgrade_btn, Color(0.2, 0.5, 0.3))
 	panel.add_child(upgrade_btn)
 
 	var captured_sid: int = sid
@@ -2932,6 +2934,7 @@ func _show_skill_tip_with_learn(sid: int, slv: int, rid: String, slot_idx: int, 
 	learn_btn.size = Vector2(80, 34)
 	learn_btn.add_theme_font_override("font", font)
 	learn_btn.add_theme_font_size_override("font_size", 18)
+	_style_btn(learn_btn, Color(0.2, 0.45, 0.6))
 	panel.add_child(learn_btn)
 	learn_btn.pressed.connect(func():
 		remove_child(canvas_layer)
@@ -3704,6 +3707,7 @@ func _show_equipped_item_info(item: Dictionary, rid: String, slot_key: String) -
 	unequip_btn.position = popup.position + Vector2((popup_w - 100) * 0.5, popup_h - 52)
 	unequip_btn.add_theme_font_override("font", font)
 	unequip_btn.add_theme_font_size_override("font_size", 18)
+	_style_btn(unequip_btn, Color(0.55, 0.25, 0.2))
 	unequip_btn.pressed.connect(func() -> void:
 		var old_stats: Dictionary = _hero_calc_attrs(rid)
 		if _role_equips.has(rid) and (_role_equips[rid] as Dictionary).has(slot_key):
@@ -3897,6 +3901,7 @@ func _show_equip_confirm(item: Dictionary, rid: String, slot_key: String, slot_i
 	equip_btn.position = popup.position + Vector2((popup_w - 100) * 0.5, popup_h - 52)
 	equip_btn.add_theme_font_override("font", font)
 	equip_btn.add_theme_font_size_override("font_size", 18)
+	_style_btn(equip_btn, Color(0.2, 0.5, 0.3))
 	equip_btn.pressed.connect(func() -> void:
 		_equip_item_to_role(rid, slot_key, slot_idx, item)
 		confirm_layer.queue_free()
@@ -3973,6 +3978,43 @@ func _show_stat_change_float(old_stats: Dictionary, new_stats: Dictionary) -> vo
 	tween.tween_property(container, "position:y", container.position.y - 40, 2.0).set_ease(Tween.EASE_OUT)
 	tween.parallel().tween_property(container, "modulate:a", 0.0, 0.6).set_delay(1.4)
 	tween.tween_callback(float_layer.queue_free)
+
+func _style_btn(btn: Button, color: Color = Color(0.75, 0.45, 0.1)) -> void:
+	var normal := StyleBoxFlat.new()
+	normal.bg_color = color
+	normal.set_corner_radius_all(6)
+	normal.border_width_top = 1
+	normal.border_width_bottom = 2
+	normal.border_width_left = 1
+	normal.border_width_right = 1
+	normal.border_color = Color(color.r + 0.2, color.g + 0.15, color.b, 0.9)
+	btn.add_theme_stylebox_override("normal", normal)
+	var hover := StyleBoxFlat.new()
+	hover.bg_color = Color(color.r + 0.1, color.g + 0.08, color.b + 0.05)
+	hover.set_corner_radius_all(6)
+	hover.border_width_top = 1
+	hover.border_width_bottom = 2
+	hover.border_width_left = 1
+	hover.border_width_right = 1
+	hover.border_color = Color(1.0, 0.85, 0.3, 0.95)
+	btn.add_theme_stylebox_override("hover", hover)
+	var pressed := StyleBoxFlat.new()
+	pressed.bg_color = Color(color.r - 0.1, color.g - 0.08, color.b - 0.02)
+	pressed.set_corner_radius_all(6)
+	pressed.border_width_top = 2
+	pressed.border_width_bottom = 1
+	pressed.border_width_left = 1
+	pressed.border_width_right = 1
+	pressed.border_color = Color(color.r, color.g, color.b - 0.1, 0.9)
+	btn.add_theme_stylebox_override("pressed", pressed)
+	var disabled := StyleBoxFlat.new()
+	disabled.bg_color = Color(0.3, 0.3, 0.3, 0.7)
+	disabled.set_corner_radius_all(6)
+	btn.add_theme_stylebox_override("disabled", disabled)
+	btn.add_theme_color_override("font_color", Color(1.0, 0.97, 0.9))
+	btn.add_theme_color_override("font_hover_color", Color(1.0, 1.0, 1.0))
+	btn.add_theme_color_override("font_pressed_color", Color(0.9, 0.85, 0.7))
+	btn.add_theme_color_override("font_disabled_color", Color(0.6, 0.6, 0.55))
 
 func _show_toast(msg: String) -> void:
 	var vp := get_viewport_rect().size
@@ -4185,19 +4227,47 @@ func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLa
 	info_lbl.add_theme_font_size_override("normal_font_size", 18)
 	info_lbl.add_theme_color_override("default_color", Color(0.9, 0.92, 0.85))
 	container.add_child(info_lbl)
-	# 售出按钮
+	# 底部按钮
 	var sell_price: int = _calc_sell_price(item)
-	var sell_btn := Button.new()
-	sell_btn.custom_minimum_size = Vector2(120, 38)
-	sell_btn.size = Vector2(120, 38)
-	sell_btn.position = popup.position + Vector2((popup_w - 120) * 0.5, popup_h - 52)
-	sell_btn.add_theme_font_override("font", font)
-	sell_btn.add_theme_font_size_override("font_size", 16)
 	if _is_item_equipped(item):
-		sell_btn.text = "已装备"
-		sell_btn.disabled = true
+		var equipped_btn := Button.new()
+		equipped_btn.text = "已装备"
+		equipped_btn.disabled = true
+		equipped_btn.custom_minimum_size = Vector2(120, 38)
+		equipped_btn.size = Vector2(120, 38)
+		equipped_btn.position = popup.position + Vector2((popup_w - 120) * 0.5, popup_h - 52)
+		equipped_btn.add_theme_font_override("font", font)
+		equipped_btn.add_theme_font_size_override("font_size", 16)
+		_style_btn(equipped_btn)
+		container.add_child(equipped_btn)
 	else:
+		var btn_w := 110.0
+		var gap := 16.0
+		var total_w := btn_w * 2 + gap
+		var start_x := popup.position.x + (popup_w - total_w) * 0.5
+		var btn_y := popup.position.y + popup_h - 52
+		# 穿戴按钮
+		var wear_btn := Button.new()
+		wear_btn.text = "穿戴"
+		wear_btn.custom_minimum_size = Vector2(btn_w, 38)
+		wear_btn.size = Vector2(btn_w, 38)
+		wear_btn.position = Vector2(start_x, btn_y)
+		wear_btn.add_theme_font_override("font", font)
+		wear_btn.add_theme_font_size_override("font_size", 16)
+		_style_btn(wear_btn, Color(0.2, 0.5, 0.3))
+		wear_btn.pressed.connect(func() -> void:
+			_show_equip_role_picker(item, container, grid_fn, state)
+		)
+		container.add_child(wear_btn)
+		# 售出按钮
+		var sell_btn := Button.new()
 		sell_btn.text = "售出 +%d金" % sell_price
+		sell_btn.custom_minimum_size = Vector2(btn_w, 38)
+		sell_btn.size = Vector2(btn_w, 38)
+		sell_btn.position = Vector2(start_x + btn_w + gap, btn_y)
+		sell_btn.add_theme_font_override("font", font)
+		sell_btn.add_theme_font_size_override("font_size", 16)
+		_style_btn(sell_btn, Color(0.6, 0.35, 0.1))
 		sell_btn.pressed.connect(func() -> void:
 			_inventory.erase(item)
 			_gold += sell_price
@@ -4210,7 +4280,7 @@ func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLa
 			if grid_fn[0] is Callable:
 				(grid_fn[0] as Callable).call(state["tab"])
 		)
-	container.add_child(sell_btn)
+		container.add_child(sell_btn)
 	# 关闭按钮
 	var close_btn := TextureButton.new()
 	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
@@ -4222,6 +4292,159 @@ func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLa
 		container.queue_free()
 	)
 	container.add_child(close_btn)
+
+func _show_equip_role_picker(item: Dictionary, info_container: Control, grid_fn: Array, state: Dictionary) -> void:
+	var vp := get_viewport_rect().size
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var picker_layer := CanvasLayer.new()
+	picker_layer.layer = 32
+	add_child(picker_layer)
+	var wrapper := Control.new()
+	wrapper.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	picker_layer.add_child(wrapper)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.5)
+	dim.size = vp
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	wrapper.add_child(dim)
+	var panel_w := 420.0
+	var row_h := 60.0
+	var title_h := 44.0
+	var pad := 16.0
+	var panel_h: float = title_h + pad + row_h * _owned_role_ids.size() + pad
+	panel_h = minf(panel_h, 500.0)
+	var panel := Panel.new()
+	var ps := StyleBoxFlat.new()
+	ps.bg_color = Color(0.1, 0.12, 0.22, 0.97)
+	ps.set_corner_radius_all(12)
+	ps.border_width_top = 2
+	ps.border_width_bottom = 2
+	ps.border_width_left = 2
+	ps.border_width_right = 2
+	ps.border_color = Color(1.0, 0.65, 0.0, 0.8)
+	ps.shadow_color = Color(0, 0, 0, 0.6)
+	ps.shadow_size = 8
+	panel.add_theme_stylebox_override("panel", ps)
+	panel.size = Vector2(panel_w, panel_h)
+	panel.position = (vp - Vector2(panel_w, panel_h)) * 0.5
+	wrapper.add_child(panel)
+	# 标题
+	var title_lbl := Label.new()
+	title_lbl.text = "选择角色穿戴"
+	title_lbl.size = Vector2(panel_w, title_h)
+	title_lbl.position = panel.position + Vector2(0, 4)
+	title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var tls := LabelSettings.new()
+	tls.font = font
+	tls.font_size = 20
+	tls.font_color = Color(1.0, 0.9, 0.5)
+	tls.outline_size = 2
+	tls.outline_color = Color(0, 0, 0, 0.9)
+	title_lbl.label_settings = tls
+	wrapper.add_child(title_lbl)
+	# 滚动容器
+	var scroll := ScrollContainer.new()
+	scroll.size = Vector2(panel_w - 20, panel_h - title_h - pad)
+	scroll.position = panel.position + Vector2(10, title_h)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	wrapper.add_child(scroll)
+	var vbox := VBoxContainer.new()
+	vbox.custom_minimum_size = Vector2(panel_w - 20, 0)
+	vbox.add_theme_constant_override("separation", 4)
+	scroll.add_child(vbox)
+	var slot_key: String = String(item.get("slot", ""))
+	for rid in _owned_role_ids:
+		var rd: Dictionary = _roles.get(rid, {})
+		var row := HBoxContainer.new()
+		row.custom_minimum_size = Vector2(0, row_h)
+		row.add_theme_constant_override("separation", 10)
+		vbox.add_child(row)
+		# 头像
+		var role_idx: int = int(rid) - 10000
+		var avatar_path := "res://asserts/image/role/role%d_avatar.png" % role_idx
+		var avatar := TextureRect.new()
+		avatar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		avatar.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		avatar.custom_minimum_size = Vector2(50, 50)
+		if ResourceLoader.exists(avatar_path):
+			avatar.texture = load(avatar_path)
+		row.add_child(avatar)
+		# 角色名
+		var name_lbl := Label.new()
+		name_lbl.text = String(rd.get("name", rid))
+		name_lbl.custom_minimum_size = Vector2(120, row_h)
+		name_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		name_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		var nls := LabelSettings.new()
+		nls.font = font
+		nls.font_size = 16
+		nls.font_color = Color(0.9, 0.92, 0.85)
+		nls.outline_size = 2
+		nls.outline_color = Color(0, 0, 0, 0.8)
+		name_lbl.label_settings = nls
+		row.add_child(name_lbl)
+		# 当前槽位装备提示
+		var hint_wrap := CenterContainer.new()
+		hint_wrap.custom_minimum_size = Vector2(140, row_h)
+		var equip_hint := RichTextLabel.new()
+		equip_hint.bbcode_enabled = true
+		equip_hint.fit_content = true
+		equip_hint.scroll_active = false
+		equip_hint.autowrap_mode = TextServer.AUTOWRAP_OFF
+		equip_hint.custom_minimum_size = Vector2(140, 18)
+		equip_hint.add_theme_font_override("normal_font", font)
+		equip_hint.add_theme_font_size_override("normal_font_size", 11)
+		equip_hint.add_theme_color_override("default_color", Color(0.6, 0.6, 0.5))
+		var cur_equip_name := ""
+		var cur_equip_lv := 0
+		if _role_equips.has(rid) and (_role_equips[rid] as Dictionary).has(slot_key):
+			var eq_idx: int = int((_role_equips[rid] as Dictionary)[slot_key])
+			if eq_idx >= 0 and eq_idx < _inventory.size():
+				cur_equip_name = String(_inventory[eq_idx].get("name", ""))
+				cur_equip_lv = int(_inventory[eq_idx].get("level", 0))
+		if not cur_equip_name.is_empty():
+			equip_hint.text = "当前穿戴:[color=#2ebf40]%s Lv.%d[/color]" % [cur_equip_name, cur_equip_lv]
+		hint_wrap.add_child(equip_hint)
+		row.add_child(hint_wrap)
+		# 穿戴按钮
+		var wear_btn := Button.new()
+		wear_btn.text = "穿戴"
+		wear_btn.custom_minimum_size = Vector2(52, 26)
+		wear_btn.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		wear_btn.add_theme_font_override("font", font)
+		wear_btn.add_theme_font_size_override("font_size", 12)
+		_style_btn(wear_btn, Color(0.2, 0.5, 0.3))
+		var captured_rid := rid
+		wear_btn.pressed.connect(func() -> void:
+			var s_key: String = String(item.get("slot", ""))
+			if not _role_equips.has(captured_rid):
+				_role_equips[captured_rid] = {}
+			if (_role_equips[captured_rid] as Dictionary).has(s_key):
+				(_role_equips[captured_rid] as Dictionary).erase(s_key)
+			var slot_idx: int = 0
+			var slot_list := ["weapon", "helmet", "chest", "pants", "boots", "gloves", "necklace", "ring"]
+			slot_idx = slot_list.find(s_key)
+			if slot_idx < 0:
+				slot_idx = 0
+			_equip_item_to_role(captured_rid, s_key, slot_idx, item)
+			picker_layer.queue_free()
+			info_container.queue_free()
+			if grid_fn[0] is Callable:
+				(grid_fn[0] as Callable).call(state["tab"])
+		)
+		row.add_child(wear_btn)
+	# 关闭按钮
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = panel.position + Vector2(panel_w - 44, 4)
+	close_btn.size = Vector2(36, 36)
+	close_btn.pressed.connect(func():
+		picker_layer.queue_free()
+	)
+	wrapper.add_child(close_btn)
 
 const LEVEL_TRACK_NODE_H  := 116.0  # 节点图片显示高度（含底部名字区域）
 const LEVEL_TRACK_LINE_H  := 60.0   # 连接线显示高度（同行垂直居中）
@@ -6064,6 +6287,7 @@ func _show_achievement_toast(ach: Dictionary) -> void:
 	style.shadow_size = 8
 	style.shadow_offset = Vector2(0, 4)
 	panel.add_theme_stylebox_override("panel", style)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var panel_w := 400.0
 	var panel_h := 60.0
 	panel.size = Vector2(panel_w, panel_h)
@@ -6074,6 +6298,7 @@ func _show_achievement_toast(ach: Dictionary) -> void:
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	lbl.size = Vector2(panel_w, panel_h)
+	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var ls := LabelSettings.new()
 	ls.font = font
 	ls.font_size = 22
@@ -6088,6 +6313,7 @@ func _show_achievement_toast(ach: Dictionary) -> void:
 	score_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	score_lbl.size = Vector2(panel_w - 20.0, panel_h)
 	score_lbl.position = Vector2(0, 0)
+	score_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var ls2 := LabelSettings.new()
 	ls2.font = font
 	ls2.font_size = 18
