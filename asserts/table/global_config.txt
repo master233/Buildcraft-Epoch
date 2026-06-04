@@ -1,6 +1,6 @@
 key	value
 # 配置键	对应值；value 内字面量 \n 自动转为换行
-loading_tip	[font_size=48]感谢老板举办的活动 我们会好好利用这[color=#ff3333]5W[/color]的奖金的 ~_~[/font_size]
+loading_tip	[font_size=48]感谢老板举办的活动 我们会好好利用这[color=#ff3333]5W[/color]的奖金的 ~_~[/font_size]\n[font_size=32]感谢AiArt和AiVoice团队，你们是真正的MVP[/font_size]
 loading_time	3
 default_owned_roles	10001,10002,10003
 default_formation_id	1

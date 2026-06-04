@@ -55,8 +55,13 @@ var _expedition_team_ids: Array[String] = []
 const ROLES_TABLE_PATH := "res://asserts/table/roles.txt"
 const TEAM_LAYOUT_PATH := "res://asserts/table/team_layout.txt"
 const ROLE_LINES_PATH := "res://asserts/table/role_lines.txt"
+const MONSTER_TAUNTS_PATH := "res://asserts/table/monster_taunts.txt"
+const ACHIEVEMENTS_PATH := "res://asserts/table/achievements.txt"
+const ACHIEVEMENT_LEVELS_PATH := "res://asserts/table/achievement_levels.txt"
 const SPEECH_TICK_INTERVAL := 6.0
 const SPEECH_DURATION := 3.0
+const TAUNT_TICK_INTERVAL := 8.0
+const TAUNT_DURATION := 3.5
 
 var _panel_rect    := Rect2(0, 0, 1280, 720)
 var _upgrade_rect  := Rect2(540, 110, 200, 120)
@@ -132,6 +137,7 @@ var _ad_panel_layer: CanvasLayer = null
 var _ad_timer: float = 0.0
 var _ad_char_index: int = 0
 var _ad_current_text: String = ""
+var _ad_current_idx: int = -1
 var _ad_content_lbl: RichTextLabel = null
 var _ad_reward_lbl: Label = null
 var _ad_playing: bool = false
@@ -183,6 +189,28 @@ var _tower_exp_timer: float = 0.0
 var _speech_timer: float = 0.0
 var _is_anyone_speaking: bool = false
 var _last_speech_slot_idx: int = -1
+
+var _taunt_texts: Array = []
+var _taunt_monsters: Array = []  # [{node, head_top_y}]
+var _taunt_timer: float = 0.0
+var _is_taunt_speaking: bool = false
+var _last_taunt_idx: int = -1
+
+# 成就系统
+var _achievements: Array = []
+var _achievement_unlocked: Dictionary = {}
+var _total_gold_earned: int = 0
+var _achievement_exp: int = 0
+var _achievement_level: int = 0
+var _achievement_title: String = ""
+var _achievement_level_table: Array = []
+var _ach_btn_bg: Panel = null
+var _ach_btn_lbl: Label = null
+var _ach_btn_style: StyleBoxFlat = null
+var _ach_btn_rect := Rect2(0, 0, 60, 36)
+var _ach_btn_hovering: bool = false
+var _ach_panel_layer: CanvasLayer = null
+var _title_lbl: Label = null
 
 # 聊天框
 var _chat_root: Control = null
@@ -267,6 +295,7 @@ func _setup() -> void:
 	add_child(dust)
 
 	_place_buildings()
+	_spawn_title_label()
 	_load_building_configs()
 	_load_roles_table()
 	_load_role_attrs_table()
@@ -280,8 +309,12 @@ func _setup() -> void:
 	_load_equipment_table()
 	_resolve_team_from_owned()
 	_place_expedition_team()
+	_load_taunt_texts()
+	_place_tower_monsters()
 	_load_level_ids()
 	_load_game()
+	_check_achievements(true)
+	_refresh_title_label()
 	_refresh_hud()
 	_build_animal_frames()
 	# 升级特效较大（~95MB GPU），延迟 0.5s 加载，避免阻塞场景首帧渲染
@@ -291,7 +324,10 @@ func _setup() -> void:
 	get_tree().create_timer(13.0).timeout.connect(_spawn_bird.bind(2))
 	_spawn_squirrel(500.0, 0.50)
 	_spawn_squirrel(820.0, 0.55)
+	_load_achievements()
+	_load_achievement_levels()
 	_spawn_gm_button()
+	_spawn_achievement_button()
 	_spawn_chat_box()
 
 	# 从阵型选择场景返回时，读取玩家选中的阵型
@@ -395,7 +431,7 @@ func _load_ad_texts() -> void:
 		var line: String = lines[i].strip_edges()
 		if line.is_empty() or line.begins_with("#"):
 			continue
-		_ad_texts.append(line)
+		_ad_texts.append(line.replace("|", "\n"))
 
 func _show_ad_panel() -> void:
 	if _ad_texts.is_empty():
@@ -403,6 +439,10 @@ func _show_ad_panel() -> void:
 	if _ad_panel_layer and is_instance_valid(_ad_panel_layer):
 		return
 	var idx: int = randi() % _ad_texts.size()
+	if _ad_texts.size() > 1:
+		while idx == _ad_current_idx:
+			idx = randi() % _ad_texts.size()
+	_ad_current_idx = idx
 	_ad_current_text = _ad_texts[idx]
 	_ad_char_index = 0
 	_ad_timer = 0.0
@@ -506,6 +546,10 @@ func _play_next_ad() -> void:
 	if _ad_texts.is_empty():
 		return
 	var idx: int = randi() % _ad_texts.size()
+	if _ad_texts.size() > 1:
+		while idx == _ad_current_idx:
+			idx = randi() % _ad_texts.size()
+	_ad_current_idx = idx
 	_ad_current_text = _ad_texts[idx]
 	_ad_char_index = 0
 	_ad_timer = 0.0
@@ -623,6 +667,8 @@ func _gm_add_resources() -> void:
 	_wood += 1000
 	_ore  += 1000
 	_gold += 1000
+	_total_gold_earned += 1000
+	_check_achievements()
 	_refresh_hud()
 	_save_game()
 
@@ -639,8 +685,10 @@ func _gm_grant_all_roles() -> void:
 			if cur_star < max_star:
 				_role_stars[rid] = cur_star + 1
 				_refresh_role_label_for(rid)
+				_check_achievements()
 			else:
 				_gold += 200
+				_total_gold_earned += 200
 		else:
 			_owned_role_ids.append(rid)
 			_ensure_role_data(rid)
@@ -972,6 +1020,12 @@ func _reset_game() -> void:
 	_gold = 0
 	_cleared_level = 0
 	_chat_index = 0
+	_ad_boost_charges = 0
+	_achievement_unlocked.clear()
+	_total_gold_earned = 0
+	_achievement_exp = 0
+	_achievement_level = 0
+	_achievement_title = ""
 	for key in _building_nodes:
 		_building_nodes[key]["level"] = 1
 		_apply_anim_sheet(key, 1)
@@ -986,6 +1040,7 @@ func _reset_game() -> void:
 	_resolve_team_from_owned()
 	_place_expedition_team()
 	_refresh_hud()
+	_refresh_store_new_badge()
 	_set_panel_visible(false)
 	_panel_key = ""
 	_save_game()
@@ -1038,6 +1093,10 @@ func _process(delta: float) -> void:
 	if _speech_timer >= SPEECH_TICK_INTERVAL:
 		_speech_timer = 0.0
 		_tick_speech()
+	_taunt_timer += delta
+	if _taunt_timer >= TAUNT_TICK_INTERVAL:
+		_taunt_timer = 0.0
+		_tick_taunt()
 	_tick_chat(delta)
 	_tick_tavern_auto_refresh(delta)
 	_tick_ad(delta)
@@ -1047,6 +1106,12 @@ func _process(delta: float) -> void:
 			_ad_hovering = ad_hov
 			_ad_style.bg_color = Color(0.70, 0.30, 0.10) if ad_hov else Color(0.55, 0.22, 0.06)
 			_ad_style.border_color = Color(1.0, 0.55, 0.20) if ad_hov else Color(0.90, 0.45, 0.15)
+	if _ach_btn_style != null:
+		var ach_hov := _ach_btn_rect.has_point(get_viewport().get_mouse_position())
+		if ach_hov != _ach_btn_hovering:
+			_ach_btn_hovering = ach_hov
+			_ach_btn_style.bg_color = Color(0.70, 0.55, 0.12) if ach_hov else Color(0.55, 0.42, 0.08)
+			_ach_btn_style.border_color = Color(1.0, 0.88, 0.35) if ach_hov else Color(1.0, 0.78, 0.2)
 	if _gm_style != null:
 		var hov := _gm_rect.has_point(get_viewport().get_mouse_position())
 		if hov != _gm_hovering:
@@ -1468,6 +1533,130 @@ func _load_role_lines() -> void:
 			_role_lines[role_id] = []
 		(_role_lines[role_id] as Array).append(content)
 
+func _load_taunt_texts() -> void:
+	var text := _read_table_text(MONSTER_TAUNTS_PATH)
+	if text.is_empty():
+		return
+	var lines := text.split("\n", false)
+	for i in range(1, lines.size()):
+		var line: String = lines[i].strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		_taunt_texts.append(line)
+
+func _place_tower_monsters() -> void:
+	if _taunt_texts.is_empty():
+		return
+	var tower_pos: Vector2 = BUILDINGS["tower"]["pos"]
+	var monster_ids: Array = ["20001", "20002"]
+	var offsets: Array = [Vector2(-100, 90), Vector2(100, 90)]
+	for i in monster_ids.size():
+		var mid: String = monster_ids[i]
+		if not _roles.has(mid):
+			continue
+		var data: Dictionary = _roles[mid]
+		var alert_sheet_path: String = String(data.get("alert_sheet", ""))
+		if alert_sheet_path.is_empty() or not ResourceLoader.exists(alert_sheet_path):
+			continue
+		var alert_frames: int = int(data.get("alert_frames", 1))
+		var alert_fps: float = float(data.get("alert_anim_fps", 12.0))
+		var idle_scale: float = float(data.get("idle_scale", 1.0))
+		var alert_tex: Texture2D = load(alert_sheet_path)
+		@warning_ignore("integer_division")
+		var frame_w := alert_tex.get_width() / alert_frames
+		var frame_h := alert_tex.get_height()
+		var sf := SpriteFrames.new()
+		sf.add_animation("idle")
+		sf.set_animation_speed("idle", alert_fps)
+		sf.set_animation_loop("idle", true)
+		for f in alert_frames:
+			var at := AtlasTexture.new()
+			at.atlas = alert_tex
+			at.region = Rect2(f * frame_w, 0, frame_w, frame_h)
+			at.filter_clip = true
+			sf.add_frame("idle", at)
+		var slot := Node2D.new()
+		slot.name = "TowerMonster%d" % (i + 1)
+		slot.position = tower_pos + offsets[i]
+		slot.z_index = int(slot.position.y)
+		add_child(slot)
+		var asp := AnimatedSprite2D.new()
+		asp.sprite_frames = sf
+		asp.scale = Vector2(idle_scale, idle_scale)
+		asp.flip_h = (i == 0)
+		asp.play("idle")
+		slot.add_child(asp)
+		_taunt_monsters.append({"node": slot, "head_top_y": -frame_h * idle_scale * 0.5})
+
+func _tick_taunt() -> void:
+	if _is_taunt_speaking or _taunt_monsters.is_empty() or _taunt_texts.is_empty():
+		return
+	var pool: Array[int] = []
+	for i in _taunt_monsters.size():
+		if i != _last_taunt_idx:
+			pool.append(i)
+	if pool.is_empty():
+		pool.append(0)
+	var idx: int = pool[randi() % pool.size()]
+	_last_taunt_idx = idx
+	_show_taunt_bubble(idx)
+
+func _show_taunt_bubble(monster_idx: int) -> void:
+	var entry: Dictionary = _taunt_monsters[monster_idx]
+	var slot: Node2D = entry["node"]
+	var content: String = _taunt_texts[randi() % _taunt_texts.size()]
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var font_size := 14
+	var pad := Vector2(12, 10)
+	var text_size := font.get_string_size(content, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	var panel_w: float = text_size.x + pad.x * 2.0
+	var panel_h: float = text_size.y + pad.y * 2.0
+	var panel := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.18, 0.12, 0.22, 0.94)
+	style.set_corner_radius_all(8)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.6, 0.2, 0.2, 1.0)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.4)
+	style.shadow_size = 4
+	style.shadow_offset = Vector2(0, 2)
+	panel.add_theme_stylebox_override("panel", style)
+	panel.size = Vector2(panel_w, panel_h)
+	var head_top_y: float = entry["head_top_y"]
+	panel.position = Vector2(-panel_w * 0.5, head_top_y - panel_h - 6.0)
+	var lbl := Label.new()
+	lbl.text = content
+	lbl.position = pad
+	lbl.size = Vector2(text_size.x, text_size.y)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	var ls := LabelSettings.new()
+	ls.font = font
+	ls.font_size = font_size
+	ls.font_color = Color(1.0, 0.25, 0.2)
+	lbl.label_settings = ls
+	panel.add_child(lbl)
+	panel.modulate.a = 0.0
+	panel.z_index = 50
+	slot.add_child(panel)
+	_is_taunt_speaking = true
+	var fade_in := 0.15
+	var fade_out := 0.15
+	var hold := TAUNT_DURATION - fade_in - fade_out
+	var tween := create_tween()
+	tween.tween_property(panel, "modulate:a", 1.0, fade_in)
+	tween.tween_interval(maxf(hold, 0.0))
+	tween.tween_property(panel, "modulate:a", 0.0, fade_out)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(panel):
+			panel.queue_free()
+		_is_taunt_speaking = false
+	)
+
 func _tick_speech() -> void:
 	if _is_anyone_speaking or _team_slots.is_empty():
 		return
@@ -1563,6 +1752,10 @@ func _set_panel_visible(v: bool) -> void:
 		_ad_bg.visible = not v
 	if _ad_lbl and is_instance_valid(_ad_lbl):
 		_ad_lbl.visible = not v
+	if _ach_btn_bg and is_instance_valid(_ach_btn_bg):
+		_ach_btn_bg.visible = not v
+	if _ach_btn_lbl and is_instance_valid(_ach_btn_lbl):
+		_ach_btn_lbl.visible = not v
 	if v:
 		_set_gm_cmd_visible(false)
 		_play_ui_open_sfx()
@@ -3111,7 +3304,7 @@ func _on_boost_pressed(key: String) -> void:
 		return
 	_ad_boost_charges -= 1
 	var lv: int = _building_nodes[key]["level"]
-	var ticks: int = int(7200.0 / PRODUCE_INTERVAL)
+	var ticks: int = int(600.0 / PRODUCE_INTERVAL)
 	var amount: int = PRODUCE_RATES[lv - 1] * ticks
 	if key == "lumberyard":
 		_wood += amount
@@ -3148,6 +3341,8 @@ func _on_exchange_pressed(key: String, direction: String) -> void:
 				return
 			_ore -= amount
 		_gold += gain
+		_total_gold_earned += gain
+		_check_achievements()
 		_spawn_float_text(key, gain, "gold")
 	else:
 		if _gold < amount:
@@ -3895,6 +4090,8 @@ func _show_sell_confirm(to_remove: Array, _unused: int, tab: String, parent_ui: 
 		for item in to_remove:
 			_inventory.erase(item)
 		_gold += gold_gain
+		_total_gold_earned += gold_gain
+		_check_achievements()
 		_play_sell_sfx()
 		_refresh_hud()
 		_save_game()
@@ -4009,6 +4206,8 @@ func _on_bag_item_click(event: InputEvent, item: Dictionary, parent_ui: CanvasLa
 		sell_btn.pressed.connect(func() -> void:
 			_inventory.erase(item)
 			_gold += sell_price
+			_total_gold_earned += sell_price
+			_check_achievements()
 			_play_sell_sfx()
 			_refresh_hud()
 			_save_game()
@@ -4328,15 +4527,7 @@ func _handle_click(pos: Vector2) -> void:
 	if _ad_panel_layer and is_instance_valid(_ad_panel_layer):
 		return
 
-	if _ad_rect.has_point(pos):
-		_ad_bg.pivot_offset = _ad_bg.size / 2
-		_ad_lbl.pivot_offset = _ad_lbl.size / 2
-		var tw2 := create_tween()
-		tw2.tween_property(_ad_bg, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw2.parallel().tween_property(_ad_lbl, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-		tw2.tween_property(_ad_bg, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
-		tw2.parallel().tween_property(_ad_lbl, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
-		_show_ad_panel()
+	if _ach_panel_layer and is_instance_valid(_ach_panel_layer):
 		return
 
 	if _gm_rect.has_point(pos):
@@ -4366,6 +4557,28 @@ func _handle_click(pos: Vector2) -> void:
 				elif action == "add_all_equip":
 					_gm_add_all_equip()
 				return
+		return
+
+	if _ach_btn_bg and is_instance_valid(_ach_btn_bg) and _ach_btn_rect.has_point(pos):
+		_ach_btn_bg.pivot_offset = _ach_btn_bg.size / 2
+		_ach_btn_lbl.pivot_offset = _ach_btn_lbl.size / 2
+		var tw3 := create_tween()
+		tw3.tween_property(_ach_btn_bg, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw3.parallel().tween_property(_ach_btn_lbl, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw3.tween_property(_ach_btn_bg, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		tw3.parallel().tween_property(_ach_btn_lbl, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		_show_achievement_panel()
+		return
+
+	if _ad_rect.has_point(pos):
+		_ad_bg.pivot_offset = _ad_bg.size / 2
+		_ad_lbl.pivot_offset = _ad_lbl.size / 2
+		var tw2 := create_tween()
+		tw2.tween_property(_ad_bg, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw2.parallel().tween_property(_ad_lbl, "scale", Vector2(0.82, 0.82), 0.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+		tw2.tween_property(_ad_bg, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		tw2.parallel().tween_property(_ad_lbl, "scale", Vector2(1.0, 1.0), 0.5).set_trans(Tween.TRANS_SPRING).set_ease(Tween.EASE_OUT)
+		_show_ad_panel()
 		return
 
 	# 检测角色点击
@@ -4576,7 +4789,9 @@ func _tick_production() -> void:
 			_spawn_float_text(key, amount, "ore")
 		elif produces == "gold":
 			_gold += amount
+			_total_gold_earned += amount
 			_spawn_float_text(key, amount, "gold")
+	_check_achievements()
 	_refresh_hud()
 	_save_game()
 
@@ -4808,6 +5023,10 @@ func _save_game() -> void:
 	data["inventory"] = _inventory.duplicate(true)
 	data["role_equips"] = _role_equips.duplicate(true)
 	data["ad_boost_charges"] = _ad_boost_charges
+	data["achievement_unlocked"] = _achievement_unlocked.duplicate()
+	data["total_gold_earned"] = _total_gold_earned
+	data["achievement_level"] = _achievement_level
+	data["achievement_title"] = _achievement_title
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		return
@@ -4890,6 +5109,17 @@ func _load_game() -> void:
 		_role_equips = {}
 		for rid in (data["role_equips"] as Dictionary).keys():
 			_role_equips[rid] = data["role_equips"][rid]
+	if data.has("achievement_unlocked") and data["achievement_unlocked"] is Dictionary:
+		_achievement_unlocked = {}
+		for k in (data["achievement_unlocked"] as Dictionary).keys():
+			_achievement_unlocked[int(k)] = true
+	if data.has("total_gold_earned"):
+		_total_gold_earned = int(data["total_gold_earned"])
+	if data.has("achievement_level"):
+		_achievement_level = int(data["achievement_level"])
+	if data.has("achievement_title"):
+		_achievement_title = String(data["achievement_title"])
+	_achievement_exp = _get_achievement_exp()
 	_refresh_store_new_badge()
 	# 读档后用 formation_id 查名字并刷新按钮
 	_formation_name = _query_formation_name(_formation_id)
@@ -5638,3 +5868,489 @@ func _tick_chat(delta: float) -> void:
 	_chat_add_message(m["speaker"], m["content"])
 	_chat_index = (_chat_index + 1) % _chat_messages.size()
 	_save_game()
+
+# ===== 成就系统 =====
+
+func _load_achievements() -> void:
+	var text := _read_table_text(ACHIEVEMENTS_PATH)
+	if text.is_empty():
+		return
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 8:
+			continue
+		_achievements.append({
+			"id": int(parts[0]),
+			"category": (parts[1] as String).strip_edges(),
+			"tier": int(parts[2]),
+			"name": (parts[3] as String).strip_edges(),
+			"desc": (parts[4] as String).strip_edges(),
+			"target": int(parts[5]),
+			"count": int(parts[6]),
+			"exp": int(parts[7]),
+		})
+
+func _get_max_star() -> int:
+	var mx: int = 0
+	for rid in _role_stars.keys():
+		var s: int = int(_role_stars[rid])
+		if s > mx:
+			mx = s
+	return mx
+
+func _count_roles_at_star(star: int) -> int:
+	var n: int = 0
+	for rid in _role_stars.keys():
+		if int(_role_stars[rid]) >= star:
+			n += 1
+	return n
+
+func _get_achievement_exp() -> int:
+	var total: int = 0
+	for ach in _achievements:
+		if _achievement_unlocked.get(ach["id"], false):
+			total += int(ach["exp"])
+	return total
+
+func _load_achievement_levels() -> void:
+	var text := _read_table_text(ACHIEVEMENT_LEVELS_PATH)
+	if text.is_empty():
+		return
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 4:
+			continue
+		_achievement_level_table.append({
+			"level": int(parts[0]),
+			"exp_required": int(parts[1]),
+			"gold_reward": int(parts[2]),
+			"title": (parts[3] as String).strip_edges(),
+		})
+
+func _get_next_level_exp() -> int:
+	for entry in _achievement_level_table:
+		if int(entry["level"]) == _achievement_level + 1:
+			return int(entry["exp_required"])
+	return 0
+
+func _get_next_level_entry() -> Dictionary:
+	for entry in _achievement_level_table:
+		if int(entry["level"]) == _achievement_level + 1:
+			return entry
+	return {}
+
+func _check_achievement_level_up(silent: bool = false) -> void:
+	_achievement_exp = _get_achievement_exp()
+	var leveled_up := false
+	while true:
+		var next_level: int = _achievement_level + 1
+		var found := false
+		for entry in _achievement_level_table:
+			if int(entry["level"]) == next_level and _achievement_exp >= int(entry["exp_required"]):
+				_achievement_level = next_level
+				_achievement_title = String(entry["title"])
+				if not silent:
+					_gold += int(entry["gold_reward"])
+					_total_gold_earned += int(entry["gold_reward"])
+					_show_level_up_toast(entry)
+				leveled_up = true
+				found = true
+				break
+		if not found:
+			break
+	if leveled_up:
+		_refresh_title_label()
+		if not silent:
+			_save_game()
+
+func _show_level_up_toast(entry: Dictionary) -> void:
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var layer := CanvasLayer.new()
+	layer.layer = 61
+	add_child(layer)
+	var panel := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.12, 0.08, 0.02, 0.96)
+	style.set_corner_radius_all(14)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(1.0, 0.6, 0.1)
+	style.shadow_color = Color(0, 0, 0, 0.6)
+	style.shadow_size = 10
+	style.shadow_offset = Vector2(0, 4)
+	panel.add_theme_stylebox_override("panel", style)
+	var panel_w := 450.0
+	var panel_h := 80.0
+	panel.size = Vector2(panel_w, panel_h)
+	panel.position = Vector2((1280.0 - panel_w) * 0.5, -panel_h)
+	layer.add_child(panel)
+	var lbl := Label.new()
+	lbl.text = "成就等级提升！Lv.%d" % int(entry["level"])
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(panel_w, 40)
+	lbl.position = Vector2(0, 5)
+	var ls := LabelSettings.new()
+	ls.font = font
+	ls.font_size = 22
+	ls.font_color = Color(1.0, 0.85, 0.3)
+	ls.outline_size = 3
+	ls.outline_color = Color(0, 0, 0, 0.9)
+	lbl.label_settings = ls
+	panel.add_child(lbl)
+	var sub_lbl := Label.new()
+	sub_lbl.text = "称号：%s    奖励：%d金币" % [String(entry["title"]), int(entry["gold_reward"])]
+	sub_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	sub_lbl.size = Vector2(panel_w, 30)
+	sub_lbl.position = Vector2(0, 45)
+	var ls2 := LabelSettings.new()
+	ls2.font = font
+	ls2.font_size = 16
+	ls2.font_color = Color(0.9, 0.75, 0.4)
+	sub_lbl.label_settings = ls2
+	panel.add_child(sub_lbl)
+	var tween := create_tween()
+	tween.tween_property(panel, "position:y", 20.0, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(2.5)
+	tween.tween_property(panel, "position:y", -panel_h, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(layer):
+			layer.queue_free()
+	)
+
+func _check_achievements(silent: bool = false) -> void:
+	if _achievements.is_empty():
+		return
+	var tower_progress: int = maxi(_cleared_level - FIRST_LEVEL_ID + 1, 0)
+	for ach in _achievements:
+		var id: int = ach["id"]
+		if _achievement_unlocked.get(id, false):
+			continue
+		var reached := false
+		match ach["category"]:
+			"tower":
+				reached = tower_progress >= int(ach["target"])
+			"gold":
+				reached = _total_gold_earned >= int(ach["target"])
+			"star":
+				reached = _count_roles_at_star(int(ach["target"])) >= int(ach["count"])
+		if reached:
+			_achievement_unlocked[id] = true
+			if not silent:
+				_show_achievement_toast(ach)
+	_check_achievement_level_up(silent)
+	if not silent:
+		_save_game()
+
+func _show_achievement_toast(ach: Dictionary) -> void:
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var layer := CanvasLayer.new()
+	layer.layer = 60
+	add_child(layer)
+	var panel := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.15, 0.12, 0.08, 0.95)
+	style.set_corner_radius_all(12)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(1.0, 0.78, 0.2)
+	style.shadow_color = Color(0, 0, 0, 0.5)
+	style.shadow_size = 8
+	style.shadow_offset = Vector2(0, 4)
+	panel.add_theme_stylebox_override("panel", style)
+	var panel_w := 400.0
+	var panel_h := 60.0
+	panel.size = Vector2(panel_w, panel_h)
+	panel.position = Vector2((1280.0 - panel_w) * 0.5, -panel_h)
+	layer.add_child(panel)
+	var lbl := Label.new()
+	lbl.text = "成就达成：%s" % String(ach["name"])
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.size = Vector2(panel_w, panel_h)
+	var ls := LabelSettings.new()
+	ls.font = font
+	ls.font_size = 22
+	ls.font_color = Color(1.0, 0.85, 0.3)
+	ls.outline_size = 3
+	ls.outline_color = Color(0, 0, 0, 0.9)
+	lbl.label_settings = ls
+	panel.add_child(lbl)
+	var score_lbl := Label.new()
+	score_lbl.text = "+%d经验" % int(ach["exp"])
+	score_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	score_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	score_lbl.size = Vector2(panel_w - 20.0, panel_h)
+	score_lbl.position = Vector2(0, 0)
+	var ls2 := LabelSettings.new()
+	ls2.font = font
+	ls2.font_size = 18
+	ls2.font_color = Color(0.3, 1.0, 0.4)
+	score_lbl.label_settings = ls2
+	panel.add_child(score_lbl)
+	var tween := create_tween()
+	tween.tween_property(panel, "position:y", 20.0, 0.4).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tween.tween_interval(2.0)
+	tween.tween_property(panel, "position:y", -panel_h, 0.3).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(layer):
+			layer.queue_free()
+	)
+
+func _spawn_achievement_button() -> void:
+	var ui := $UI
+	_ach_btn_rect = Rect2(_gm_rect.position.x - 70.0, _gm_rect.position.y, 60, 36)
+	_ach_btn_style = StyleBoxFlat.new()
+	_ach_btn_style.bg_color = Color(0.55, 0.42, 0.08)
+	_ach_btn_style.set_corner_radius_all(10)
+	_ach_btn_style.border_width_top = 2
+	_ach_btn_style.border_width_right = 2
+	_ach_btn_style.border_width_bottom = 3
+	_ach_btn_style.border_width_left = 2
+	_ach_btn_style.border_color = Color(1.0, 0.78, 0.2)
+	_ach_btn_style.shadow_color = Color(0, 0, 0, 0.55)
+	_ach_btn_style.shadow_size = 6
+	_ach_btn_style.shadow_offset = Vector2(1, 3)
+	_ach_btn_bg = Panel.new()
+	_ach_btn_bg.size = _ach_btn_rect.size
+	_ach_btn_bg.position = _ach_btn_rect.position
+	_ach_btn_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_ach_btn_bg.add_theme_stylebox_override("panel", _ach_btn_style)
+	ui.add_child(_ach_btn_bg)
+	_ach_btn_lbl = Label.new()
+	_ach_btn_lbl.text = "成就"
+	_ach_btn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_ach_btn_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_ach_btn_lbl.size = _ach_btn_rect.size
+	_ach_btn_lbl.position = _ach_btn_rect.position
+	_ach_btn_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var ls := LabelSettings.new()
+	ls.font = font
+	ls.font_size = 18
+	ls.font_color = Color(1.0, 0.9, 0.5)
+	ls.outline_size = 3
+	ls.outline_color = Color(0.0, 0.0, 0.0, 0.9)
+	ls.shadow_color = Color(0.0, 0.0, 0.0, 0.5)
+	ls.shadow_offset = Vector2(1, 2)
+	_ach_btn_lbl.label_settings = ls
+	ui.add_child(_ach_btn_lbl)
+
+func _show_achievement_panel() -> void:
+	if _ach_panel_layer and is_instance_valid(_ach_panel_layer):
+		return
+	_ach_panel_layer = CanvasLayer.new()
+	_ach_panel_layer.layer = 45
+	add_child(_ach_panel_layer)
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.6)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_ach_panel_layer.add_child(dim)
+	var panel := Panel.new()
+	var pstyle := StyleBoxFlat.new()
+	pstyle.bg_color = Color(0.12, 0.10, 0.08, 0.97)
+	pstyle.set_corner_radius_all(16)
+	pstyle.border_width_left = 3
+	pstyle.border_width_right = 3
+	pstyle.border_width_top = 3
+	pstyle.border_width_bottom = 3
+	pstyle.border_color = Color(1.0, 0.78, 0.2)
+	panel.add_theme_stylebox_override("panel", pstyle)
+	panel.size = Vector2(1000, 580)
+	panel.position = Vector2(140, 70)
+	_ach_panel_layer.add_child(panel)
+	# 标题
+	var title := Label.new()
+	title.text = "成就"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.size = Vector2(1000, 50)
+	title.position = Vector2(0, 10)
+	var tls := LabelSettings.new()
+	tls.font = font
+	tls.font_size = 28
+	tls.font_color = Color(1.0, 0.85, 0.3)
+	title.label_settings = tls
+	panel.add_child(title)
+	# 左侧：当前等级和经验
+	var next_exp: int = _get_next_level_exp()
+	var cur_lbl := Label.new()
+	cur_lbl.text = "Lv.%d" % _achievement_level
+	cur_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	cur_lbl.size = Vector2(300, 28)
+	cur_lbl.position = Vector2(60, 10)
+	var cls := LabelSettings.new()
+	cls.font = font
+	cls.font_size = 20
+	cls.font_color = Color(1.0, 0.85, 0.3)
+	cur_lbl.label_settings = cls
+	panel.add_child(cur_lbl)
+	var exp_cur_lbl := Label.new()
+	var exp_text: String = "经验：%d / %d" % [_achievement_exp, next_exp] if next_exp > 0 else "经验：%d (已满级)" % _achievement_exp
+	exp_cur_lbl.text = exp_text
+	exp_cur_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	exp_cur_lbl.size = Vector2(300, 22)
+	exp_cur_lbl.position = Vector2(60, 36)
+	var ecls := LabelSettings.new()
+	ecls.font = font
+	ecls.font_size = 14
+	ecls.font_color = Color(0.3, 1.0, 0.45)
+	exp_cur_lbl.label_settings = ecls
+	panel.add_child(exp_cur_lbl)
+	# 右侧：下一级奖励
+	var next_entry: Dictionary = _get_next_level_entry()
+	var info_lbl := Label.new()
+	if next_entry.is_empty():
+		info_lbl.text = ""
+	else:
+		info_lbl.text = "下一级：称号[%s] 奖励%d金币" % [String(next_entry["title"]), int(next_entry["gold_reward"])]
+	info_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	info_lbl.size = Vector2(500, 30)
+	info_lbl.position = Vector2(430, 25)
+	var ils := LabelSettings.new()
+	ils.font = font
+	ils.font_size = 16
+	ils.font_color = Color(0.9, 0.75, 0.4)
+	info_lbl.label_settings = ils
+	panel.add_child(info_lbl)
+	# 三列
+	var categories := ["tower", "gold", "star"]
+	var cat_names := {"tower": "远征塔", "gold": "累计金币", "star": "角色星级"}
+	var col_w := 310.0
+	var col_gap := 15.0
+	var start_x := 25.0
+	var start_y := 65.0
+	for ci in categories.size():
+		var cat: String = categories[ci]
+		var col_x: float = start_x + ci * (col_w + col_gap)
+		# 列标题
+		var clbl := Label.new()
+		clbl.text = cat_names[cat]
+		clbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		clbl.size = Vector2(col_w, 35)
+		clbl.position = Vector2(col_x, start_y)
+		var col_ls := LabelSettings.new()
+		col_ls.font = font
+		col_ls.font_size = 20
+		col_ls.font_color = Color(0.9, 0.8, 0.5)
+		clbl.label_settings = col_ls
+		panel.add_child(clbl)
+		# 列内成就
+		var row_y: float = start_y + 40.0
+		for ach in _achievements:
+			if ach["category"] != cat:
+				continue
+			var unlocked: bool = _achievement_unlocked.get(ach["id"], false)
+			var row := Panel.new()
+			var rstyle := StyleBoxFlat.new()
+			rstyle.bg_color = Color(0.25, 0.22, 0.15, 0.8) if unlocked else Color(0.15, 0.14, 0.12, 0.6)
+			rstyle.set_corner_radius_all(8)
+			rstyle.border_width_left = 1
+			rstyle.border_width_right = 1
+			rstyle.border_width_top = 1
+			rstyle.border_width_bottom = 1
+			rstyle.border_color = Color(1.0, 0.78, 0.2, 0.8) if unlocked else Color(0.4, 0.35, 0.25, 0.6)
+			row.add_theme_stylebox_override("panel", rstyle)
+			row.size = Vector2(col_w, 85)
+			row.position = Vector2(col_x, row_y)
+			panel.add_child(row)
+			# 成就名
+			var nlbl := Label.new()
+			nlbl.text = String(ach["name"])
+			nlbl.position = Vector2(10, 6)
+			nlbl.size = Vector2(col_w - 20, 26)
+			var nls := LabelSettings.new()
+			nls.font = font
+			nls.font_size = 17
+			nls.font_color = Color(1.0, 0.85, 0.3) if unlocked else Color(0.55, 0.50, 0.40)
+			nlbl.label_settings = nls
+			row.add_child(nlbl)
+			# 描述
+			var dlbl := Label.new()
+			dlbl.text = String(ach["desc"])
+			dlbl.position = Vector2(10, 32)
+			dlbl.size = Vector2(col_w - 20, 22)
+			var dls := LabelSettings.new()
+			dls.font = font
+			dls.font_size = 13
+			dls.font_color = Color(0.7, 0.65, 0.55) if unlocked else Color(0.45, 0.42, 0.35)
+			dlbl.label_settings = dls
+			row.add_child(dlbl)
+			# 进度/分数
+			var plbl := Label.new()
+			if unlocked:
+				plbl.text = "+%d经验" % int(ach["exp"])
+			else:
+				var current: int = 0
+				var target: int = int(ach["target"])
+				match cat:
+					"tower":
+						current = maxi(_cleared_level - FIRST_LEVEL_ID + 1, 0)
+						plbl.text = "%d / %d" % [mini(current, target), target]
+					"gold":
+						current = _total_gold_earned
+						plbl.text = "%d / %d" % [mini(current, target), target]
+					"star":
+						var need_count: int = int(ach["count"])
+						current = _count_roles_at_star(target)
+						plbl.text = "%d星×%d / %d" % [target, mini(current, need_count), need_count]
+			plbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			plbl.position = Vector2(10, 60)
+			plbl.size = Vector2(col_w - 20, 20)
+			var pls := LabelSettings.new()
+			pls.font = font
+			pls.font_size = 13
+			pls.font_color = Color(0.3, 1.0, 0.4) if unlocked else Color(0.5, 0.5, 0.45)
+			plbl.label_settings = pls
+			row.add_child(plbl)
+			row_y += 92.0
+	# 关闭按钮（右上角图标）
+	var close_btn := TextureButton.new()
+	close_btn.texture_normal = load("res://asserts/image/ui/ui_close.png")
+	close_btn.ignore_texture_size = true
+	close_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	close_btn.position = Vector2(1000 - 50, -10)
+	close_btn.size = Vector2(60, 60)
+	close_btn.pressed.connect(_close_achievement_panel)
+	panel.add_child(close_btn)
+
+func _close_achievement_panel() -> void:
+	if _ach_panel_layer and is_instance_valid(_ach_panel_layer):
+		_ach_panel_layer.queue_free()
+		_ach_panel_layer = null
+
+func _spawn_title_label() -> void:
+	var home_label: Label = _building_nodes["home"]["label"]
+	var container: Node = home_label.get_parent()
+	_title_lbl = Label.new()
+	_title_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_title_lbl.size = Vector2(home_label.size.x, 22)
+	_title_lbl.position = Vector2(home_label.position.x, home_label.position.y + 24)
+	_title_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var ls := LabelSettings.new()
+	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size = 14
+	ls.font_color = Color(1.0, 0.85, 0.3)
+	ls.outline_size = 3
+	ls.outline_color = Color(0.0, 0.0, 0.0, 0.9)
+	_title_lbl.label_settings = ls
+	container.add_child(_title_lbl)
+
+func _refresh_title_label() -> void:
+	if not _title_lbl or not is_instance_valid(_title_lbl):
+		return
+	if _achievement_title.is_empty():
+		_title_lbl.text = "乐元素实习生"
+	else:
+		_title_lbl.text = _achievement_title

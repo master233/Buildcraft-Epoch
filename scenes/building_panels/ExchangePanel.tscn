@@ -106,4 +106,4 @@ alignment = 1
 [node name="BoostBtn" type="Button" parent="ExchangeRows/BoostRow/BoostBtnWrap"]
 custom_minimum_size = Vector2(200, 44)
 layout_mode = 2
-text = "加速2小时"
+text = "加速十分钟"

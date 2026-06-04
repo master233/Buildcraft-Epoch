@@ -86,23 +86,38 @@ func _setup() -> void:
 	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(dim)
 
-	var tip := RichTextLabel.new()
-	tip.bbcode_enabled = true
-	tip.scroll_active = false
-	tip.fit_content = true
 	var tip_font := load("res://asserts/fonts/ZCOOLKuaiLe.ttf") as Font
-	tip.add_theme_font_override("normal_font", tip_font)
-	tip.add_theme_font_size_override("normal_font_size", 32)
-	tip.add_theme_color_override("default_color", Color(1.0, 0.94, 0.65))
-	tip.add_theme_constant_override("outline_size", 6)
-	tip.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.95))
-	tip.add_theme_constant_override("shadow_offset_x", 2)
-	tip.add_theme_constant_override("shadow_offset_y", 3)
-	tip.add_theme_color_override("font_shadow_color", Color(0.0, 0.0, 0.0, 0.55))
-	tip.size = Vector2(vp.x - 80.0, 140.0)
-	tip.position = Vector2(40.0, vp.y * 0.62 - 70.0)
-	tip.text = "[center]" + GlobalConfig.get_str("loading_tip", TIP_FALLBACK) + "[/center]"
+	var tip := Label.new()
+	tip.text = "感谢老板举办的活动 我们会好好利用这5W的奖金的 ~_~"
+	tip.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tip.size = Vector2(vp.x - 80.0, 60.0)
+	tip.position = Vector2(40.0, vp.y * 0.52 - 50.0)
+	var ls1 := LabelSettings.new()
+	ls1.font = tip_font
+	ls1.font_size = 48
+	ls1.font_color = Color(1.0, 0.94, 0.65)
+	ls1.outline_size = 6
+	ls1.outline_color = Color(0.0, 0.0, 0.0, 0.95)
+	ls1.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	ls1.shadow_offset = Vector2(2, 3)
+	tip.label_settings = ls1
 	ui.add_child(tip)
+
+	var tip2 := Label.new()
+	tip2.text = "感谢AiArt和AiVoice团队，你们是真正的MVP"
+	tip2.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	tip2.size = Vector2(vp.x - 80.0, 40.0)
+	tip2.position = Vector2(40.0, vp.y * 0.52 + 20.0)
+	var ls2 := LabelSettings.new()
+	ls2.font = tip_font
+	ls2.font_size = 32
+	ls2.font_color = Color(1.0, 0.94, 0.65)
+	ls2.outline_size = 5
+	ls2.outline_color = Color(0.0, 0.0, 0.0, 0.95)
+	ls2.shadow_color = Color(0.0, 0.0, 0.0, 0.55)
+	ls2.shadow_offset = Vector2(2, 3)
+	tip2.label_settings = ls2
+	ui.add_child(tip2)
 
 	_bar = ProgressBar.new()
 	_bar.size = Vector2(BAR_WIDTH, BAR_HEIGHT)

@@ -1713,13 +1713,23 @@ func _formation_drag_end(pos: Vector2) -> void:
 	_drag_index = -1
 
 func _refresh_formation_pos_labels() -> void:
+	var bonus_table := _load_formation_bonus_table()
+	var fid := int(_formations[_current_formation_idx]["id"]) if _formations.size() > 0 else 0
 	for i in _formation_role_nodes.size():
 		var node: Node2D = _formation_role_nodes[i]
 		if not is_instance_valid(node):
 			continue
+		var label_idx: int = 0
 		for child in node.get_children():
 			if child is Label:
-				child.text = str(i + 1)
+				if label_idx == 0:
+					child.text = str(i + 1)
+				elif label_idx == 1:
+					if bonus_table.has(fid) and bonus_table[fid].has(i + 1):
+						child.text = _get_bonus_text(bonus_table[fid][i + 1])
+					else:
+						child.text = ""
+				label_idx += 1
 
 func _save_team_order() -> void:
 	var save_path := "user://savegame.json"
