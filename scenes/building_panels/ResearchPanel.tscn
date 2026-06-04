@@ -1,4 +1,4 @@
-[gd_scene format=3]
+[gd_scene format=3 uid="uid://ce80xodm7ncpu"]
 
 [ext_resource type="FontFile" uid="uid://b6wyxgm7fm30n" path="res://asserts/fonts/ZCOOLKuaiLe.ttf" id="1"]
 
@@ -9,13 +9,13 @@ font_color = Color(0.22, 0.13, 0.06, 1)
 outline_size = 2
 outline_color = Color(1, 0.96, 0.85, 0.5)
 
-[node name="ResearchPanel" type="Control"]
+[node name="ResearchPanel" type="Control" unique_id=928651368]
 layout_mode = 3
 anchors_preset = 0
 offset_right = 856.0
 offset_bottom = 396.0
 
-[node name="TitleLbl" type="Label" parent="."]
+[node name="TitleLbl" type="Label" parent="." unique_id=1652636755]
 layout_mode = 0
 offset_left = 16.0
 offset_top = 8.0
@@ -24,31 +24,31 @@ offset_bottom = 36.0
 text = "技能研究"
 label_settings = SubResource("LabelSettings_title")
 
-[node name="SkillScroll" type="ScrollContainer" parent="."]
+[node name="SkillScroll" type="ScrollContainer" parent="." unique_id=552256986]
 layout_mode = 0
 offset_left = 16.0
 offset_top = 44.0
 offset_right = 840.0
 offset_bottom = 390.0
 
-[node name="ContentVBox" type="VBoxContainer" parent="SkillScroll"]
+[node name="ContentVBox" type="VBoxContainer" parent="SkillScroll" unique_id=1242967065]
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 12
 
-[node name="SkillGrid" type="GridContainer" parent="SkillScroll/ContentVBox"]
+[node name="SkillGrid" type="GridContainer" parent="SkillScroll/ContentVBox" unique_id=1375330662]
 layout_mode = 2
-columns = 8
 theme_override_constants/h_separation = 10
 theme_override_constants/v_separation = 10
+columns = 9
 
-[node name="SuitTitleLbl" type="Label" parent="SkillScroll/ContentVBox"]
+[node name="SuitTitleLbl" type="Label" parent="SkillScroll/ContentVBox" unique_id=1353232476]
 layout_mode = 2
 text = "装备套装效果"
 label_settings = SubResource("LabelSettings_title")
 
-[node name="SuitGrid" type="GridContainer" parent="SkillScroll/ContentVBox"]
+[node name="SuitGrid" type="GridContainer" parent="SkillScroll/ContentVBox" unique_id=1883032861]
 layout_mode = 2
-columns = 8
 theme_override_constants/h_separation = 10
 theme_override_constants/v_separation = 10
+columns = 9

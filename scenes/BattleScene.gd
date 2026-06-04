@@ -220,7 +220,7 @@ func _perform_action(attacker: BattleUnit) -> void:
 	if targets.is_empty():
 		_acting = false
 		return
-	var target := targets[randi() % targets.size()] as BattleUnit
+	var target := _weighted_target_pick(targets) as BattleUnit
 
 	var atk_root: Node2D = attacker.root
 	if not is_instance_valid(atk_root) or not is_instance_valid(target.root):
@@ -336,7 +336,15 @@ func _apply_damage(attacker: BattleUnit, target: BattleUnit, dmg_mult: float = 1
 		if p2 > 0:
 			crit_mult = float(p2) / 100.0
 	var is_crit := (randi() % 10000) < crit_chance
-	var dmg_base: int = max(1, attacker.atk - target.def)
+	# 冷静（30013）：攻击有嘲讽的目标时无视 p1% 防御
+	var effective_def: int = target.def
+	if not _find_skill(target, 30012).is_empty():
+		var calm_sd := _find_skill(attacker, 30013)
+		if not calm_sd.is_empty():
+			var ignore_pct: float = float(int(calm_sd.get("p1", 0))) / 100.0
+			effective_def = int(float(target.def) * (1.0 - ignore_pct))
+			_spawn_skill_label(attacker, _skill_name(30013) + "!")
+	var dmg_base: int = max(1, attacker.atk - effective_def)
 	# 隐身（30009）：处于隐身状态时攻击伤害按 stealth_mult 乘算
 	var stealth_mul: float = 1.0
 	if attacker.stealth_rounds > 0:
@@ -348,6 +356,11 @@ func _apply_damage(attacker: BattleUnit, target: BattleUnit, dmg_mult: float = 1
 		if not ts_sd.is_empty():
 			true_sight_bonus = float(int(ts_sd.get("p1", 0))) / 100.0
 	var dmg := int(dmg_base * (crit_mult if is_crit else 1.0) * dmg_mult * stealth_mul * (1.0 + true_sight_bonus))
+	# 嘲讽（30012）：减伤 p2%
+	var taunt_sd := _find_skill(target, 30012)
+	if not taunt_sd.is_empty():
+		var reduce: float = float(int(taunt_sd.get("p2", 0))) / 100.0
+		dmg = int(float(dmg) * (1.0 - reduce))
 	dmg = max(1, dmg)
 	var is_miss := false
 	# 闪避（30006）：被普攻时额外提升 p1% 闪避率
@@ -379,6 +392,27 @@ func _find_skill(unit: BattleUnit, skill_id: int) -> Dictionary:
 		if s is Dictionary and int(s.get("id", 0)) == skill_id:
 			return _get_skill_data(skill_id, int(s.get("level", 1)))
 	return {}
+
+func _weighted_target_pick(targets: Array) -> BattleUnit:
+	if targets.size() <= 1:
+		return targets[0] as BattleUnit
+	var weights: Array = []
+	var total: float = 0.0
+	for t in targets:
+		var unit := t as BattleUnit
+		var w: float = 10.0
+		var sd := _find_skill(unit, 30012)
+		if not sd.is_empty():
+			w += float(int(sd.get("p1", 0)))
+		weights.append(w)
+		total += w
+	var roll: float = randf() * total
+	var acc: float = 0.0
+	for i in weights.size():
+		acc += weights[i]
+		if roll <= acc:
+			return targets[i] as BattleUnit
+	return targets[targets.size() - 1] as BattleUnit
 
 # 迅捷（30008）：返回单位在排序时的有效出手速度（基础 + p1）
 func _effective_spd(unit: BattleUnit) -> int:
@@ -862,6 +896,8 @@ func _resolve_start_of_round() -> void:
 		var caster := u as BattleUnit
 		if caster == null or caster.is_dead:
 			continue
+		if not _find_skill(caster, 30012).is_empty():
+			_spawn_skill_label(caster, _skill_name(30012) + "!")
 		if _try_soul_drain_mark(caster):
 			await get_tree().create_timer(0.4).timeout
 		if _try_self_recovery(caster):
