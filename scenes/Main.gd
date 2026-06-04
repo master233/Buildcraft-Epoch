@@ -438,12 +438,8 @@ func _show_ad_panel() -> void:
 		return
 	if _ad_panel_layer and is_instance_valid(_ad_panel_layer):
 		return
-	var idx: int = randi() % _ad_texts.size()
-	if _ad_texts.size() > 1:
-		while idx == _ad_current_idx:
-			idx = randi() % _ad_texts.size()
-	_ad_current_idx = idx
-	_ad_current_text = _ad_texts[idx]
+	_ad_current_idx = (_ad_current_idx + 1) % _ad_texts.size()
+	_ad_current_text = _ad_texts[_ad_current_idx]
 	_ad_char_index = 0
 	_ad_timer = 0.0
 	_ad_playing = true
@@ -545,12 +541,8 @@ func _show_ad_next_btn() -> void:
 func _play_next_ad() -> void:
 	if _ad_texts.is_empty():
 		return
-	var idx: int = randi() % _ad_texts.size()
-	if _ad_texts.size() > 1:
-		while idx == _ad_current_idx:
-			idx = randi() % _ad_texts.size()
-	_ad_current_idx = idx
-	_ad_current_text = _ad_texts[idx]
+	_ad_current_idx = (_ad_current_idx + 1) % _ad_texts.size()
+	_ad_current_text = _ad_texts[_ad_current_idx]
 	_ad_char_index = 0
 	_ad_timer = 0.0
 	_ad_playing = true
@@ -5245,6 +5237,7 @@ func _save_game() -> void:
 	data["inventory"] = _inventory.duplicate(true)
 	data["role_equips"] = _role_equips.duplicate(true)
 	data["ad_boost_charges"] = _ad_boost_charges
+	data["ad_current_idx"] = _ad_current_idx
 	data["achievement_unlocked"] = _achievement_unlocked.duplicate()
 	data["total_gold_earned"] = _total_gold_earned
 	data["achievement_level"] = _achievement_level
@@ -5322,6 +5315,8 @@ func _load_game() -> void:
 		_tavern_free_refreshes = int(data["tavern_free_refreshes"])
 	if data.has("ad_boost_charges"):
 		_ad_boost_charges = int(data["ad_boost_charges"])
+	if data.has("ad_current_idx"):
+		_ad_current_idx = int(data["ad_current_idx"])
 	if data.has("inventory") and data["inventory"] is Array:
 		_inventory = []
 		for item in (data["inventory"] as Array):
@@ -6423,33 +6418,54 @@ func _show_achievement_panel() -> void:
 	cls.font_color = Color(1.0, 0.85, 0.3)
 	cur_lbl.label_settings = cls
 	panel.add_child(cur_lbl)
-	var exp_cur_lbl := Label.new()
-	var exp_text: String = "经验：%d / %d" % [_achievement_exp, next_exp] if next_exp > 0 else "经验：%d (已满级)" % _achievement_exp
-	exp_cur_lbl.text = exp_text
-	exp_cur_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-	exp_cur_lbl.size = Vector2(300, 22)
-	exp_cur_lbl.position = Vector2(60, 36)
+	var ach_exp_bar := ProgressBar.new()
+	ach_exp_bar.size = Vector2(300, 18)
+	ach_exp_bar.position = Vector2(60, 38)
+	ach_exp_bar.show_percentage = false
+	if next_exp > 0:
+		ach_exp_bar.max_value = next_exp
+		ach_exp_bar.value = _achievement_exp
+	else:
+		ach_exp_bar.max_value = 1
+		ach_exp_bar.value = 1
+	var bar_bg := StyleBoxFlat.new()
+	bar_bg.bg_color = Color(0.2, 0.18, 0.12)
+	bar_bg.set_corner_radius_all(4)
+	ach_exp_bar.add_theme_stylebox_override("background", bar_bg)
+	var bar_fill := StyleBoxFlat.new()
+	bar_fill.bg_color = Color(0.3, 0.85, 0.4)
+	bar_fill.set_corner_radius_all(4)
+	ach_exp_bar.add_theme_stylebox_override("fill", bar_fill)
+	panel.add_child(ach_exp_bar)
+	var exp_bar_lbl := Label.new()
+	exp_bar_lbl.text = "%d/%d" % [_achievement_exp, next_exp] if next_exp > 0 else "MAX"
+	exp_bar_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	exp_bar_lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	exp_bar_lbl.size = Vector2(300, 18)
+	exp_bar_lbl.position = Vector2(60, 38)
 	var ecls := LabelSettings.new()
 	ecls.font = font
 	ecls.font_size = 14
-	ecls.font_color = Color(0.3, 1.0, 0.45)
-	exp_cur_lbl.label_settings = ecls
-	panel.add_child(exp_cur_lbl)
+	ecls.font_color = Color(1.0, 1.0, 1.0)
+	exp_bar_lbl.label_settings = ecls
+	panel.add_child(exp_bar_lbl)
 	# 右侧：下一级奖励
 	var next_entry: Dictionary = _get_next_level_entry()
-	var info_lbl := Label.new()
+	var info_lbl := RichTextLabel.new()
+	info_lbl.bbcode_enabled = true
+	info_lbl.fit_content = true
+	info_lbl.scroll_active = false
 	if next_entry.is_empty():
 		info_lbl.text = ""
 	else:
-		info_lbl.text = "下一级：称号[%s] 奖励%d金币" % [String(next_entry["title"]), int(next_entry["gold_reward"])]
-	info_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		var t_name := String(next_entry["title"])
+		var t_gold := int(next_entry["gold_reward"])
+		info_lbl.text = "[right]下一级：称号[color=#44dd55]%s[/color] 奖励[color=#44dd55]%d[/color]金币[/right]" % [t_name, t_gold]
 	info_lbl.size = Vector2(500, 30)
 	info_lbl.position = Vector2(430, 25)
-	var ils := LabelSettings.new()
-	ils.font = font
-	ils.font_size = 16
-	ils.font_color = Color(0.9, 0.75, 0.4)
-	info_lbl.label_settings = ils
+	info_lbl.add_theme_font_override("normal_font", font)
+	info_lbl.add_theme_font_size_override("normal_font_size", 16)
+	info_lbl.add_theme_color_override("default_color", Color(0.9, 0.75, 0.4))
 	panel.add_child(info_lbl)
 	# 三列
 	var categories := ["tower", "gold", "star"]
@@ -6568,7 +6584,7 @@ func _spawn_title_label() -> void:
 	var ls := LabelSettings.new()
 	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	ls.font_size = 14
-	ls.font_color = Color(1.0, 0.85, 0.3)
+	ls.font_color = Color(1.0, 0.43, 0.71)
 	ls.outline_size = 3
 	ls.outline_color = Color(0.0, 0.0, 0.0, 0.9)
 	_title_lbl.label_settings = ls
