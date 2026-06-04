@@ -1,0 +1,48 @@
+[gd_scene format=3 uid="uid://dqy2m8kxw5t1r"]
+
+[ext_resource type="Texture2D" uid="uid://dr8msktghlvxo" path="res://asserts/image/ui/equipment/equip_choose.png" id="1"]
+[ext_resource type="Texture2D" uid="uid://cos5jlt04al0p" path="res://asserts/image/ui/ui_close.png" id="2"]
+
+[node name="EquipChoosePanel" type="Control" unique_id=642417553]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="DimBg" type="ColorRect" parent="." unique_id=670435662]
+layout_mode = 0
+offset_right = 1280.0
+offset_bottom = 720.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="BgRect" type="TextureRect" parent="." unique_id=845222299]
+layout_mode = 0
+offset_left = 350.0
+offset_top = 200.0
+offset_right = 930.0
+offset_bottom = 520.0
+mouse_filter = 2
+texture = ExtResource("1")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="CloseBtn" type="TextureButton" parent="." unique_id=1411929851]
+layout_mode = 0
+offset_left = 890.0
+offset_top = 199.0
+offset_right = 930.0
+offset_bottom = 239.0
+texture_normal = ExtResource("2")
+ignore_texture_size = true
+stretch_mode = 4
+
+[node name="GridContainer" type="Control" parent="." unique_id=909822058]
+anchors_preset = 0
+offset_left = 409.0
+offset_top = 254.0
+offset_right = 871.0
+offset_bottom = 476.0
+mouse_filter = 2

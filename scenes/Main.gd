@@ -3734,138 +3734,85 @@ func _show_equip_bag_select(rid: String, slot_key: String, slot_idx: int) -> voi
 	var canvas_layer := CanvasLayer.new()
 	canvas_layer.layer = 30
 	add_child(canvas_layer)
-	var panel: Control = load("res://scenes/EquipBagPanel.tscn").instantiate()
+	var panel: Control = load("res://scenes/EquipChoosePanel.tscn").instantiate()
 	canvas_layer.add_child(panel)
 	var close_btn: TextureButton = panel.get_node("CloseBtn")
 	close_btn.pressed.connect(func():
 		canvas_layer.queue_free()
 	)
 	var grid_node: Control = panel.get_node("GridContainer")
-	var tab_highlight: Panel = panel.get_node("TabHighlight")
-	var hl_style := StyleBoxFlat.new()
-	hl_style.bg_color = Color(1.0, 0.85, 0.4, 0.2)
-	hl_style.set_corner_radius_all(4)
-	hl_style.border_width_top = 2
-	hl_style.border_width_bottom = 2
-	hl_style.border_width_left = 2
-	hl_style.border_width_right = 2
-	hl_style.border_color = Color(1.0, 0.75, 0.2, 0.9)
-	tab_highlight.add_theme_stylebox_override("panel", hl_style)
-	var tab_slots := ["weapon", "helmet", "chest", "pants", "boots", "gloves", "necklace", "ring"]
-	var tab_names := ["TabWeapon", "TabHelmet", "TabChest", "TabPants", "TabBoots", "TabGloves", "TabNecklace", "TabRing"]
 	var grid_cols := 8
 	var slot_size := 50.0
 	var slot_gap := (grid_node.size.x - slot_size * grid_cols) / maxf(grid_cols - 1, 1)
-	# 右上角数量标签
-	var count_lbl := Label.new()
-	count_lbl.size = Vector2(120.0, 24.0)
-	count_lbl.position = Vector2(grid_node.position.x + grid_node.size.x - 120, grid_node.position.y - 26)
-	count_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	var cls := LabelSettings.new()
-	cls.font = font
-	cls.font_size = 14
-	cls.font_color = Color(0.2, 0.9, 0.3)
-	cls.outline_size = 2
-	cls.outline_color = Color(0, 0, 0, 0.8)
-	count_lbl.label_settings = cls
-	panel.add_child(count_lbl)
-	# 刷新网格
-	var _refresh_grid := func(filter: String) -> void:
-		var count: int = 0
-		for it in _inventory:
-			if String(it.get("slot", "")) == filter:
-				count += 1
-		count_lbl.text = "%d / 32" % count
-		for c in grid_node.get_children():
-			c.queue_free()
-		var filtered: Array = []
-		for item in _inventory:
-			if String(item.get("slot", "")) == filter:
-				filtered.append(item)
-		if not filtered.is_empty():
-			for i in filtered.size():
-				var item2: Dictionary = filtered[i]
-				var col: int = i % grid_cols
-				var row: int = i / grid_cols
-				var sx: float = col * (slot_size + slot_gap)
-				var sy: float = row * (slot_size + slot_gap)
-				var icon_path: String = String(item2.get("icon", ""))
-				if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
-					var icon := TextureRect.new()
-					icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-					icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-					icon.custom_minimum_size = Vector2(slot_size, slot_size)
-					icon.size = Vector2(slot_size, slot_size)
-					icon.position = Vector2(sx, sy)
-					icon.texture = load(icon_path)
-					icon.mouse_filter = Control.MOUSE_FILTER_STOP
-					icon.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-					var captured_item := item2
-					icon.gui_input.connect(func(ev: InputEvent) -> void:
-						if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT and ev.pressed:
-							_show_equip_confirm(captured_item, rid, slot_key, slot_idx, canvas_layer)
-					)
-					grid_node.add_child(icon)
-				var lv_lbl := Label.new()
-				lv_lbl.text = "Lv.%d" % int(item2.get("level", 10))
-				lv_lbl.size = Vector2(34, 16.0)
-				lv_lbl.position = Vector2(sx + 1, sy)
-				lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
-				var lv_ls := LabelSettings.new()
-				lv_ls.font = font
-				lv_ls.font_size = 12
-				lv_ls.font_color = Color(0.2, 0.9, 0.3)
-				lv_ls.outline_size = 2
-				lv_ls.outline_color = Color(0, 0, 0, 0.9)
-				lv_lbl.label_settings = lv_ls
-				grid_node.add_child(lv_lbl)
-				var name_lbl := Label.new()
-				name_lbl.text = String(item2.get("name", ""))
-				name_lbl.size = Vector2(slot_size, 16.0)
-				name_lbl.position = Vector2(sx, sy + slot_size - 15.0)
-				name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-				name_lbl.clip_text = true
-				var name_ls := LabelSettings.new()
-				name_ls.font = font
-				name_ls.font_size = 12
-				name_ls.font_color = Color(0.2, 0.9, 0.3)
-				name_ls.outline_size = 2
-				name_ls.outline_color = Color(0, 0, 0, 0.9)
-				name_lbl.label_settings = name_ls
-				grid_node.add_child(name_lbl)
-				if _is_item_equipped(item2):
-					var worn_lbl := Label.new()
-					worn_lbl.text = "穿"
-					worn_lbl.size = Vector2(20, 16.0)
-					worn_lbl.position = Vector2(sx + slot_size - 20, sy)
-					worn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-					var worn_ls := LabelSettings.new()
-					worn_ls.font = font
-					worn_ls.font_size = 12
-					worn_ls.font_color = Color(0.2, 0.9, 0.3)
-					worn_ls.outline_size = 2
-					worn_ls.outline_color = Color(0, 0, 0, 0.9)
-					worn_lbl.label_settings = worn_ls
-					grid_node.add_child(worn_lbl)
-	# 页签按钮 - 点击提示"正在选装中"
-	for ti in tab_slots.size():
-		var tab_btn: Button = panel.get_node(tab_names[ti])
-		tab_btn.pressed.connect(func() -> void:
-			_show_toast("正在选装中")
-		)
-	# 一键售出按钮 - 点击提示"正在选装中"
-	var sell_btn: Button = panel.get_node("SellBtn")
-	sell_btn.mouse_filter = Control.MOUSE_FILTER_STOP
-	sell_btn.pressed.connect(func() -> void:
-		_show_toast("正在选装中")
-	)
-	# 定位高亮到对应页签
-	var tab_idx: int = tab_slots.find(slot_key)
-	if tab_idx >= 0:
-		var target_btn: Button = panel.get_node(tab_names[tab_idx])
-		tab_highlight.position = target_btn.position
-		tab_highlight.size = target_btn.size
-	_refresh_grid.call(slot_key)
+	# 过滤该槽位类型的装备并显示
+	var filtered: Array = []
+	for item in _inventory:
+		if String(item.get("slot", "")) == slot_key:
+			filtered.append(item)
+	for i in filtered.size():
+		var item2: Dictionary = filtered[i]
+		var col: int = i % grid_cols
+		var row: int = i / grid_cols
+		var sx: float = col * (slot_size + slot_gap)
+		var sy: float = row * (slot_size + slot_gap)
+		var icon_path: String = String(item2.get("icon", ""))
+		if not icon_path.is_empty() and ResourceLoader.exists(icon_path):
+			var icon := TextureRect.new()
+			icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			icon.custom_minimum_size = Vector2(slot_size, slot_size)
+			icon.size = Vector2(slot_size, slot_size)
+			icon.position = Vector2(sx, sy)
+			icon.texture = load(icon_path)
+			icon.mouse_filter = Control.MOUSE_FILTER_STOP
+			icon.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+			var captured_item := item2
+			icon.gui_input.connect(func(ev: InputEvent) -> void:
+				if ev is InputEventMouseButton and ev.button_index == MOUSE_BUTTON_LEFT and ev.pressed:
+					_show_equip_confirm(captured_item, rid, slot_key, slot_idx, canvas_layer)
+			)
+			grid_node.add_child(icon)
+		var lv_lbl := Label.new()
+		lv_lbl.text = "Lv.%d" % int(item2.get("level", 10))
+		lv_lbl.size = Vector2(34, 16.0)
+		lv_lbl.position = Vector2(sx + 1, sy)
+		lv_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+		var lv_ls := LabelSettings.new()
+		lv_ls.font = font
+		lv_ls.font_size = 12
+		lv_ls.font_color = Color(0.2, 0.9, 0.3)
+		lv_ls.outline_size = 2
+		lv_ls.outline_color = Color(0, 0, 0, 0.9)
+		lv_lbl.label_settings = lv_ls
+		grid_node.add_child(lv_lbl)
+		var name_lbl := Label.new()
+		name_lbl.text = String(item2.get("name", ""))
+		name_lbl.size = Vector2(slot_size, 16.0)
+		name_lbl.position = Vector2(sx, sy + slot_size - 15.0)
+		name_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		name_lbl.clip_text = true
+		var name_ls := LabelSettings.new()
+		name_ls.font = font
+		name_ls.font_size = 12
+		name_ls.font_color = Color(0.2, 0.9, 0.3)
+		name_ls.outline_size = 2
+		name_ls.outline_color = Color(0, 0, 0, 0.9)
+		name_lbl.label_settings = name_ls
+		grid_node.add_child(name_lbl)
+		if _is_item_equipped(item2):
+			var worn_lbl := Label.new()
+			worn_lbl.text = "穿"
+			worn_lbl.size = Vector2(20, 16.0)
+			worn_lbl.position = Vector2(sx + slot_size - 20, sy)
+			worn_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			var worn_ls := LabelSettings.new()
+			worn_ls.font = font
+			worn_ls.font_size = 12
+			worn_ls.font_color = Color(0.2, 0.9, 0.3)
+			worn_ls.outline_size = 2
+			worn_ls.outline_color = Color(0, 0, 0, 0.9)
+			worn_lbl.label_settings = worn_ls
+			grid_node.add_child(worn_lbl)
 
 func _show_equip_confirm(item: Dictionary, rid: String, slot_key: String, slot_idx: int, bag_layer: CanvasLayer) -> void:
 	var vp := get_viewport_rect().size
