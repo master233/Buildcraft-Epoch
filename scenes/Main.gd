@@ -3705,8 +3705,11 @@ func _show_equipped_item_info(item: Dictionary, rid: String, slot_key: String) -
 	unequip_btn.add_theme_font_override("font", font)
 	unequip_btn.add_theme_font_size_override("font_size", 18)
 	unequip_btn.pressed.connect(func() -> void:
+		var old_stats: Dictionary = _hero_calc_attrs(rid)
 		if _role_equips.has(rid) and (_role_equips[rid] as Dictionary).has(slot_key):
 			(_role_equips[rid] as Dictionary).erase(slot_key)
+		var new_stats: Dictionary = _hero_calc_attrs(rid)
+		_show_stat_change_float(old_stats, new_stats)
 		_play_equip_sfx()
 		_save_game()
 		canvas_layer.queue_free()
@@ -3968,16 +3971,61 @@ func _show_equip_confirm(item: Dictionary, rid: String, slot_key: String, slot_i
 func _equip_item_to_role(rid: String, slot_key: String, slot_idx: int, item: Dictionary) -> void:
 	if not _role_equips.has(rid):
 		_role_equips[rid] = {}
+	var old_stats: Dictionary = _hero_calc_attrs(rid)
 	var old_suit_stage: int = _get_suit_active_stages(rid)
 	var idx: int = _inventory.find(item)
 	if idx >= 0:
 		(_role_equips[rid] as Dictionary)[slot_key] = idx
 	var new_suit_stage: int = _get_suit_active_stages(rid)
+	var new_stats: Dictionary = _hero_calc_attrs(rid)
+	_show_stat_change_float(old_stats, new_stats)
 	_play_equip_sfx()
 	if new_suit_stage > old_suit_stage:
 		_play_skill_up_sfx()
 	_save_game()
 	_show_hero_detail(rid)
+
+func _show_stat_change_float(old_stats: Dictionary, new_stats: Dictionary) -> void:
+	var attr_names := {"hp": "生命", "atk": "攻击", "def": "防御", "spd": "速度"}
+	var lines: Array = []
+	for key in attr_names.keys():
+		var diff: int = int(new_stats.get(key, 0)) - int(old_stats.get(key, 0))
+		if diff != 0:
+			lines.append({"name": attr_names[key], "diff": diff})
+	if lines.is_empty():
+		return
+	var vp := get_viewport_rect().size
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var float_layer := CanvasLayer.new()
+	float_layer.layer = 60
+	add_child(float_layer)
+	var container := VBoxContainer.new()
+	container.alignment = BoxContainer.ALIGNMENT_CENTER
+	container.add_theme_constant_override("separation", 4)
+	var total_h: float = lines.size() * 30.0
+	container.position = Vector2((vp.x - 200) * 0.5, (vp.y - total_h) * 0.5)
+	container.size = Vector2(200, total_h)
+	float_layer.add_child(container)
+	for entry in lines:
+		var lbl := Label.new()
+		var diff: int = entry["diff"]
+		if diff > 0:
+			lbl.text = "%s +%d" % [entry["name"], diff]
+		else:
+			lbl.text = "%s %d" % [entry["name"], diff]
+		lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var ls := LabelSettings.new()
+		ls.font = font
+		ls.font_size = 22
+		ls.font_color = Color(0.18, 0.85, 0.25) if diff > 0 else Color(0.95, 0.2, 0.15)
+		ls.outline_size = 3
+		ls.outline_color = Color(0, 0, 0, 0.9)
+		lbl.label_settings = ls
+		container.add_child(lbl)
+	var tween := create_tween()
+	tween.tween_property(container, "position:y", container.position.y - 40, 2.0).set_ease(Tween.EASE_OUT)
+	tween.parallel().tween_property(container, "modulate:a", 0.0, 0.6).set_delay(1.4)
+	tween.tween_callback(float_layer.queue_free)
 
 func _show_toast(msg: String) -> void:
 	var vp := get_viewport_rect().size
