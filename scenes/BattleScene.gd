@@ -11,6 +11,7 @@ const SKILL_TABLE_PATH      := "res://asserts/table/skill.txt"
 const SKILL_UPGRADE_COST_PATH := "res://asserts/table/skill_upgrade_cost.txt"
 const FORMATION_BONUS_PATH   := "res://asserts/table/formation_bonus.txt"
 const EQUIPMENT_TABLE_PATH   := "res://asserts/table/equipment.txt"
+const MONSTER_TAUNTS_PATH    := "res://asserts/table/monster_taunts.txt"
 const DEFAULT_SKILLS: Array = []
 const GRID_ROWS := 7
 const GRID_COLS := 12
@@ -48,6 +49,7 @@ var _round_label: Label = null
 var _speed_btn_label: Label = null
 var _battle_speed: int = 1
 var _acting: bool = false       # 正在演出某单位行动序列
+var _taunt_texts: Array = []    # 怪物嘲讽台词
 
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -82,6 +84,7 @@ func _build_ui() -> void:
 		battle_bgm.volume_db = -3.0
 		battle_bgm.autoplay = true
 		add_child(battle_bgm)
+		_load_taunt_texts()
 		_place_battle_roles(vp)
 		_place_enemy_roles(vp)
 		var ui := CanvasLayer.new()
@@ -717,6 +720,9 @@ func _start_new_round() -> void:
 		_round_label.text = "第 %d 回合" % _round_number
 	# 回合切换 banner：放大淡出，期间整场停顿
 	await _show_round_banner(_round_number)
+	# 奇数回合（1,3,5...）随机一只怪物嘲讽
+	if _round_number % 2 == 1 and not _taunt_texts.is_empty():
+		_show_enemy_taunt()
 	# 回合开始结算：自愈、灵魂汲取等
 	await _resolve_start_of_round()
 
@@ -961,8 +967,8 @@ func _attach_drain_marker(target: BattleUnit) -> void:
 	lbl.text = "汲取"
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	lbl.size = Vector2(120, 32)
-	lbl.position = Vector2(-120, -95)
+	lbl.size = Vector2(60, 32)
+	lbl.position = Vector2(-60, -95)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lbl.z_index = 90
 	var ls := LabelSettings.new()
@@ -1064,7 +1070,7 @@ func _attach_stun_marker(target: BattleUnit) -> void:
 	lbl.text = "晕眩"
 	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl.vertical_alignment   = VERTICAL_ALIGNMENT_CENTER
-	lbl.size = Vector2(120, 32)
+	lbl.size = Vector2(60, 32)
 	lbl.position = Vector2(0, -95)
 	lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	lbl.z_index = 90
@@ -1092,14 +1098,16 @@ func _relayout_status_labels(target: BattleUnit) -> void:
 	if is_instance_valid(target.stun_label):
 		labels.append(target.stun_label)
 	var y: float = -95.0
+	var gap: float = 4.0
 	if labels.size() == 1:
 		var lbl: Label = labels[0]
 		lbl.position = Vector2(-lbl.size.x * 0.5, y)
 	elif labels.size() >= 2:
 		var left: Label = labels[0]
 		var right: Label = labels[1]
-		left.position  = Vector2(-left.size.x, y)
-		right.position = Vector2(0, y)
+		var total_w: float = left.size.x + gap + right.size.x
+		left.position  = Vector2(-total_w * 0.5, y)
+		right.position = Vector2(-total_w * 0.5 + left.size.x + gap, y)
 
 
 # 结算面板经验条增长动画
@@ -2997,6 +3005,79 @@ class RoleStatusBar extends Node2D:
 					draw_string(font, txt_pos + Vector2(dx, dy), txt,
 						HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0, 0, 0, 0.9))
 		draw_string(font, txt_pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(1, 1, 1, 1))
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 战斗中怪物嘲讽
+# ─────────────────────────────────────────────────────────────────────────────
+
+func _load_taunt_texts() -> void:
+	if not FileAccess.file_exists(MONSTER_TAUNTS_PATH):
+		return
+	var file := FileAccess.open(MONSTER_TAUNTS_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var text := file.get_as_text()
+	file.close()
+	var lines := text.split("\n", false)
+	for i in range(1, lines.size()):
+		var line: String = lines[i].strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		_taunt_texts.append(line)
+
+func _show_enemy_taunt() -> void:
+	var enemies: Array = []
+	for u in _battle_units:
+		var unit := u as BattleUnit
+		if unit != null and not unit.is_dead and unit.is_enemy:
+			enemies.append(unit)
+	if enemies.is_empty():
+		return
+	var unit: BattleUnit = enemies[randi() % enemies.size()]
+	var content: String = _taunt_texts[randi() % _taunt_texts.size()]
+	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	var font_size := 18
+	var pad := Vector2(12, 8)
+	var text_size := font.get_string_size(content, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	var panel_w: float = text_size.x + pad.x * 2.0
+	var panel_h: float = text_size.y + pad.y * 2.0
+	var panel := Panel.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.18, 0.12, 0.22, 0.92)
+	style.set_corner_radius_all(8)
+	style.border_width_left = 2
+	style.border_width_right = 2
+	style.border_width_top = 2
+	style.border_width_bottom = 2
+	style.border_color = Color(0.6, 0.2, 0.2, 1.0)
+	style.shadow_color = Color(0.0, 0.0, 0.0, 0.4)
+	style.shadow_size = 4
+	style.shadow_offset = Vector2(0, 2)
+	panel.add_theme_stylebox_override("panel", style)
+	panel.size = Vector2(panel_w, panel_h)
+	panel.position = unit.root.position + Vector2(-panel_w * 0.5, -130)
+	var lbl := Label.new()
+	lbl.text = content
+	lbl.position = pad
+	lbl.size = Vector2(text_size.x, text_size.y)
+	lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lbl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	var ls := LabelSettings.new()
+	ls.font = font
+	ls.font_size = font_size
+	ls.font_color = Color(1.0, 0.25, 0.2)
+	lbl.label_settings = ls
+	panel.add_child(lbl)
+	panel.modulate.a = 0.0
+	panel.z_index = 120
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(panel)
+	var tw := create_tween()
+	tw.tween_property(panel, "modulate:a", 1.0, 0.15)
+	tw.tween_interval(1.8)
+	tw.tween_property(panel, "modulate:a", 0.0, 0.15)
+	tw.tween_callback(panel.queue_free)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 战斗单位数据
