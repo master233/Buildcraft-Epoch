@@ -1054,7 +1054,7 @@ func _clear_team_nodes() -> void:
 
 func _has_popup_layer() -> bool:
 	for child in get_children():
-		if child is CanvasLayer and child.layer >= 20:
+		if child is CanvasLayer and child.layer >= 20 and not child.get_meta("passthrough", false):
 			return true
 	return false
 
@@ -3950,8 +3950,10 @@ func _show_stat_change_float(old_stats: Dictionary, new_stats: Dictionary) -> vo
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var float_layer := CanvasLayer.new()
 	float_layer.layer = 60
+	float_layer.set_meta("passthrough", true)
 	add_child(float_layer)
 	var container := VBoxContainer.new()
+	container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	container.alignment = BoxContainer.ALIGNMENT_CENTER
 	container.add_theme_constant_override("separation", 4)
 	var total_h: float = lines.size() * 30.0
@@ -3960,6 +3962,7 @@ func _show_stat_change_float(old_stats: Dictionary, new_stats: Dictionary) -> vo
 	float_layer.add_child(container)
 	for entry in lines:
 		var lbl := Label.new()
+		lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		var diff: int = entry["diff"]
 		if diff > 0:
 			lbl.text = "%s +%d" % [entry["name"], diff]
@@ -4021,6 +4024,7 @@ func _show_toast(msg: String) -> void:
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var toast_layer := CanvasLayer.new()
 	toast_layer.layer = 50
+	toast_layer.set_meta("passthrough", true)
 	add_child(toast_layer)
 	var lbl := Label.new()
 	lbl.text = msg
@@ -6193,6 +6197,7 @@ func _show_level_up_toast(entry: Dictionary) -> void:
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var layer := CanvasLayer.new()
 	layer.layer = 61
+	layer.set_meta("passthrough", true)
 	add_child(layer)
 	var panel := Panel.new()
 	var style := StyleBoxFlat.new()
@@ -6273,6 +6278,7 @@ func _show_achievement_toast(ach: Dictionary) -> void:
 	var font: Font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 	var layer := CanvasLayer.new()
 	layer.layer = 60
+	layer.set_meta("passthrough", true)
 	add_child(layer)
 	var panel := Panel.new()
 	var style := StyleBoxFlat.new()
