@@ -115,8 +115,8 @@ const BUILDINGS := {
 }
 
 var _wood: int = 200
-var _ore: int = 100
-var _gold: int = 0
+var _ore: int = 200
+var _gold: int = 200
 var _ad_boost_charges: int = 0
 var _cleared_level: int = 0
 var _level_ids: Array = []
@@ -246,6 +246,22 @@ var _chat_keyword_queue: Array = []  # 当前正在播放的关键字回复队�
 var _chat_keyword_index: int = 0
 var _chat_keyword_playing: bool = false
 
+# ─── 新手引导 ───
+const TUTORIAL_TABLE_PATH := "res://asserts/table/tutorial.txt"
+var _tutorial_guides: Array = []        # [{id, condition, steps: [{step_id, type, text, target}]}]
+var _completed_guides: Array = []       # 已完成的引导id列表
+var _current_guide_idx: int = -1        # 当前正在执行的引导段在 _tutorial_guides 中的索引
+var _current_step_idx: int = 0          # 当前段内步骤索引
+var _tutorial_layer: CanvasLayer = null
+var _tutorial_mask: ColorRect = null
+var _tutorial_char: TextureRect = null
+var _tutorial_bubble: Panel = null
+var _tutorial_label: Label = null
+var _tutorial_highlight_center: Vector2 = Vector2.ZERO
+var _tutorial_highlight_radius: float = 80.0
+const TUTORIAL_TICK_INTERVAL := 1.0
+var _tutorial_tick_timer: float = 0.0
+
 func _ready() -> void:
 	bgm.stream = load("res://asserts/audio/bg1.ogg")
 	bgm.volume_db = 0.0
@@ -338,6 +354,10 @@ func _setup() -> void:
 		GlobalConfig.clear_runtime()
 		_refresh_formation_btn()
 		_save_game()
+
+	# 新手引导
+	_load_tutorial_table()
+	_check_tutorial_condition()
 
 func _spawn_gm_button() -> void:
 	var ui := $UI
@@ -1008,8 +1028,8 @@ func _reset_game() -> void:
 	if FileAccess.file_exists(SAVE_PATH):
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 	_wood = 200
-	_ore = 100
-	_gold = 0
+	_ore = 200
+	_gold = 200
 	_cleared_level = 0
 	_chat_index = 0
 	_ad_boost_charges = 0
@@ -1031,6 +1051,10 @@ func _reset_game() -> void:
 	_role_equips.clear()
 	_resolve_team_from_owned()
 	_place_expedition_team()
+	_dismiss_tutorial_ui()
+	_completed_guides = []
+	_current_guide_idx = -1
+	_current_step_idx = 0
 	_refresh_hud()
 	_refresh_store_new_badge()
 	_set_panel_visible(false)
@@ -1053,6 +1077,9 @@ func _has_popup_layer() -> bool:
 func _input(event: InputEvent) -> void:
 	if not bgm.playing:
 		bgm.play()
+	if _tutorial_layer and is_instance_valid(_tutorial_layer) and _tutorial_layer.visible:
+		_handle_tutorial_input(event)
+		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
 			if _has_popup_layer():
@@ -1090,6 +1117,10 @@ func _process(delta: float) -> void:
 		_taunt_timer = 0.0
 		_tick_taunt()
 	_tick_chat(delta)
+	_tutorial_tick_timer += delta
+	if _tutorial_tick_timer >= TUTORIAL_TICK_INTERVAL:
+		_tutorial_tick_timer = 0.0
+		_check_tutorial_condition()
 	_tick_tavern_auto_refresh(delta)
 	_tick_ad(delta)
 	if _ad_style != null:
@@ -2819,7 +2850,7 @@ func _show_skill_tip(sid: int, slv: int, slot_idx: int = -1) -> void:
 	upgrade_btn.add_theme_font_override("font", font)
 	upgrade_btn.add_theme_font_size_override("font_size", 18)
 	upgrade_btn.disabled = max_lv or _gold < upgrade_cost
-	_style_btn(upgrade_btn, Color(0.2, 0.5, 0.3))
+	_style_tower_btn(upgrade_btn, Color(0.55, 0.42, 0.06), Color(0.90, 0.70, 0.15), Color(1.0, 0.95, 0.55))
 	panel.add_child(upgrade_btn)
 
 	var captured_sid: int = sid
@@ -4820,6 +4851,7 @@ func _handle_click(pos: Vector2) -> void:
 			_reposition_panel(key)
 			_load_function_panel(key)
 			_set_panel_visible(true)
+			_check_tutorial_condition()
 			return
 func _switch_role_action(idx: int) -> void:
 	if idx < 0 or idx >= _team_slots.size():
@@ -4939,6 +4971,7 @@ func _on_upgrade_pressed() -> void:
 	_refresh_hud()
 	_refresh_panel()
 	_save_game()
+	_check_tutorial_condition()
 
 func upgrade_building(key: String) -> void:
 	if not _building_nodes.has(key):
@@ -5242,6 +5275,7 @@ func _save_game() -> void:
 	data["total_gold_earned"] = _total_gold_earned
 	data["achievement_level"] = _achievement_level
 	data["achievement_title"] = _achievement_title
+	data["completed_guides"] = _completed_guides
 	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
 	if file == null:
 		return
@@ -5336,6 +5370,20 @@ func _load_game() -> void:
 		_achievement_level = int(data["achievement_level"])
 	if data.has("achievement_title"):
 		_achievement_title = String(data["achievement_title"])
+	if data.has("completed_guides") and data["completed_guides"] is Array:
+		_completed_guides = []
+		for v in (data["completed_guides"] as Array):
+			_completed_guides.append(int(v))
+	elif data.has("completed_guide_id"):
+		var old_id: int = int(data["completed_guide_id"])
+		_completed_guides = []
+		for i in range(1, old_id + 1):
+			_completed_guides.append(i)
+	if data.has("formation_guides_done") and data["formation_guides_done"] is Array:
+		for v in (data["formation_guides_done"] as Array):
+			var gid: int = int(v)
+			if gid not in _completed_guides:
+				_completed_guides.append(gid)
 	_achievement_exp = _get_achievement_exp()
 	_refresh_store_new_badge()
 	# 读档后用 formation_id 查名字并刷新按钮
@@ -6597,3 +6645,412 @@ func _refresh_title_label() -> void:
 		_title_lbl.text = "乐元素实习生"
 	else:
 		_title_lbl.text = _achievement_title
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# 新手引导系统
+# ═══════════════════════════════════════════════════════════════════════════════
+
+func _load_tutorial_table() -> void:
+	_tutorial_guides.clear()
+	var text := _read_table_text(TUTORIAL_TABLE_PATH)
+	if text.is_empty():
+		return
+	var lines := text.split("\n", false)
+	var header_done := false
+	var guide_map := {}
+	for line in lines:
+		if line.begins_with("#"):
+			continue
+		if not header_done:
+			header_done = true
+			continue
+		var cols := line.split("\t")
+		if cols.size() < 5:
+			continue
+		var gid: int = int(cols[0])
+		var condition: String = cols[1].strip_edges()
+		var step_id: int = int(cols[2])
+		var stype: String = cols[3].strip_edges()
+		var stext: String = cols[4].strip_edges()
+		var starget: String = cols[5].strip_edges() if cols.size() > 5 else ""
+		if not guide_map.has(gid):
+			guide_map[gid] = {"id": gid, "condition": condition, "steps": []}
+		guide_map[gid]["steps"].append({"step_id": step_id, "type": stype, "text": stext, "target": starget})
+	var ids: Array = guide_map.keys()
+	ids.sort()
+	for gid in ids:
+		_tutorial_guides.append(guide_map[gid])
+
+func _check_tutorial_condition() -> void:
+	if _tutorial_guides.is_empty():
+		return
+	if _tutorial_layer and is_instance_valid(_tutorial_layer) and _tutorial_layer.visible:
+		return
+	for g in _tutorial_guides:
+		if int(g["id"]) in _completed_guides:
+			continue
+		if _evaluate_tutorial_condition(g["condition"]):
+			_current_guide_idx = _tutorial_guides.find(g)
+			_current_step_idx = 0
+			_show_tutorial_ui()
+			return
+
+func _evaluate_tutorial_condition(condition: String) -> bool:
+	if condition == "none" or condition.is_empty():
+		return true
+	var sub_conditions := condition.split(",")
+	for sub in sub_conditions:
+		if not _evaluate_single_condition(sub.strip_edges()):
+			return false
+	return true
+
+func _evaluate_single_condition(condition: String) -> bool:
+	if condition == "nopanel":
+		return not _panel_visible
+	var parts := condition.split(":")
+	if parts.size() < 2:
+		return true
+	match parts[0]:
+		"building":
+			if parts.size() >= 3:
+				var key: String = parts[1]
+				var required_lv: int = int(parts[2])
+				var current_lv: int = _building_nodes.get(key, {}).get("level", 1)
+				return current_lv >= required_lv
+		"resource":
+			if parts.size() >= 3:
+				var res_type: String = parts[1]
+				var required: int = int(parts[2])
+				match res_type:
+					"wood":
+						return _wood >= required
+					"ore":
+						return _ore >= required
+					"gold":
+						return _gold >= required
+		"cleared":
+			if parts.size() >= 2:
+				var required_level: int = int(parts[1])
+				return _cleared_level >= required_level
+		"panel":
+			return _panel_visible and _panel_key == parts[1]
+		"guide":
+			return int(parts[1]) in _completed_guides
+		"scene":
+			return false
+	return true
+
+func _show_tutorial_ui() -> void:
+	if _tutorial_layer and is_instance_valid(_tutorial_layer):
+		_tutorial_layer.visible = true
+		_show_tutorial_step()
+		return
+	_build_tutorial_ui()
+	_show_tutorial_step()
+	_save_game()
+
+func _build_tutorial_ui() -> void:
+	_tutorial_layer = CanvasLayer.new()
+	_tutorial_layer.layer = 100
+	add_child(_tutorial_layer)
+
+	# 遮罩 (shader 实现圆形挖洞)
+	_tutorial_mask = ColorRect.new()
+	_tutorial_mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tutorial_mask.anchors_preset = Control.PRESET_FULL_RECT
+	_tutorial_mask.size = Vector2(1280, 720)
+	var shader := Shader.new()
+	shader.code = """
+shader_type canvas_item;
+uniform vec2 hole_center = vec2(640.0, 375.0);
+uniform vec2 hole_size = vec2(160.0, 80.0);
+uniform float hole_radius = 12.0;
+uniform float edge_soft = 8.0;
+void fragment() {
+	vec2 pixel = UV * vec2(1280.0, 720.0);
+	vec2 d = abs(pixel - hole_center) - hole_size * 0.5 + vec2(hole_radius);
+	float dist = length(max(d, vec2(0.0))) + min(max(d.x, d.y), 0.0) - hole_radius;
+	float alpha_val = smoothstep(-edge_soft, edge_soft, dist);
+	COLOR = vec4(0.0, 0.0, 0.0, alpha_val * 0.6);
+}
+"""
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	_tutorial_mask.material = mat
+	_tutorial_layer.add_child(_tutorial_mask)
+
+
+	# 引导角色立绘（左下角）
+	_tutorial_char = TextureRect.new()
+	_tutorial_char.texture = load("res://asserts/image/ui/guide.png")
+	_tutorial_char.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_tutorial_char.custom_minimum_size = Vector2(200, 320)
+	_tutorial_char.size = Vector2(200, 320)
+	_tutorial_char.position = Vector2(350, 100)
+	_tutorial_char.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tutorial_layer.add_child(_tutorial_char)
+
+	# 对话气泡
+	_tutorial_bubble = Panel.new()
+	_tutorial_bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var bubble_style := StyleBoxFlat.new()
+	bubble_style.bg_color = Color(1.0, 0.98, 0.92, 0.95)
+	bubble_style.set_corner_radius_all(12)
+	bubble_style.border_color = Color(0.55, 0.35, 0.15)
+	bubble_style.set_border_width_all(3)
+	bubble_style.content_margin_left = 14
+	bubble_style.content_margin_right = 14
+	bubble_style.content_margin_top = 10
+	bubble_style.content_margin_bottom = 10
+	_tutorial_bubble.add_theme_stylebox_override("panel", bubble_style)
+	_tutorial_bubble.position = Vector2(500, 240)
+	_tutorial_bubble.size = Vector2(360, 70)
+	_tutorial_layer.add_child(_tutorial_bubble)
+
+	# 对话文本
+	_tutorial_label = Label.new()
+	_tutorial_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_tutorial_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_tutorial_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tutorial_label.position = Vector2(14, 8)
+	_tutorial_label.size = Vector2(332, 54)
+	var font := load("res://asserts/fonts/ZCOOLKuaiLe.ttf") as Font
+	if font:
+		_tutorial_label.add_theme_font_override("font", font)
+	_tutorial_label.add_theme_font_size_override("font_size", 18)
+	_tutorial_label.add_theme_color_override("font_color", Color(0.2, 0.12, 0.05))
+	_tutorial_bubble.add_child(_tutorial_label)
+
+
+func _show_tutorial_step() -> void:
+	if _current_guide_idx < 0 or _current_guide_idx >= _tutorial_guides.size():
+		_dismiss_tutorial_ui()
+		return
+	var guide: Dictionary = _tutorial_guides[_current_guide_idx]
+	var steps: Array = guide["steps"]
+	if _current_step_idx >= steps.size():
+		_complete_current_guide()
+		return
+	var step: Dictionary = steps[_current_step_idx]
+	_tutorial_label.text = step["text"]
+
+	# 如果步骤需要面板打开但面板没打开，自动打开对应面板
+	if step["type"] == "click_button" and not _panel_visible:
+		var target: String = step.get("target", "")
+		var building_key := ""
+		if target == "expedition" or target == "formation":
+			building_key = "tower"
+		elif target == "recruit":
+			building_key = "tavern"
+		if not building_key.is_empty():
+			_panel_key = building_key
+			_refresh_panel()
+			_reposition_panel(building_key)
+			_load_function_panel(building_key)
+			_set_panel_visible(true)
+
+	# 延迟一帧确保布局完成后再定位高亮
+	if step["type"] in ["click_button", "highlight"]:
+		call_deferred("_update_tutorial_highlight")
+	else:
+		_update_tutorial_highlight()
+
+func _update_tutorial_highlight() -> void:
+	if _current_guide_idx < 0 or _current_guide_idx >= _tutorial_guides.size():
+		return
+	var guide: Dictionary = _tutorial_guides[_current_guide_idx]
+	var steps: Array = guide["steps"]
+	if _current_step_idx >= steps.size():
+		return
+	var step: Dictionary = steps[_current_step_idx]
+
+	var center := Vector2(640, 360)
+	var hole_size := Vector2(160, 160)
+	var corner_radius := 12.0
+	match step["type"]:
+		"dialog":
+			center = Vector2(640, 360)
+			hole_size = Vector2(0, 0)
+			corner_radius = 0.0
+		"click_building":
+			var key: String = step["target"]
+			if BUILDINGS.has(key):
+				center = BUILDINGS[key]["pos"]
+			hole_size = Vector2(160, 160)
+			corner_radius = 80.0
+		"click_button":
+			var btn_info := _get_tutorial_button_rect(step.get("target", ""))
+			center = btn_info["center"]
+			hole_size = btn_info["size"] + Vector2(16, 12)
+			corner_radius = 12.0
+		"highlight":
+			var area_info := _get_tutorial_highlight_area(step.get("target", ""))
+			center = area_info["center"]
+			hole_size = area_info["size"] + Vector2(20, 16)
+			corner_radius = 10.0
+
+	_tutorial_highlight_center = center
+	_tutorial_highlight_radius = hole_size.x * 0.5
+
+	# 更新 shader uniforms
+	if _tutorial_mask and is_instance_valid(_tutorial_mask):
+		var mat: ShaderMaterial = _tutorial_mask.material as ShaderMaterial
+		mat.set_shader_parameter("hole_center", center)
+		mat.set_shader_parameter("hole_size", hole_size)
+		mat.set_shader_parameter("hole_radius", corner_radius)
+
+	# 角色和气泡位置：根据高亮区域位置动态调整，避免遮挡
+	var char_y := 100.0
+	if center.y > 200 and center.y < 450:
+		char_y = 380.0
+	elif center.y >= 450:
+		char_y = 20.0
+	var bubble_y := char_y + 140.0
+	if _tutorial_char and is_instance_valid(_tutorial_char):
+		_tutorial_char.position = Vector2(350, char_y)
+	if _tutorial_bubble and is_instance_valid(_tutorial_bubble):
+		_tutorial_bubble.position = Vector2(500, bubble_y)
+
+func _get_tutorial_button_rect(target: String) -> Dictionary:
+	if _function_panel_node and is_instance_valid(_function_panel_node):
+		var btn: Control = null
+		match target:
+			"expedition":
+				btn = _function_panel_node.get_node_or_null("ActionRow/ExpeditionBtn")
+			"formation":
+				btn = _function_panel_node.get_node_or_null("ActionRow/FormationBtn")
+			"recruit":
+				btn = _function_panel_node.get_node_or_null("RecruitBtn")
+		if btn:
+			return {"center": btn.global_position + btn.size * 0.5, "size": btn.size}
+	return {"center": Vector2(640, 400), "size": Vector2(120, 52)}
+
+func _get_tutorial_highlight_area(target: String) -> Dictionary:
+	var node: Control = null
+	match target:
+		"skill_grid":
+			node = _hero_panel_get_node("DetailArea/RightCol/SkillGrid")
+		"equip_grid":
+			node = _hero_panel_get_node("DetailArea/RightCol/EquipGrid")
+		"research_skill_grid":
+			if _function_panel_node and is_instance_valid(_function_panel_node):
+				node = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/SkillGrid")
+		"research_suit_grid":
+			if _function_panel_node and is_instance_valid(_function_panel_node):
+				node = _function_panel_node.get_node_or_null("SkillScroll/ContentVBox/SuitGrid")
+		"exchange_rows":
+			if _function_panel_node and is_instance_valid(_function_panel_node):
+				node = _function_panel_node.get_node_or_null("ExchangeRows")
+		"boost_btn":
+			if _function_panel_node and is_instance_valid(_function_panel_node):
+				node = _function_panel_node.get_node_or_null("ExchangeRows/BoostRow/BoostBtnWrap/BoostBtn")
+		"tavern_timer":
+			if _function_panel_node and is_instance_valid(_function_panel_node):
+				node = _function_panel_node.get_node_or_null("BottomRow/AutoRefreshLbl")
+		"tavern_recruit":
+			if _function_panel_node and is_instance_valid(_function_panel_node):
+				node = _function_panel_node.get_node_or_null("CardRow/Card0/RecruitBtn0")
+	if node and is_instance_valid(node):
+		return {"center": node.global_position + node.size * 0.5, "size": node.size}
+	return {"center": Vector2(640, 400), "size": Vector2(200, 100)}
+
+func _handle_tutorial_input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
+		return
+	if _current_guide_idx < 0 or _current_guide_idx >= _tutorial_guides.size():
+		return
+	var guide: Dictionary = _tutorial_guides[_current_guide_idx]
+	var steps: Array = guide["steps"]
+	if _current_step_idx >= steps.size():
+		return
+	var step: Dictionary = steps[_current_step_idx]
+	var pos: Vector2 = event.position
+	get_viewport().set_input_as_handled()
+
+	match step["type"]:
+		"dialog":
+			_advance_tutorial_step()
+		"click_building":
+			var key: String = step["target"]
+			if BUILDINGS.has(key):
+				var bpos: Vector2 = BUILDINGS[key]["pos"]
+				if pos.distance_to(bpos) < 100.0:
+					_handle_click(pos)
+					_advance_tutorial_step()
+		"click_button":
+			var btn_info := _get_tutorial_button_rect(step.get("target", ""))
+			var btn_rect := Rect2(btn_info["center"] - btn_info["size"] * 0.5 - Vector2(16, 12), btn_info["size"] + Vector2(32, 24))
+			if btn_rect.has_point(pos):
+				var btn_target: String = step.get("target", "")
+				_tutorial_forward_button_click(btn_target)
+				if btn_target != "expedition" and btn_target != "formation":
+					_advance_tutorial_step()
+		"highlight":
+			_advance_tutorial_step()
+
+func _tutorial_forward_button_click(target: String) -> void:
+	match target:
+		"expedition":
+			_tutorial_start_expedition()
+		"formation":
+			_tutorial_start_formation()
+
+func _tutorial_start_expedition() -> void:
+	GlobalConfig.set_runtime("scene_mode", "battle")
+	GlobalConfig.set_runtime("formation_id", _formation_id)
+	GlobalConfig.set_runtime("level_id", _next_level_id())
+	_complete_current_guide()
+	var scene := load(BATTLE_SCENE_PATH) as PackedScene
+	if scene:
+		SceneTransition.change_to(scene)
+
+func _tutorial_start_formation() -> void:
+	GlobalConfig.set_runtime("scene_mode", "formation")
+	GlobalConfig.set_runtime("formation_id", _formation_id)
+	_complete_current_guide()
+	var scene := load(BATTLE_SCENE_PATH) as PackedScene
+	if scene:
+		SceneTransition.change_to(scene)
+
+func _save_tutorial_progress() -> void:
+	var guide_id: int = 0
+	var step_idx: int = 0
+	if _current_guide_idx >= 0 and _current_guide_idx < _tutorial_guides.size():
+		guide_id = int(_tutorial_guides[_current_guide_idx]["id"])
+		step_idx = _current_step_idx
+	GlobalConfig.set_runtime("tutorial_guide_id", guide_id)
+	GlobalConfig.set_runtime("tutorial_step_idx", step_idx)
+
+func _advance_tutorial_step() -> void:
+	_current_step_idx += 1
+	if _current_guide_idx < 0 or _current_guide_idx >= _tutorial_guides.size():
+		_dismiss_tutorial_ui()
+		return
+	var guide: Dictionary = _tutorial_guides[_current_guide_idx]
+	var steps: Array = guide["steps"]
+	if _current_step_idx >= steps.size():
+		_complete_current_guide()
+	else:
+		_show_tutorial_step()
+
+func _complete_current_guide() -> void:
+	if _current_guide_idx >= 0 and _current_guide_idx < _tutorial_guides.size():
+		var gid: int = int(_tutorial_guides[_current_guide_idx]["id"])
+		if gid not in _completed_guides:
+			_completed_guides.append(gid)
+	_current_guide_idx = -1
+	_current_step_idx = 0
+	_save_game()
+	_dismiss_tutorial_ui()
+	_check_tutorial_condition()
+
+func _dismiss_tutorial_ui() -> void:
+	if _tutorial_layer and is_instance_valid(_tutorial_layer):
+		_tutorial_layer.queue_free()
+		_tutorial_layer = null
+	_tutorial_mask = null
+	_tutorial_char = null
+	_tutorial_bubble = null
+	_tutorial_label = null
+
+

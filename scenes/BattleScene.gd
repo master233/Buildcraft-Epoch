@@ -38,6 +38,28 @@ var _formation_team_ids: Array = []
 var _drag_index: int = -1
 var _drag_offset: Vector2 = Vector2.ZERO
 var _drag_original_pos: Vector2 = Vector2.ZERO
+var _tutorial_guide_id: int = 0
+var _tutorial_step_idx: int = 0
+
+# 阵型引导系统
+const TUTORIAL_TABLE_PATH := "res://asserts/table/tutorial.txt"
+const TUTORIAL_TICK_INTERVAL := 1.0
+var _tutorial_tick_timer: float = 0.0
+var _tutorial_guides: Array = []
+var _completed_guides: Array = []
+var _current_guide_idx: int = -1
+var _current_step_idx: int = 0
+var _tutorial_layer: CanvasLayer = null
+var _tutorial_mask: ColorRect = null
+var _tutorial_char: TextureRect = null
+var _tutorial_bubble: Panel = null
+var _tutorial_label: Label = null
+var _tutorial_highlight_center: Vector2 = Vector2.ZERO
+var _tutorial_highlight_size: Vector2 = Vector2(160, 80)
+var _fm_prev_btn_rect: Rect2 = Rect2()
+var _fm_next_btn_rect: Rect2 = Rect2()
+var _fm_confirm_btn_rect: Rect2 = Rect2()
+var _fm_bar_rect: Rect2 = Rect2()
 
 # 战斗状态
 var _battle_units: Array = []   # Array of BattleUnit（玩家+敌方）
@@ -69,6 +91,8 @@ func _build_ui() -> void:
 	add_child(bg)
 
 	_scene_mode = String(GlobalConfig.get_runtime("scene_mode"))
+	_tutorial_guide_id = int(GlobalConfig.get_runtime("tutorial_guide_id"))
+	_tutorial_step_idx = int(GlobalConfig.get_runtime("tutorial_step_idx"))
 
 	if _scene_mode == "formation":
 		var formation_bgm := AudioStreamPlayer.new()
@@ -77,6 +101,7 @@ func _build_ui() -> void:
 		formation_bgm.autoplay = true
 		add_child(formation_bgm)
 		_build_formation_mode(vp)
+		_load_formation_tutorial()
 	else:
 		# 战斗背景音乐（仅战斗模式播放）
 		var battle_bgm := AudioStreamPlayer.new()
@@ -179,7 +204,13 @@ func _exit_tree() -> void:
 # ─────────────────────────────────────────────────────────────────────────────
 
 func _process(delta: float) -> void:
-	if _battle_over or _battle_units.is_empty() or _scene_mode == "formation":
+	if _scene_mode == "formation":
+		_tutorial_tick_timer += delta
+		if _tutorial_tick_timer >= TUTORIAL_TICK_INTERVAL:
+			_tutorial_tick_timer = 0.0
+			_check_formation_tutorial()
+		return
+	if _battle_over or _battle_units.is_empty():
 		return
 	if _acting:
 		return
@@ -1588,7 +1619,7 @@ func _place_formation_roles(vp: Vector2, fidx: int) -> void:
 				var bonus_ls := LabelSettings.new()
 				bonus_ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
 				bonus_ls.font_size = 14
-				bonus_ls.font_color = Color(0.6, 1.0, 0.6, 0.95)
+				bonus_ls.font_color = Color(1.0, 0.3, 0.3, 0.95)
 				bonus_ls.outline_size = 2
 				bonus_ls.outline_color = Color(0, 0, 0, 0.9)
 				bonus_lbl.label_settings = bonus_ls
@@ -1599,10 +1630,10 @@ func _build_formation_overlay(vp: Vector2) -> void:
 	ui.layer = 10
 	add_child(ui)
 
-	var bar_w := 500.0
-	var bar_h := 58.0
+	var bar_w := 270.0
+	var bar_h := 52.0
 	var bar_x := (vp.x - bar_w) * 0.5
-	var bar_y := 16.0
+	var bar_y := vp.y - 74.0
 
 	var bar_style := StyleBoxFlat.new()
 	bar_style.bg_color = Color(0.12, 0.20, 0.38, 0.90)
@@ -1622,10 +1653,13 @@ func _build_formation_overlay(vp: Vector2) -> void:
 	bar_panel.add_theme_stylebox_override("panel", bar_style)
 	ui.add_child(bar_panel)
 
+	_fm_bar_rect = Rect2(Vector2(bar_x, bar_y), Vector2(bar_w, bar_h))
+
 	var prev_btn := _make_arrow_button("<", Vector2(bar_x + 10, bar_y + 5), Vector2(44, 48))
 	ui.add_child(prev_btn.panel)
 	ui.add_child(prev_btn.label)
 	prev_btn.label.gui_input.connect(_on_formation_prev)
+	_fm_prev_btn_rect = Rect2(Vector2(bar_x + 10, bar_y + 5), Vector2(44, 48))
 
 	_formation_name_lbl = Label.new()
 	_formation_name_lbl.text = _formations[_current_formation_idx]["name"] if _formations.size() > 0 else ""
@@ -1646,7 +1680,7 @@ func _build_formation_overlay(vp: Vector2) -> void:
 	tips_lbl.text = "提示：鼠标拖动角色可以交换位置"
 	tips_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	tips_lbl.size = Vector2(bar_w, 36)
-	tips_lbl.position = Vector2(bar_x, bar_y + bar_h + 8)
+	tips_lbl.position = Vector2(bar_x, bar_y - 36 - 4)
 	tips_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var tips_ls := LabelSettings.new()
 	tips_ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
@@ -1661,13 +1695,15 @@ func _build_formation_overlay(vp: Vector2) -> void:
 	ui.add_child(next_btn.panel)
 	ui.add_child(next_btn.label)
 	next_btn.label.gui_input.connect(_on_formation_next)
+	_fm_next_btn_rect = Rect2(Vector2(bar_x + bar_w - 54, bar_y + 5), Vector2(44, 48))
 
-	var confirm_btn := _make_button("确认", Vector2(vp.x * 0.5 - 135, vp.y - 74), Vector2(120, 52))
+	var confirm_btn := _make_button("确认", Vector2(bar_x - 130, vp.y - 74), Vector2(120, 52))
 	ui.add_child(confirm_btn.panel)
 	ui.add_child(confirm_btn.label)
 	confirm_btn.label.gui_input.connect(_on_formation_confirm)
+	_fm_confirm_btn_rect = Rect2(Vector2(bar_x - 130, vp.y - 74), Vector2(120, 52))
 
-	var cancel_btn := _make_button("取消", Vector2(vp.x * 0.5 + 15, vp.y - 74), Vector2(120, 52))
+	var cancel_btn := _make_button("取消", Vector2(bar_x + bar_w + 10, vp.y - 74), Vector2(120, 52))
 	ui.add_child(cancel_btn.panel)
 	ui.add_child(cancel_btn.label)
 	cancel_btn.label.gui_input.connect(_on_formation_cancel)
@@ -1705,6 +1741,9 @@ func _on_formation_cancel(event: InputEvent) -> void:
 
 func _input(event: InputEvent) -> void:
 	if _scene_mode != "formation":
+		return
+	if _current_guide_idx >= 0:
+		_handle_formation_tutorial_input(event)
 		return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
@@ -3182,3 +3221,343 @@ class BattleUnit:
 		sprite.add_child(player)
 		player.play()
 		player.finished.connect(player.queue_free)
+
+# ---------------------------------------------------------------------------
+# 教程推进
+# ---------------------------------------------------------------------------
+
+const SAVE_PATH := "user://savegame.json"
+
+func _try_advance_tutorial(expected_guide_id: int, expected_step: int, is_last: bool = false) -> void:
+	if _tutorial_guide_id != expected_guide_id:
+		return
+	if _tutorial_step_idx != expected_step:
+		return
+	_tutorial_step_idx += 1
+	GlobalConfig.set_runtime("tutorial_step_idx", _tutorial_step_idx)
+	if is_last:
+		_save_completed_guide(_tutorial_guide_id)
+
+func _save_completed_guide(guide_id: int) -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var text := file.get_as_text()
+	file.close()
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return
+	var data: Dictionary = json.data
+	data["completed_guide_id"] = guide_id
+	var wf := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if wf == null:
+		return
+	wf.store_string(JSON.stringify(data))
+	wf.close()
+
+# ─── 阵型引导系统 ─────────────────────────────────────────────────────────────
+
+var _formation_guides_done: Array = []
+
+func _load_formation_tutorial() -> void:
+	_completed_guides = _read_completed_guides()
+	_formation_guides_done = _read_formation_guides_done()
+	var file := FileAccess.open(TUTORIAL_TABLE_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var header_skipped := false
+	var guides_map: Dictionary = {}
+	while not file.eof_reached():
+		var line := file.get_line().strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			if not header_skipped:
+				header_skipped = true
+			continue
+		if not header_skipped:
+			header_skipped = true
+			continue
+		var cols := line.split("\t")
+		if cols.size() < 5:
+			continue
+		var gid: int = int(cols[0])
+		var condition: String = cols[1]
+		var step_id: int = int(cols[2])
+		var stype: String = cols[3]
+		var text: String = cols[4]
+		var target: String = cols[5] if cols.size() > 5 else ""
+		if not guides_map.has(gid):
+			guides_map[gid] = {"id": gid, "condition": condition, "steps": []}
+		guides_map[gid]["steps"].append({"step_id": step_id, "type": stype, "text": text, "target": target})
+	file.close()
+	var keys := guides_map.keys()
+	keys.sort()
+	_tutorial_guides = []
+	for k in keys:
+		_tutorial_guides.append(guides_map[k])
+
+func _read_completed_guides() -> Array:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return []
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return []
+	var text := file.get_as_text()
+	file.close()
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return []
+	var data: Dictionary = json.data
+	var result: Array = []
+	if data.has("completed_guides") and data["completed_guides"] is Array:
+		for v in (data["completed_guides"] as Array):
+			result.append(int(v))
+	elif data.has("completed_guide_id"):
+		var old_id: int = int(data["completed_guide_id"])
+		for i in range(1, old_id + 1):
+			result.append(i)
+	return result
+
+func _read_formation_guides_done() -> Array:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return []
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return []
+	var text := file.get_as_text()
+	file.close()
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return []
+	var data: Dictionary = json.data
+	if data.has("formation_guides_done") and data["formation_guides_done"] is Array:
+		return data["formation_guides_done"]
+	return []
+
+func _check_formation_tutorial() -> void:
+	if _tutorial_guides.is_empty():
+		return
+	if _tutorial_layer and is_instance_valid(_tutorial_layer) and _tutorial_layer.visible:
+		return
+	for g in _tutorial_guides:
+		var gid: int = int(g["id"])
+		if gid in _formation_guides_done or gid in _completed_guides:
+			continue
+		if _evaluate_formation_condition(g["condition"]):
+			_current_guide_idx = _tutorial_guides.find(g)
+			_current_step_idx = 0
+			_show_formation_tutorial_ui()
+			return
+
+func _evaluate_formation_condition(condition: String) -> bool:
+	if condition == "none" or condition.is_empty():
+		return true
+	var subs := condition.split(",")
+	for sub in subs:
+		var s := sub.strip_edges()
+		if s == "nopanel":
+			return false
+		var parts := s.split(":")
+		if parts.size() < 2:
+			continue
+		match parts[0]:
+			"scene":
+				if parts[1] != "formation":
+					return false
+			"guide":
+				if int(parts[1]) not in _completed_guides:
+					return false
+			_:
+				return false
+	return true
+
+func _show_formation_tutorial_ui() -> void:
+	if _tutorial_layer and is_instance_valid(_tutorial_layer):
+		_tutorial_layer.visible = true
+		_show_formation_tutorial_step()
+		return
+	_build_formation_tutorial_ui()
+	_show_formation_tutorial_step()
+
+func _build_formation_tutorial_ui() -> void:
+	_tutorial_layer = CanvasLayer.new()
+	_tutorial_layer.layer = 100
+	add_child(_tutorial_layer)
+
+	_tutorial_mask = ColorRect.new()
+	_tutorial_mask.size = Vector2(1280, 720)
+	_tutorial_mask.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var shader := Shader.new()
+	shader.code = "shader_type canvas_item;\nuniform vec2 hole_center = vec2(640.0, 375.0);\nuniform vec2 hole_size = vec2(160.0, 80.0);\nuniform float hole_radius = 12.0;\nuniform float edge_soft = 8.0;\nvoid fragment() {\n\tvec2 pixel = UV * vec2(1280.0, 720.0);\n\tvec2 d = abs(pixel - hole_center) - hole_size * 0.5 + vec2(hole_radius);\n\tfloat dist = length(max(d, vec2(0.0))) + min(max(d.x, d.y), 0.0) - hole_radius;\n\tfloat alpha_val = smoothstep(-edge_soft, edge_soft, dist);\n\tCOLOR = vec4(0.0, 0.0, 0.0, alpha_val * 0.6);\n}"
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	_tutorial_mask.material = mat
+	_tutorial_layer.add_child(_tutorial_mask)
+
+	_tutorial_char = TextureRect.new()
+	_tutorial_char.texture = load("res://asserts/image/ui/guide.png")
+	_tutorial_char.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_tutorial_char.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_tutorial_char.custom_minimum_size = Vector2(200, 320)
+	_tutorial_char.size = Vector2(200, 320)
+	_tutorial_char.position = Vector2(350, 100)
+	_tutorial_char.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tutorial_layer.add_child(_tutorial_char)
+
+	_tutorial_bubble = Panel.new()
+	var bubble_style := StyleBoxFlat.new()
+	bubble_style.bg_color = Color(0.0, 0.0, 0.0, 0.75)
+	bubble_style.set_corner_radius_all(12)
+	bubble_style.border_width_top = 2
+	bubble_style.border_width_bottom = 2
+	bubble_style.border_width_left = 2
+	bubble_style.border_width_right = 2
+	bubble_style.border_color = Color(0.4, 0.75, 1.0, 0.9)
+	_tutorial_bubble.add_theme_stylebox_override("panel", bubble_style)
+	_tutorial_bubble.size = Vector2(380, 64)
+	_tutorial_bubble.position = Vector2(500, 240)
+	_tutorial_bubble.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tutorial_layer.add_child(_tutorial_bubble)
+
+	_tutorial_label = Label.new()
+	_tutorial_label.size = Vector2(360, 54)
+	_tutorial_label.position = Vector2(10, 5)
+	_tutorial_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_tutorial_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_tutorial_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	var ls := LabelSettings.new()
+	ls.font = load("res://asserts/fonts/ZCOOLKuaiLe.ttf")
+	ls.font_size = 20
+	ls.font_color = Color(1, 1, 1, 1)
+	_tutorial_label.label_settings = ls
+	_tutorial_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_tutorial_bubble.add_child(_tutorial_label)
+
+func _show_formation_tutorial_step() -> void:
+	if _current_guide_idx < 0 or _current_guide_idx >= _tutorial_guides.size():
+		_dismiss_formation_tutorial_ui()
+		return
+	var guide: Dictionary = _tutorial_guides[_current_guide_idx]
+	var steps: Array = guide["steps"]
+	if _current_step_idx >= steps.size():
+		_dismiss_formation_tutorial_ui()
+		return
+	var step: Dictionary = steps[_current_step_idx]
+	_tutorial_label.text = step["text"]
+	var stype: String = step["type"]
+	if stype == "dialog":
+		_set_formation_tutorial_hole(Vector2(640, 360), Vector2(0, 0))
+	elif stype == "click_button" or stype == "highlight":
+		call_deferred("_update_formation_tutorial_highlight")
+
+func _update_formation_tutorial_highlight() -> void:
+	if _current_guide_idx < 0 or _current_guide_idx >= _tutorial_guides.size():
+		return
+	var guide: Dictionary = _tutorial_guides[_current_guide_idx]
+	var steps: Array = guide["steps"]
+	if _current_step_idx >= steps.size():
+		return
+	var step: Dictionary = steps[_current_step_idx]
+	var target: String = step.get("target", "")
+	var info := _get_formation_tutorial_rect(target)
+	_set_formation_tutorial_hole(info["center"], info["size"])
+	# 角色和气泡动态位置
+	var char_y := 100.0
+	if info["center"].y > 200 and info["center"].y < 450:
+		char_y = 380.0
+	elif info["center"].y >= 450:
+		char_y = 20.0
+	var bubble_y := char_y + 140.0
+	if _tutorial_char and is_instance_valid(_tutorial_char):
+		_tutorial_char.position = Vector2(350, char_y)
+	if _tutorial_bubble and is_instance_valid(_tutorial_bubble):
+		_tutorial_bubble.position = Vector2(500, bubble_y)
+
+func _get_formation_tutorial_rect(target: String) -> Dictionary:
+	match target:
+		"formation_select":
+			return {"center": _fm_bar_rect.position + _fm_bar_rect.size * 0.5, "size": _fm_bar_rect.size}
+		"formation_confirm":
+			return {"center": _fm_confirm_btn_rect.position + _fm_confirm_btn_rect.size * 0.5, "size": _fm_confirm_btn_rect.size}
+		"formation_roles":
+			var vp := get_viewport_rect().size
+			return {"center": Vector2(vp.x * 0.5, vp.y * 0.4), "size": Vector2(vp.x * 0.7, vp.y * 0.5)}
+	return {"center": Vector2(640, 360), "size": Vector2(200, 100)}
+
+func _set_formation_tutorial_hole(center: Vector2, size: Vector2) -> void:
+	if _tutorial_mask and is_instance_valid(_tutorial_mask):
+		var mat: ShaderMaterial = _tutorial_mask.material as ShaderMaterial
+		mat.set_shader_parameter("hole_center", center)
+		mat.set_shader_parameter("hole_size", size)
+
+func _handle_formation_tutorial_input(event: InputEvent) -> void:
+	if not (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and event.pressed):
+		return
+	if _current_guide_idx < 0 or _current_guide_idx >= _tutorial_guides.size():
+		return
+	var guide: Dictionary = _tutorial_guides[_current_guide_idx]
+	var steps: Array = guide["steps"]
+	if _current_step_idx >= steps.size():
+		return
+	var step: Dictionary = steps[_current_step_idx]
+	var pos: Vector2 = event.position
+	get_viewport().set_input_as_handled()
+
+	match step["type"]:
+		"dialog":
+			_advance_formation_tutorial()
+		"click_button":
+			var info := _get_formation_tutorial_rect(step.get("target", ""))
+			var rect := Rect2(info["center"] - info["size"] * 0.5 - Vector2(16, 12), info["size"] + Vector2(32, 24))
+			if rect.has_point(pos):
+				_advance_formation_tutorial()
+		"highlight":
+			_advance_formation_tutorial()
+
+func _advance_formation_tutorial() -> void:
+	_current_step_idx += 1
+	if _current_guide_idx < 0 or _current_guide_idx >= _tutorial_guides.size():
+		_dismiss_formation_tutorial_ui()
+		return
+	var guide: Dictionary = _tutorial_guides[_current_guide_idx]
+	var steps: Array = guide["steps"]
+	if _current_step_idx >= steps.size():
+		_complete_formation_guide()
+	else:
+		_show_formation_tutorial_step()
+
+func _complete_formation_guide() -> void:
+	if _current_guide_idx >= 0 and _current_guide_idx < _tutorial_guides.size():
+		var guide_id: int = int(_tutorial_guides[_current_guide_idx]["id"])
+		_formation_guides_done.append(guide_id)
+		_save_formation_tutorial_done(guide_id)
+	_current_guide_idx = -1
+	_current_step_idx = 0
+	_dismiss_formation_tutorial_ui()
+
+func _save_formation_tutorial_done(guide_id: int) -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		return
+	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var text := file.get_as_text()
+	file.close()
+	var json := JSON.new()
+	if json.parse(text) != OK:
+		return
+	var data: Dictionary = json.data
+	var done_list: Array = data.get("formation_guides_done", [])
+	if guide_id not in done_list:
+		done_list.append(guide_id)
+	data["formation_guides_done"] = done_list
+	var wf := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if wf == null:
+		return
+	wf.store_string(JSON.stringify(data))
+	wf.close()
+
+func _dismiss_formation_tutorial_ui() -> void:
+	if _tutorial_layer and is_instance_valid(_tutorial_layer):
+		_tutorial_layer.visible = false

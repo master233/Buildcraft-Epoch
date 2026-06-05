@@ -1,0 +1,30 @@
+guide_id	condition	step_id	type	text	target
+# 引导ID	触发条件(none/building:key:level/resource:type:amount/cleared:level_id/panel:building_key/guide:id)	步骤ID	类型(dialog/click_building/click_button/highlight)	步骤文本	点击目标
+# dialog=显示文本点击任意位置继续, click_building=点击建筑, click_button=点击面板按钮, highlight=高亮区域点击任意位置继续
+1	none	0	dialog	亲爱的，你终于来了，我们已经等待你太久太久了
+1	none	1	click_building	现在大批的魔物要来抢掠我们的资源，请帮助我们抵御他们！	tower
+1	none	2	click_button	亲爱的，点击出征就可以教训那些魔物了！	expedition
+2	cleared:10101,nopanel	0	dialog	亲爱的，远征塔内还有别的功能给你介绍哦~
+2	cleared:10101,nopanel	1	click_button	亲爱的，英雄们不同的阵型，会有意想不到的效果，点击试试吧~！	formation
+3	guide:2,nopanel	0	click_building	亲爱的，当魔物太强大，英雄们无法对抗的时候，可以在主基地对英雄们进行培养	home
+3	guide:2,nopanel	1	dialog	主基地会显示您所有的英雄，他们的属性、装备、技能
+4	guide:3,panel:home	0	highlight	每个英雄有自带的天赋技能，其他的技能可以任意学习	skill_grid
+5	guide:4,panel:home	0	highlight	每个英雄还可以佩戴装备，装备还有套装效果哦~	equip_grid
+6	guide:3,nopanel	0	click_building	亲爱的，研究院可以有效的帮助你提高战力！	research
+6	guide:3,nopanel	1	highlight	这里的技能可以升级，技能的等级上限受到研究院本身的等级影响	research_skill_grid
+6	guide:3,nopanel	2	highlight	装备的套装效果，可以在这里了解哦~	research_suit_grid
+7	guide:6,nopanel	0	click_building	亲爱的，伐木场和矿石场的作用差不多，我拿伐木场给你举例	lumberyard
+7	guide:6,nopanel	1	highlight	伐木场会随时间产出木材，等级越高产出越多，还可以在这里进行木材金币的兑换哦~	exchange_rows
+7	guide:6,nopanel	2	highlight	如果木材缺少的时候，可以点击加速按钮，可以立即获得相应时间的木材	boost_btn
+8	guide:7,nopanel	0	click_building	亲爱的，魔物又来进攻了，快和英雄们一起阻止他们吧！	tower
+9	guide:8,nopanel	0	click_building	亲爱的，酒馆会让你的英雄更加强大~	tavern
+9	guide:8,nopanel	1	highlight	每隔一段时间，酒馆会刷新一次英雄	tavern_timer
+9	guide:8,nopanel	2	highlight	你可以招募这些英雄，来让英雄升星	tavern_recruit
+10	guide:9,nopanel	0	click_building	亲爱的，远征塔掉落的装备，会收纳在装备仓库中	store
+10	guide:9,nopanel	1	dialog	装备都按照不同的部位分类好了，当有新装备的时候，会显示红字提醒你哦~
+11	guide:10,nopanel	0	dialog	亲爱的，这就是妾身知道的所有了
+11	guide:10,nopanel	1	dialog	现在，请一定要保护好妾身，将远征塔内的魔物通通消灭吧~
+11	guide:10,nopanel	2	dialog	我期待着你的归来~~那时候，妾身会好好陪你的~~么么~
+12	guide:2,scene:formation	0	click_button	亲爱的，不同的阵型，可以获得不同的属性加成~	formation_select
+12	guide:2,scene:formation	1	highlight	也可以通过拖动来改变英雄站位	formation_roles
+12	guide:2,scene:formation	2	highlight	亲爱的，别心急~调整完阵型之后，别忘了确认保存哦~	formation_confirm
