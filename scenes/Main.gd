@@ -177,6 +177,7 @@ var _skill_upgrade_cost: Dictionary = {}  # level(int) → cost(int)
 var _suit_table: Array = []  # 每个套装仅首条，用于 grid 显示
 var _suit_details: Dictionary = {}  # suit_id → [{require_count, effect_desc}]
 var _suit_members: Dictionary = {}  # equip_id(int) → suit_name(String)
+var _suit_fx_table: Dictionary = {}  # suit_name → {suit_id: int, fx_4: String, fx_8: String}
 const SUIT_TABLE_PATH := "res://asserts/table/suit.txt"
 const SUIT_MEMBERS_PATH := "res://asserts/table/suit_members.txt"
 var _building_configs: Dictionary = {}  # key → [{level, wood_cost, ore_cost, desc}]
@@ -329,6 +330,7 @@ func _setup() -> void:
 	_place_tower_monsters()
 	_load_level_ids()
 	_load_game()
+	_update_suit_auras()
 	_check_achievements(true)
 	_refresh_title_label()
 	_refresh_hud()
@@ -833,6 +835,7 @@ func _load_suit_table() -> void:
 
 func _load_suit_members() -> void:
 	_suit_members.clear()
+	_suit_fx_table.clear()
 	var text := _read_table_text(SUIT_MEMBERS_PATH)
 	if text.is_empty():
 		return
@@ -844,12 +847,18 @@ func _load_suit_members() -> void:
 		var parts := line.split("\t")
 		if parts.size() < 3:
 			continue
+		var suit_id: int = int((parts[0] as String).strip_edges())
 		var suit_name: String = (parts[1] as String).strip_edges()
 		var id_list: String = (parts[2] as String).strip_edges()
 		for eid_str in id_list.split(","):
 			var eid: int = int(eid_str.strip_edges())
 			if eid > 0:
 				_suit_members[eid] = suit_name
+		if parts.size() > 4:
+			var fx4: String = (parts[3] as String).strip_edges()
+			var fx8: String = (parts[4] as String).strip_edges()
+			if not fx4.is_empty() and not fx8.is_empty():
+				_suit_fx_table[suit_name] = {"suit_id": suit_id, "fx_4": fx4, "fx_8": fx8}
 
 func _load_building_configs() -> void:
 	_building_configs.clear()
@@ -1363,6 +1372,7 @@ func _place_expedition_team() -> void:
 		_team_slots[_team_slots.size() - 1]["name_lbl"] = name_lbl
 		_team_slots[_team_slots.size() - 1]["stars_box"] = stars_box
 		_refresh_role_label(_team_slots.size() - 1)
+	_update_suit_auras()
 
 const STAR_ICON_PATH := "res://asserts/image/ui/star.png"
 const STAR_ICON_SIZE := Vector2(22, 22)
@@ -1398,6 +1408,90 @@ func _refresh_role_label_for(rid: String) -> void:
 			_refresh_role_label(i)
 			return
 
+func _get_role_suit_fx(rid: String) -> Dictionary:
+	var equips: Dictionary = _role_equips.get(rid, {}) if _role_equips.get(rid, null) is Dictionary else {}
+	var suit_counts: Dictionary = {}
+	for sk in equips.keys():
+		var inv_idx: int = int(equips[sk])
+		if inv_idx >= 0 and inv_idx < _inventory.size():
+			var eid: int = int(_inventory[inv_idx].get("id", 0))
+			if _suit_members.has(eid):
+				var sn: String = _suit_members[eid]
+				suit_counts[sn] = int(suit_counts.get(sn, 0)) + 1
+	var best_name: String = ""
+	var best_sid: int = -1
+	var best_count: int = 0
+	for sn in suit_counts.keys():
+		var count: int = int(suit_counts[sn])
+		if count < 4:
+			continue
+		if not _suit_fx_table.has(sn):
+			continue
+		var sid: int = int(_suit_fx_table[sn]["suit_id"])
+		if sid > best_sid:
+			best_sid = sid
+			best_name = sn
+			best_count = count
+	if best_name.is_empty():
+		return {}
+	var fx_info: Dictionary = _suit_fx_table[best_name]
+	print("[SuitFX] role=%s suit=%s sid=%d count=%d path=%s" % [rid, best_name, best_sid, best_count, String(fx_info["fx_8"]) if best_count >= 8 else String(fx_info["fx_4"])])
+	if best_count >= 8:
+		return {"sheet_path": String(fx_info["fx_8"]), "alpha": 0.5}
+	return {"sheet_path": String(fx_info["fx_4"]), "alpha": 0.25}
+
+func _build_suit_fx_sprite(sheet_path: String, alpha: float, target_h: float) -> AnimatedSprite2D:
+	if not ResourceLoader.exists(sheet_path):
+		return null
+	var tex: Texture2D = load(sheet_path)
+	if tex == null:
+		return null
+	var n_frames := 8
+	@warning_ignore("integer_division")
+	var fw := tex.get_width() / n_frames
+	var fh := tex.get_height()
+	var sf := SpriteFrames.new()
+	sf.add_animation("play")
+	sf.set_animation_speed("play", 4.0)
+	sf.set_animation_loop("play", true)
+	for f in n_frames:
+		var at := AtlasTexture.new()
+		at.atlas = tex
+		at.region = Rect2(f * fw, 0, fw, fh)
+		at.filter_clip = true
+		sf.add_frame("play", at)
+	var spr := AnimatedSprite2D.new()
+	spr.sprite_frames = sf
+	var s := target_h / float(fh)
+	spr.scale = Vector2(s, s)
+	spr.modulate = Color(1, 1, 1, alpha)
+	var mat := CanvasItemMaterial.new()
+	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	spr.material = mat
+	spr.z_index = 1
+	spr.play("play")
+	return spr
+
+func _update_suit_auras() -> void:
+	for i in _team_slots.size():
+		var entry: Dictionary = _team_slots[i]
+		var slot: Node2D = entry.get("slot", null) as Node2D
+		if slot == null or not is_instance_valid(slot):
+			continue
+		var old_fx = entry.get("suit_fx", null)
+		if old_fx != null and is_instance_valid(old_fx):
+			old_fx.queue_free()
+		_team_slots[i]["suit_fx"] = null
+		var rid: String = entry.get("role_id", "")
+		var fx_info := _get_role_suit_fx(rid)
+		if fx_info.is_empty():
+			continue
+		var head_y: float = float(entry.get("head_top_y", -80))
+		var target_h: float = absf(head_y) * 2.4
+		var spr := _build_suit_fx_sprite(String(fx_info["sheet_path"]), float(fx_info["alpha"]), target_h)
+		if spr != null:
+			slot.add_child(spr)
+			_team_slots[i]["suit_fx"] = spr
 
 func _read_table_text(path: String) -> String:
 	# 注意：不能用 FileAccess.file_exists() 预检查 —— Godot 4 在 Web 导出里对 pack 内的
@@ -3739,6 +3833,7 @@ func _show_equipped_item_info(item: Dictionary, rid: String, slot_key: String) -
 		_show_stat_change_float(old_stats, new_stats)
 		_play_equip_sfx()
 		_save_game()
+		_update_suit_auras()
 		canvas_layer.queue_free()
 		_show_hero_detail(rid)
 	)
@@ -3958,6 +4053,7 @@ func _equip_item_to_role(rid: String, slot_key: String, slot_idx: int, item: Dic
 	if new_suit_stage > old_suit_stage:
 		_play_skill_up_sfx()
 	_save_game()
+	_update_suit_auras()
 	_show_hero_detail(rid)
 
 func _show_stat_change_float(old_stats: Dictionary, new_stats: Dictionary) -> void:
@@ -7052,5 +7148,3 @@ func _dismiss_tutorial_ui() -> void:
 	_tutorial_char = null
 	_tutorial_bubble = null
 	_tutorial_label = null
-
-

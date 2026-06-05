@@ -1,10 +1,10 @@
-suit_id	suit_name	equip_ids
-# 套装组ID	套装名	包含的装备ID列表（逗号分隔）
-601	战魂	50003,51003,52003,55003,53003,54003,56003,57003
-602	磐岩	50006,51006,52006,55006,53006,54006,56006,57006
-603	暗影	50001,51001,52001,55001,53001,54001,56001,57001
-604	神恩	50005,51005,52005,55005,53005,54005,56005,57005
-605	奥术	50007,51007,52007,55007,53007,54007,56007,57007
-606	黑暗	50002,51002,52002,55002,53002,54002,56002,57002
-607	圣光	50004,51004,52004,55004,53004,54004,56004,57004
-608	邪能	50008,51008,52008,55008,53008,54008,56008,57008
+suit_id	suit_name	equip_ids	fx_4	fx_8
+# 套装组ID	套装名	包含的装备ID列表（逗号分隔）	4件套特效资源路径	8件套特效资源路径
+601	战魂	50003,51003,52003,55003,53003,54003,56003,57003	res://asserts/fx/suit_silver_sheet.png	res://asserts/fx/suit_silver_sheet.png
+602	磐岩	50006,51006,52006,55006,53006,54006,56006,57006	res://asserts/fx/suit_silver_sheet.png	res://asserts/fx/suit_silver_sheet.png
+603	暗影	50001,51001,52001,55001,53001,54001,56001,57001	res://asserts/fx/suit_black_sheet.png	res://asserts/fx/suit_black_sheet.png
+604	神恩	50005,51005,52005,55005,53005,54005,56005,57005	res://asserts/fx/suit_green_sheet.png	res://asserts/fx/suit_green_sheet.png
+605	奥术	50007,51007,52007,55007,53007,54007,56007,57007	res://asserts/fx/suit_blue_sheet.png	res://asserts/fx/suit_blue_sheet.png
+606	黑暗	50002,51002,52002,55002,53002,54002,56002,57002	res://asserts/fx/suit_purple_sheet.png	res://asserts/fx/suit_purple_sheet.png
+607	圣光	50004,51004,52004,55004,53004,54004,56004,57004	res://asserts/fx/suit_gold_sheet.png	res://asserts/fx/suit_gold_sheet.png
+608	邪能	50008,51008,52008,55008,53008,54008,56008,57008	res://asserts/fx/suit_black_sheet.png	res://asserts/fx/suit_black_sheet.png

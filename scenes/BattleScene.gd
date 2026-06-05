@@ -112,6 +112,7 @@ func _build_ui() -> void:
 		_load_taunt_texts()
 		_place_battle_roles(vp)
 		_place_enemy_roles(vp)
+		_attach_suit_fx()
 		var ui := CanvasLayer.new()
 		ui.layer = 10
 		add_child(ui)
@@ -2467,6 +2468,102 @@ func _apply_formation_bonus(attrs: Dictionary, bonus: Dictionary) -> Dictionary:
 		"crit":  int(attrs.crit  * (1.0 + float(bonus.get("crit", 0)) / 100.0)),
 		"dodge": int(attrs.dodge * (1.0 + float(bonus.get("dodge", 0)) / 100.0)),
 	}
+
+func _load_suit_fx_table() -> Dictionary:
+	var result: Dictionary = {}
+	var file := FileAccess.open("res://asserts/table/suit_members.txt", FileAccess.READ)
+	if not file:
+		return result
+	var text := file.get_as_text()
+	file.close()
+	if text.length() > 0 and text.unicode_at(0) == 0xFEFF:
+		text = text.substr(1)
+	var raw := text.split("\n", false)
+	for i in range(1, raw.size()):
+		var line: String = (raw[i] as String).strip_edges()
+		if line.is_empty() or line.begins_with("#"):
+			continue
+		var parts := line.split("\t")
+		if parts.size() < 5:
+			continue
+		var suit_id: int = int((parts[0] as String).strip_edges())
+		var suit_name: String = (parts[1] as String).strip_edges()
+		var fx4: String = (parts[3] as String).strip_edges()
+		var fx8: String = (parts[4] as String).strip_edges()
+		if not fx4.is_empty() and not fx8.is_empty():
+			result[suit_name] = {"suit_id": suit_id, "fx_4": fx4, "fx_8": fx8}
+	return result
+
+func _attach_suit_fx() -> void:
+	var save_data := _load_save_data()
+	var role_equips: Dictionary = save_data.get("role_equips", {}) if save_data.get("role_equips", null) is Dictionary else {}
+	var inventory: Array = save_data.get("inventory", []) if save_data.get("inventory", null) is Array else []
+	var suit_members := _load_suit_members_table()
+	var suit_fx := _load_suit_fx_table()
+	for unit_ref in _battle_units:
+		var unit: BattleUnit = unit_ref as BattleUnit
+		if unit.is_enemy:
+			continue
+		var rid: String = unit.rid
+		var equips: Dictionary = role_equips.get(rid, {}) if role_equips.get(rid, null) is Dictionary else {}
+		var suit_counts: Dictionary = {}
+		for sk in equips.keys():
+			var inv_idx: int = int(equips[sk])
+			if inv_idx >= 0 and inv_idx < inventory.size():
+				var eid: int = int(inventory[inv_idx].get("id", 0))
+				if suit_members.has(eid):
+					var sn: String = suit_members[eid]
+					suit_counts[sn] = int(suit_counts.get(sn, 0)) + 1
+		var best_name: String = ""
+		var best_sid: int = -1
+		var best_count: int = 0
+		for sn in suit_counts.keys():
+			var count: int = int(suit_counts[sn])
+			if count < 4:
+				continue
+			if not suit_fx.has(sn):
+				continue
+			var sid: int = int(suit_fx[sn]["suit_id"])
+			if sid > best_sid:
+				best_sid = sid
+				best_name = sn
+				best_count = count
+		if best_name.is_empty():
+			continue
+		var fx_entry: Dictionary = suit_fx[best_name]
+		var sheet_path: String = String(fx_entry["fx_8"]) if best_count >= 8 else String(fx_entry["fx_4"])
+		var alpha: float = 0.5 if best_count >= 8 else 0.25
+		if not ResourceLoader.exists(sheet_path):
+			continue
+		var tex: Texture2D = load(sheet_path)
+		if tex == null:
+			continue
+		var n_frames := 8
+		@warning_ignore("integer_division")
+		var fw := tex.get_width() / n_frames
+		var fh := tex.get_height()
+		var sf := SpriteFrames.new()
+		sf.add_animation("play")
+		sf.set_animation_speed("play", 4.0)
+		sf.set_animation_loop("play", true)
+		for f in n_frames:
+			var at := AtlasTexture.new()
+			at.atlas = tex
+			at.region = Rect2(f * fw, 0, fw, fh)
+			at.filter_clip = true
+			sf.add_frame("play", at)
+		var spr := AnimatedSprite2D.new()
+		spr.sprite_frames = sf
+		var target_h: float = 144.0
+		var s := target_h / float(fh)
+		spr.scale = Vector2(s, s)
+		spr.modulate = Color(1, 1, 1, alpha)
+		var mat := CanvasItemMaterial.new()
+		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		spr.material = mat
+		spr.z_index = 1
+		spr.play("play")
+		unit.root.add_child(spr)
 
 var _formation_bonus_cache: Dictionary = {}
 func _load_formation_bonus_table() -> Dictionary:
