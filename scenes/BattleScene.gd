@@ -2490,8 +2490,10 @@ func _load_suit_fx_table() -> Dictionary:
 		var suit_name: String = (parts[1] as String).strip_edges()
 		var fx4: String = (parts[3] as String).strip_edges()
 		var fx8: String = (parts[4] as String).strip_edges()
+		var a4: float = float((parts[5] as String).strip_edges()) if parts.size() > 5 else 0.15
+		var a8: float = float((parts[6] as String).strip_edges()) if parts.size() > 6 else 0.3
 		if not fx4.is_empty() and not fx8.is_empty():
-			result[suit_name] = {"suit_id": suit_id, "fx_4": fx4, "fx_8": fx8}
+			result[suit_name] = {"suit_id": suit_id, "fx_4": fx4, "fx_8": fx8, "alpha_4": a4, "alpha_8": a8}
 	return result
 
 func _attach_suit_fx() -> void:
@@ -2532,7 +2534,7 @@ func _attach_suit_fx() -> void:
 			continue
 		var fx_entry: Dictionary = suit_fx[best_name]
 		var sheet_path: String = String(fx_entry["fx_8"]) if best_count >= 8 else String(fx_entry["fx_4"])
-		var alpha: float = 0.5 if best_count >= 8 else 0.25
+		var alpha: float = float(fx_entry.get("alpha_8", 0.3)) if best_count >= 8 else float(fx_entry.get("alpha_4", 0.15))
 		if not ResourceLoader.exists(sheet_path):
 			continue
 		var tex: Texture2D = load(sheet_path)
@@ -2558,9 +2560,6 @@ func _attach_suit_fx() -> void:
 		var s := target_h / float(fh)
 		spr.scale = Vector2(s, s)
 		spr.modulate = Color(1, 1, 1, alpha)
-		var mat := CanvasItemMaterial.new()
-		mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-		spr.material = mat
 		spr.z_index = 1
 		spr.play("play")
 		unit.root.add_child(spr)

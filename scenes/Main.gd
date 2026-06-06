@@ -857,8 +857,10 @@ func _load_suit_members() -> void:
 		if parts.size() > 4:
 			var fx4: String = (parts[3] as String).strip_edges()
 			var fx8: String = (parts[4] as String).strip_edges()
+			var a4: float = float((parts[5] as String).strip_edges()) if parts.size() > 5 else 0.15
+			var a8: float = float((parts[6] as String).strip_edges()) if parts.size() > 6 else 0.3
 			if not fx4.is_empty() and not fx8.is_empty():
-				_suit_fx_table[suit_name] = {"suit_id": suit_id, "fx_4": fx4, "fx_8": fx8}
+				_suit_fx_table[suit_name] = {"suit_id": suit_id, "fx_4": fx4, "fx_8": fx8, "alpha_4": a4, "alpha_8": a8}
 
 func _load_building_configs() -> void:
 	_building_configs.clear()
@@ -1437,8 +1439,8 @@ func _get_role_suit_fx(rid: String) -> Dictionary:
 	var fx_info: Dictionary = _suit_fx_table[best_name]
 	print("[SuitFX] role=%s suit=%s sid=%d count=%d path=%s" % [rid, best_name, best_sid, best_count, String(fx_info["fx_8"]) if best_count >= 8 else String(fx_info["fx_4"])])
 	if best_count >= 8:
-		return {"sheet_path": String(fx_info["fx_8"]), "alpha": 0.5}
-	return {"sheet_path": String(fx_info["fx_4"]), "alpha": 0.25}
+		return {"sheet_path": String(fx_info["fx_8"]), "alpha": float(fx_info.get("alpha_8", 0.3))}
+	return {"sheet_path": String(fx_info["fx_4"]), "alpha": float(fx_info.get("alpha_4", 0.15))}
 
 func _build_suit_fx_sprite(sheet_path: String, alpha: float, target_h: float) -> AnimatedSprite2D:
 	if not ResourceLoader.exists(sheet_path):
@@ -1465,9 +1467,6 @@ func _build_suit_fx_sprite(sheet_path: String, alpha: float, target_h: float) ->
 	var s := target_h / float(fh)
 	spr.scale = Vector2(s, s)
 	spr.modulate = Color(1, 1, 1, alpha)
-	var mat := CanvasItemMaterial.new()
-	mat.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
-	spr.material = mat
 	spr.z_index = 1
 	spr.play("play")
 	return spr
@@ -6476,7 +6475,7 @@ func _show_achievement_toast(ach: Dictionary) -> void:
 
 func _spawn_achievement_button() -> void:
 	var ui := $UI
-	_ach_btn_rect = Rect2(_gm_rect.position.x - 70.0, _gm_rect.position.y, 60, 36)
+	_ach_btn_rect = Rect2(_ad_rect.position.x, _ad_rect.position.y + _ad_rect.size.y + 6.0, 60, 36)
 	_ach_btn_style = StyleBoxFlat.new()
 	_ach_btn_style.bg_color = Color(0.55, 0.42, 0.08)
 	_ach_btn_style.set_corner_radius_all(10)
