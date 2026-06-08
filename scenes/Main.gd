@@ -676,6 +676,10 @@ func _set_gm_cmd_visible(v: bool) -> void:
 			bg.visible = v
 		if lbl and is_instance_valid(lbl):
 			lbl.visible = v
+	if _ach_btn_bg and is_instance_valid(_ach_btn_bg):
+		_ach_btn_bg.visible = not v
+	if _ach_btn_lbl and is_instance_valid(_ach_btn_lbl):
+		_ach_btn_lbl.visible = not v
 
 func _gm_add_resources() -> void:
 	_wood += 1000
