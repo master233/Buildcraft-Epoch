@@ -1,9 +1,11 @@
 """导出 Web 后的后处理：
 1. 把 web_head_include.html 注入到 bin/index.html 的 </head> 之前
 2. 生成 bin/loader_bg.jpg 和 bin/loader_logo.png（HTML 加载层用）
+3. 将 index.pck 拆分为多个 <50MB 的 chunk（适配 GitHub Pages）
 """
 from pathlib import Path
 from PIL import Image
+import json
 
 ROOT = Path(__file__).resolve().parent.parent
 BIN = ROOT / "bin"
@@ -77,3 +79,27 @@ font_src = ROOT / "asserts" / "fonts" / "ZCOOLKuaiLe.ttf"
 if font_src.exists():
     shutil.copy(font_src, BIN / "loader_font.ttf")
     print(f"  copied bin/loader_font.ttf ({(BIN / 'loader_font.ttf').stat().st_size // 1024} KB)")
+
+# ---- 3. 拆分 index.pck 为多个 chunk（适配 GitHub 100MB 限制）----
+CHUNK_SIZE = 50 * 1024 * 1024  # 50MB per chunk
+pck_file = BIN / "index.pck"
+if pck_file.exists():
+    total_size = pck_file.stat().st_size
+    chunks = []
+    with open(pck_file, "rb") as f:
+        idx = 0
+        while True:
+            data = f.read(CHUNK_SIZE)
+            if not data:
+                break
+            chunk_name = f"index.pck.{idx:02d}"
+            chunk_path = BIN / chunk_name
+            chunk_path.write_bytes(data)
+            chunks.append(chunk_name)
+            idx += 1
+    manifest = {"chunks": chunks, "totalSize": total_size}
+    (BIN / "index.pck.manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    pck_file.unlink()
+    print(f"  split index.pck ({total_size // 1024 // 1024} MB) into {len(chunks)} chunks")
+else:
+    print("  WARN: index.pck not found, skipping split")

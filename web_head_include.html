@@ -261,6 +261,59 @@
 </style>
 
 <script>
+// PCK chunk loader: 拦截对 index.pck 的 fetch，改为下载多个 chunk 后拼接
+(function () {
+	var originalFetch = window.fetch;
+	window.fetch = function (input, init) {
+		var url = (typeof input === 'string') ? input : input.url;
+		if (url.indexOf('index.pck') === -1) {
+			return originalFetch.apply(this, arguments);
+		}
+		return originalFetch('index.pck.manifest.json').then(function (r) {
+			if (!r.ok) {
+				return originalFetch.apply(window, [input, init]);
+			}
+			return r.json().then(function (manifest) {
+				var chunks = manifest.chunks;
+				var totalSize = manifest.totalSize;
+				var loaded = 0;
+				var buffers = [];
+
+				function fetchChunk(idx) {
+					if (idx >= chunks.length) {
+						var result = new Uint8Array(totalSize);
+						var offset = 0;
+						for (var i = 0; i < buffers.length; i++) {
+							result.set(new Uint8Array(buffers[i]), offset);
+							offset += buffers[i].byteLength;
+						}
+						window.__bce_download_progress = 1;
+						return Promise.resolve(new Response(result.buffer, {
+							status: 200,
+							headers: { 'Content-Type': 'application/octet-stream', 'Content-Length': String(totalSize) }
+						}));
+					}
+					return originalFetch(chunks[idx]).then(function (resp) {
+						if (!resp.ok) return Promise.reject(new Error('Failed to load chunk ' + chunks[idx]));
+						return resp.arrayBuffer();
+					}).then(function (buf) {
+						buffers.push(buf);
+						loaded += buf.byteLength;
+						window.__bce_download_progress = loaded / totalSize;
+						return fetchChunk(idx + 1);
+					});
+				}
+
+				return fetchChunk(0);
+			});
+		}).catch(function () {
+			return originalFetch.apply(window, [input, init]);
+		});
+	};
+})();
+</script>
+
+<script>
 (function () {
 	function init() {
 		var loader = document.createElement('div');

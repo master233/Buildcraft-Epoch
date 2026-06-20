@@ -1,2 +1,6 @@
 # Normalize EOL for all files that Git considers text files.
 * text=auto eol=lf
+
+# PCK chunks are binary, not LFS (each <50MB, fits GitHub limit)
+bin/index.pck.* binary -filter
+bin/index.wasm binary -filter
