@@ -3,9 +3,8 @@
 <link rel="preload" as="image" href="loader_btn.png">
 <link rel="preload" as="font" href="loader_font.ttf" type="font/ttf" crossorigin>
 <style>
-/* 统一加载时长 —— 改这一处即可同步进度条/数字/JS 按钮显示时机 */
 :root {
-	--bce-loader-duration: 5s;
+	--bce-loader-duration: 5s; /* fallback，实际由 JS 驱动 */
 }
 
 @font-face {
@@ -93,18 +92,31 @@
 	width: 100%;
 	background-color: rgb(255, 217, 115);   /* Color(1.0, 0.85, 0.45) */
 	border-radius: 10px;     /* fill_style.set_corner_radius_all(10) */
-	/* 用 transform: scaleX 而不是 width —— 只有 transform/opacity 会被
-	   浏览器交给 GPU 合成线程，主线程被 wasm/pck 阻塞时仍匀速。
-	   width 动画是 layout-bound 的，仍走主线程，wasm 实例化时会卡。 */
 	transform-origin: left center;
 	transform: scaleX(0);
-	animation: bce-fill var(--bce-loader-duration) linear forwards;
+	animation: bce-fill-slow 20s linear forwards;
 	will-change: transform;
 }
 
-@keyframes bce-fill {
-	from { transform: scaleX(0); }
-	to   { transform: scaleX(1); }
+#bce-progress-fill.js-driven {
+	animation: none;
+	transition: transform 0.4s linear;
+}
+
+/* 分段递增：每10%耗时递增，总20秒到90%上限
+   0-10%: 0.8s, 10-20%: 1.0s, 20-30%: 1.3s, 30-40%: 1.6s,
+   40-50%: 2.0s, 50-60%: 2.4s, 60-70%: 2.9s, 70-80%: 3.5s, 80-90%: 4.5s */
+@keyframes bce-fill-slow {
+	0%      { transform: scaleX(0); }
+	4%      { transform: scaleX(0.10); }
+	9%      { transform: scaleX(0.20); }
+	15.5%   { transform: scaleX(0.30); }
+	23.5%   { transform: scaleX(0.40); }
+	33.5%   { transform: scaleX(0.50); }
+	45.5%   { transform: scaleX(0.60); }
+	60%     { transform: scaleX(0.70); }
+	77.5%   { transform: scaleX(0.80); }
+	100%    { transform: scaleX(0.90); }
 }
 
 /* 进度条上覆盖的「加载中...XX%」 ——
@@ -130,10 +142,25 @@
 	right: 0;
 	top: 0;
 	transform: translateY(0);
-	/* steps(100) 让胶卷一次跳一行（一次跳一个数字），
-	   视觉上是数字原地从 0 跳到 100，不再滚动闪动 */
-	animation: bce-tape var(--bce-loader-duration) steps(100) forwards;
+	animation: bce-tape-slow 20s linear forwards;
 	will-change: transform;
+}
+
+#bce-progress-tape.js-driven {
+	animation: none;
+}
+
+@keyframes bce-tape-slow {
+	0%      { transform: translateY(0); animation-timing-function: steps(10); }
+	4%      { transform: translateY(-200px); animation-timing-function: steps(10); }
+	9%      { transform: translateY(-400px); animation-timing-function: steps(10); }
+	15.5%   { transform: translateY(-600px); animation-timing-function: steps(10); }
+	23.5%   { transform: translateY(-800px); animation-timing-function: steps(10); }
+	33.5%   { transform: translateY(-1000px); animation-timing-function: steps(10); }
+	45.5%   { transform: translateY(-1200px); animation-timing-function: steps(10); }
+	60%     { transform: translateY(-1400px); animation-timing-function: steps(10); }
+	77.5%   { transform: translateY(-1600px); animation-timing-function: steps(10); }
+	100%    { transform: translateY(-1800px); }
 }
 
 #bce-progress-tape > div {
@@ -146,10 +173,6 @@
 		-1px 1px 0 rgba(0,0,0,0.9),
 		1px -1px 0 rgba(0,0,0,0.9),
 		-1px -1px 0 rgba(0,0,0,0.9);
-}
-
-@keyframes bce-tape {
-	to { transform: translateY(-2000px); }   /* 100 行 × 20px */
 }
 
 /* tip 文字：复刻 LoadingScreen.gd —— ZCOOLKuaiLe 32px 金色描边阴影，
@@ -240,11 +263,10 @@
 <script>
 (function () {
 	function init() {
-		const loader = document.createElement('div');
+		var loader = document.createElement('div');
 		loader.id = 'bce-loader';
-		// 胶卷：0..100 各占一行 20px，与进度条内部高度严格一致
-		let tape = '<div id="bce-progress-tape">';
-		for (let i = 0; i <= 100; i++) tape += '<div>加载中...' + i + '%</div>';
+		var tape = '<div id="bce-progress-tape">';
+		for (var i = 0; i <= 100; i++) tape += '<div>加载中...' + i + '%</div>';
 		tape += '</div>';
 
 		loader.innerHTML =
@@ -263,33 +285,129 @@
 		window.__bce_start = 0;
 		window.__bce_main_ready = 0;
 		window.__bce_assets_ready = 0;
+		window.__bce_download_progress = 0;
 
-		// 进度条 fill 和数字胶卷都用 CSS animation（transform，GPU 合成线程），
-		// 主线程被 wasm 阻塞时仍匀速，二者天然同步。JS 只负责动画结束后等资源 ready。
-		// 时长从 CSS --bce-loader-duration 读取，单一来源，改一处即生效。
-		const dur = getComputedStyle(document.documentElement).getPropertyValue('--bce-loader-duration').trim();
-		const FILL_DURATION_MS = dur.endsWith('ms') ? parseFloat(dur) : parseFloat(dur) * 1000;
-		setTimeout(function () {
-			const readyTimer = setInterval(function () {
-				if (window.__bce_assets_ready === 1) {
-					clearInterval(readyTimer);
+		var fill = document.getElementById('bce-progress-fill');
+		var tapeEl = document.getElementById('bce-progress-tape');
+		var displayedPct = 0;
+		var jsPhaseStarted = false;
+		var FINISH_SPEED = 0.5;
+		var MIN_DURATION_MS = 5000;
+		var pageStartTime = performance.now();
+
+		function setProgress(ratio) {
+			if (ratio < 0) ratio = 0;
+			if (ratio > 1) ratio = 1;
+			fill.style.transform = 'scaleX(' + ratio + ')';
+			var pct = Math.floor(ratio * 100);
+			if (pct !== displayedPct) {
+				displayedPct = pct;
+				tapeEl.style.transform = 'translateY(-' + (pct * 20) + 'px)';
+			}
+		}
+
+		function getCSSProgress() {
+			var s = getComputedStyle(fill).transform;
+			if (!s || s === 'none') return 0;
+			var m = s.match(/matrix\(([^,]+)/);
+			return m ? parseFloat(m[1]) : 0;
+		}
+
+		function startJSPhase() {
+			if (jsPhaseStarted) return;
+			jsPhaseStarted = true;
+			var currentRatio = getCSSProgress();
+			fill.classList.add('js-driven');
+			tapeEl.classList.add('js-driven');
+			fill.style.transform = 'scaleX(' + currentRatio + ')';
+			tapeEl.style.transform = 'translateY(-' + (Math.floor(currentRatio * 100) * 20) + 'px)';
+			var finishStart = performance.now();
+			var startRatio = currentRatio;
+			var remaining = 1 - startRatio;
+			var finishDuration = remaining / FINISH_SPEED * 1000;
+
+			var finishTimer = setInterval(function () {
+				var elapsed = performance.now() - finishStart;
+				var ratio = startRatio + (elapsed / finishDuration) * remaining;
+				if (ratio >= 1) {
+					clearInterval(finishTimer);
+					setProgress(1);
 					setTimeout(function () { loader.classList.add('ready'); }, 200);
+				} else {
+					setProgress(ratio);
 				}
-			}, 100);
-		}, FILL_DURATION_MS);
+			}, 30);
+		}
 
-		// 点击开始游戏：HTML 隐藏 logo/按钮（背景保留），GDScript 切到 Main。
-		// 等 __bce_main_ready（由 ResourceCache 在 Main 渲染几帧后设置）→ 淡出整个 HTML。
-		// 兜底 8s（资源未预加载完时 Main._setup 同步 load 可能要几秒）。
+		// CSS 动画 20 秒到 90% 后，每秒 +1% 慢爬到 98%
+		var slowCrawlStarted = false;
+		var slowCrawlRatio = 0.90;
+		setTimeout(function () {
+			if (jsPhaseStarted) return;
+			slowCrawlStarted = true;
+			fill.classList.add('js-driven');
+			tapeEl.classList.add('js-driven');
+			fill.style.transform = 'scaleX(0.9)';
+			tapeEl.style.transform = 'translateY(-1800px)';
+			var crawlTimer = setInterval(function () {
+				if (jsPhaseStarted) { clearInterval(crawlTimer); return; }
+				slowCrawlRatio += 0.01;
+				if (slowCrawlRatio >= 0.98) {
+					slowCrawlRatio = 0.98;
+					clearInterval(crawlTimer);
+				}
+				setProgress(slowCrawlRatio);
+			}, 1000);
+		}, 20000);
+
+		function doFinish() {
+			var cur = slowCrawlStarted ? slowCrawlRatio : getCSSProgress();
+			jsPhaseStarted = true;
+			fill.classList.add('js-driven');
+			tapeEl.classList.add('js-driven');
+			fill.style.transform = 'scaleX(' + cur + ')';
+			tapeEl.style.transform = 'translateY(-' + (Math.floor(cur * 100) * 20) + 'px)';
+
+			var elapsed = performance.now() - pageStartTime;
+			var timeLeft = Math.max(0, MIN_DURATION_MS - elapsed);
+			var remaining = 1 - cur;
+			var finishDuration = Math.max(timeLeft, remaining / FINISH_SPEED * 1000);
+
+			var finishStart = performance.now();
+			var finishTimer = setInterval(function () {
+				var e = performance.now() - finishStart;
+				var ratio = cur + (e / finishDuration) * remaining;
+				if (ratio >= 1) {
+					clearInterval(finishTimer);
+					setProgress(1);
+					setTimeout(function () { loader.classList.add('ready'); }, 200);
+				} else {
+					setProgress(ratio);
+				}
+			}, 30);
+		}
+
+		// 轮询真实下载进度，完成后立刻接管，按剩余时间匀速跑到 100%
+		var checkTimer = setInterval(function () {
+			var dl = window.__bce_download_progress || 0;
+			var assetsReady = window.__bce_assets_ready || 0;
+			var realProgress = dl * 0.8 + assetsReady * 0.2;
+			if (realProgress >= 1) {
+				clearInterval(checkTimer);
+				doFinish();
+			}
+		}, 100);
+
+		// 点击开始游戏
 		document.getElementById('bce-start-btn').addEventListener('click', function () {
 			if (window.__bce_start) return;
 			window.__bce_start = 1;
-			const clickAt = performance.now();
+			var clickAt = performance.now();
 			loader.classList.add('handing-off');
 
-			const handoffTimer = setInterval(function () {
-				const ready = window.__bce_main_ready === 1;
-				const timeout = performance.now() - clickAt > 8000;
+			var handoffTimer = setInterval(function () {
+				var ready = window.__bce_main_ready === 1;
+				var timeout = performance.now() - clickAt > 8000;
 				if (ready || timeout) {
 					clearInterval(handoffTimer);
 					loader.classList.add('fade-out');

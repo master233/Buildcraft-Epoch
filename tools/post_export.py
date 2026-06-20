@@ -31,6 +31,14 @@ block = f"\n{marker_begin}\n{inject}\n{marker_end}\n"
 if "</head>" not in html:
     raise SystemExit("ERROR: </head> not found in index.html")
 html = html.replace("</head>", block + "</head>", 1)
+
+# ---- 1b. 在 onProgress 回调中注入 __bce_download_progress 更新 ----
+OLD_ON_PROGRESS = "'onProgress': function (current, total) {"
+NEW_ON_PROGRESS = "'onProgress': function (current, total) {\n\t\t\t\t\tif (current > 0 && total > 0) { window.__bce_download_progress = current / total; }"
+if OLD_ON_PROGRESS in html:
+    html = html.replace(OLD_ON_PROGRESS, NEW_ON_PROGRESS, 1)
+    print("  patched onProgress to update __bce_download_progress")
+
 INDEX.write_text(html, encoding="utf-8")
 print(f"  injected head_include into {INDEX.name}")
 
